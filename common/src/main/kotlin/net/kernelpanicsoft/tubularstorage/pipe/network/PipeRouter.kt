@@ -63,48 +63,55 @@ object PipeRouter {
 		if (exclude != null) visited += exclude
 		val queue = ArrayDeque<Pair<BlockPos, List<BlockPos>>>()
 		queue += from to emptyList()
-
-		var best: Candidate? = null
-
-		while (queue.isNotEmpty()) {
-			val (current, path) = queue.removeFirst()
-			val sortingTile = (level.getBlockEntity(current) as? PipeBlockEntity)?.takeIf { it.hasSortingModule }
-
-			for (direction in Direction.entries) {
-				val neighborPos = current.relative(direction)
-				if (!visited.add(neighborPos)) continue
-
-				if (level.getBlockState(neighborPos).block is PipeBlock) {
-					queue += neighborPos to (path + neighborPos)
-					continue
-				}
-
-				val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite) ?: continue
-				if (storage.insert(resource, 1, true) <= 0) continue
-
-				val priority = if (sortingTile != null) {
-					val module = sortingTile.routing
-					if (module.color != null && module.color != color) continue
-					if (!matchesFilter(sortingTile, resource)) continue
-					module.priority
-				} else {
-					0
-				}
-
-				val candidate = Candidate(path + neighborPos, priority)
-				if (best == null || candidate.priority > best!!.priority ||
-					(candidate.priority == best!!.priority && candidate.path.size < best!!.path.size)
-				) {
-					best = candidate
-				}
-			}
-		}
-		return best?.path
+		return step(level, resource, color, queue, visited, best = null)
 	}
 
-	/** Empty filter grid: whitelist accepts nothing, blacklist accepts everything. Otherwise matches by item (ignoring data components), per [RoutingModule.mode]. */
+	private tailrec fun step(
+		level: ServerLevel,
+		resource: ItemResource,
+		color: DyeColor?,
+		queue: ArrayDeque<Pair<BlockPos, List<BlockPos>>>,
+		visited: HashSet<BlockPos>,
+		best: Candidate?,
+	): List<BlockPos>? {
+		val (current, path) = queue.removeFirstOrNull() ?: return best?.path
+		val sortingTile = (level.getBlockEntity(current) as? PipeBlockEntity)?.takeIf { it.hasSortingModule }
+
+		var nextBest = best
+		for (direction in Direction.entries) {
+			val neighborPos = current.relative(direction)
+			if (!visited.add(neighborPos)) continue
+
+			if (level.getBlockState(neighborPos).block is PipeBlock) {
+				queue += neighborPos to (path + neighborPos)
+				continue
+			}
+
+			val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite) ?: continue
+			if (storage.insert(resource, 1, true) <= 0) continue
+
+			val priority = if (sortingTile != null) {
+				val module = sortingTile.routing
+				if (module.color != null && module.color != color) continue
+				if (!matchesFilter(sortingTile, resource)) continue
+				module.priority
+			} else {
+				0
+			}
+
+			val candidate = Candidate(path + neighborPos, priority)
+			if (nextBest == null || candidate.priority > nextBest.priority ||
+				(candidate.priority == nextBest.priority && candidate.path.size < nextBest.path.size)
+			) {
+				nextBest = candidate
+			}
+		}
+		return step(level, resource, color, queue, visited, nextBest)
+	}
+
+	/** Empty filter grid: whitelist accepts nothing, blacklist accepts everything. Otherwise matches by item (ignoring data components), per [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.mode]. */
 	private fun matchesFilter(tile: PipeBlockEntity, resource: ItemResource): Boolean {
-		val entries = (0 until tile.filter.size()).map { tile.filter.get(it).resource }.filter { !it.isBlank }
+		val entries = (0 until tile.filter.size()).map { tile.filter[it].resource }.filter { !it.isBlank }
 		if (entries.isEmpty()) return tile.routing.mode == FilterMode.BLACKLIST
 
 		val matchesAnyEntry = entries.any { it.isOf(resource.item) }

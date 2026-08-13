@@ -45,6 +45,13 @@ dependencies {
 	modImplementation(libs.kotlin.fabric)
 	modApi(libs.archie.fabric)
 
+	// Workaround, not a real Tubular Storage dependency: Archie's own Archie.init() eagerly
+	// touches cloth-config's ModifierKeyCode class while initializing its config on the client,
+	// even though Archie declares cloth-config as merely compileOnlyApi/suggested. Without this
+	// present at runtime, loading any mod that depends on Archie crashes with a
+	// NoClassDefFoundError. Remove once that's fixed upstream in Archie.
+	modImplementation(libs.clothConfig.fabric)
+
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":tubularstorage-common", "transformProductionFabric")) { isTransitive = false }
 }

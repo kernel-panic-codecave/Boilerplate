@@ -33,6 +33,7 @@
     "fabric-api": ">=${versions.fabric_api}",
     "fabric-language-kotlin": ">=${versions.kotlin_fabric}",
     "architectury": ">=${versions.architectury}",
-    "archie": ">=${versions.archie_mod}"
+    "archie": ">=${versions.archie_mod}",
+    "cloth-config": ">=${versions.cloth_config_range}"
   }
 }

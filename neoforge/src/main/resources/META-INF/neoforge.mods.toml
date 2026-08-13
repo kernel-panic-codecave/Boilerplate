@@ -33,3 +33,10 @@ type = "required"
 versionRange = "[${versions.archie_mod},)"
 ordering = "NONE"
 side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "cloth_config"
+type = "required"
+versionRange = "[${versions.cloth_config_range},)"
+ordering = "NONE"
+side = "BOTH"

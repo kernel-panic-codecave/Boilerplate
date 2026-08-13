@@ -50,6 +50,11 @@ dependencies {
 	implementation(libs.kotlin.neoforge)
 	modApi(libs.archie.neoforge)
 
+	// Workaround, not a real Tubular Storage dependency - see the matching comment in
+	// fabric/build.gradle.kts: Archie's own config init requires cloth-config's ModifierKeyCode
+	// class present at runtime regardless of consumer.
+	modImplementation(libs.clothConfig.neoforge)
+
 	// NeoForge's FML classloader layering means a plain implementation/modApi dependency on a
 	// Kotlin-ecosystem library isn't reliably visible at the right point in the mod-bus lifecycle
 	// (forgeRuntimeLibrary alone lands things on MC-BOOTSTRAP, invisible to KotlinLangForge's

@@ -24,6 +24,8 @@ Mirrors Archie's build conventions where they still apply, deliberately simplifi
 
 **NeoForge + Kotlin classloading caveat**: a plain `implementation`/`modApi` dependency on a Kotlin-ecosystem library isn't reliably visible at the right point in NeoForge's mod-bus lifecycle (`forgeRuntimeLibrary` alone lands things on `MC-BOOTSTRAP`, invisible to KotlinLangForge's stdlib on `PLUGIN`). Any new Kotlin-ecosystem dependency added to `neoforge/build.gradle.kts` must go through `net.kernelpanicsoft.archie.plugin.runtimeLibrary(...)` (or `bundleRuntimeLibrary(...)` if it needs to ship in the jar), not a plain `implementation`/`modImplementation`. Symptom if missed: `NoClassDefFoundError`/`ClassNotFoundException` on NeoForge specifically, not Fabric.
 
+**Archie/cloth-config workaround**: both `fabric`/`neoforge` modules depend on `cloth-config` even though Tubular Storage doesn't use it directly. Archie declares it only `compileOnlyApi`/"suggests", but `Archie.init()` unconditionally touches cloth-config's `ModifierKeyCode` class while initializing Archie's own config on the client, so any mod depending on Archie crashes with `NoClassDefFoundError` on boot without it present. This looks like an Archie bug (its config init shouldn't require cloth-config unless a keycode-type config value is actually declared) — remove this dependency and the "required" `cloth-config`/`cloth_config` entries in `fabric.mod.json`/`neoforge.mods.toml` once that's fixed upstream.
+
 ## Commands
 
 - `./gradlew build` — full build (first run downloads/decompiles Minecraft via Loom; can take several minutes).

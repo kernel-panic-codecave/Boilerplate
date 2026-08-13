@@ -1,0 +1,84 @@
+name: check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  check:
+    strategy:
+      # Fail-fast off: a stuck/flaky loader shouldn't cancel the other loader's otherwise-good
+      # results, and splitting cuts each job's own worst-case wall clock roughly in half versus
+      # one job running every loader:side combo sequentially.
+      fail-fast: false
+      matrix:
+        loader: [fabric, neoforge]
+        # No client/server split yet - there's no gametest matrix to gate on until gametest code
+        # exists (see ROADMAP.md/CLAUDE.md). Re-add a `side: [server, client]` axis alongside a
+        # `-Dtubularstorage.junit.gametest.matrix=...` flag once it does (see Archie's check.yaml
+        # for the pattern), instead of running the same `check` twice for nothing.
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Force Mesa's software rasterizer - GitHub-hosted runners have no GPU, and LWJGL/GLFW need
+      # a working GL context (even offscreen) to boot the Minecraft client.
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: 'zulu'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install headless X server and software GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglu1-mesa mesa-utils
+
+      - name: Cache Minecraft assets
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/fabric-loom/assets
+          # Assets are keyed only by Minecraft version, not by loader - shared across both matrix
+          # jobs so only the very first run on a given version ever needs to hit Mojang's asset
+          # CDN. Bump this literal alongside gradle/libs.versions.toml's `minecraft` entry when
+          # the game version changes - deliberately not hashFiles(libs.versions.toml), since that
+          # file also covers unrelated dependency bumps that shouldn't bust this cache.
+          key: minecraft-assets-1.21.1
+
+      - name: Run check
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" ./gradlew check --console=plain
+
+      - name: Publish test report
+        if: success() || failure()
+        uses: mikepenz/action-junit-report@v6
+        with:
+          check_name: JUnit Test Report (${{ matrix.loader }})
+          job_name: check (${{ matrix.loader }})
+          report_paths: '**/build/test-results/test/TEST-*.xml'
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ matrix.loader }}
+          path: |
+            common/build/reports/tests/**
+            fabric/build/reports/tests/**
+            neoforge/build/reports/tests/**
+            build/reports/problems/**
+          if-no-files-found: ignore
+          retention-days: 7

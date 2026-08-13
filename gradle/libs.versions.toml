@@ -1,0 +1,58 @@
+[versions]
+kotlin = "2.1.21"
+kotlin-fabric = "1.13.3+kotlin.2.1.21"
+kotlin-neoforge = "2.11.1-k2.2.21-3.0+neoforge"
+kotlin-neoforge-range = "2"
+kotlinx-serialization = { require = "[1.8.0,)", prefer = "1.9.0" }
+
+minecraft = { strictly = "1.21.1" }
+parchment = "2024.11.17"
+
+architectury = "13.0.8"
+architectury-plugin = { require = "[3.4, 3.5[" }
+architectury-loom = { require = "1.13.469" }
+
+modfusioner = "1.0.12"
+
+archie = "1.0.4-SNAPSHOT"
+archie-mod = "1.0.0"
+
+fabric-loader = "0.16.9"
+fabric-api = "0.116.6+1.21.1"
+
+neoforge = "21.1.80"
+neoforge-range = "21.1.80"
+
+shadow = "8.1.1"
+
+[libraries]
+kotlin-fabric = { module = "net.fabricmc:fabric-language-kotlin", version.ref = "kotlin-fabric" }
+kotlin-neoforge = { module = "dev.nyon:KotlinLangForge", version.ref = "kotlin-neoforge" }
+
+minecraft = { module = "com.mojang:minecraft", version.ref = "minecraft" }
+parchment = { module = "org.parchmentmc.data:parchment-1.21.1", version.ref = "parchment" }
+
+architectury-common = { module = "dev.architectury:architectury", version.ref = "architectury" }
+architectury-neoforge = { module = "dev.architectury:architectury-neoforge", version.ref = "architectury" }
+architectury-fabric = { module = "dev.architectury:architectury-fabric", version.ref = "architectury" }
+
+fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabric-loader" }
+fabric-api = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fabric-api" }
+
+neoforge = { module = "net.neoforged:neoforge", version.ref = "neoforge" }
+
+archie-common = { module = "net.kernelpanicsoft.archie:archie-core-common", version.ref = "archie-mod" }
+archie-fabric = { module = "net.kernelpanicsoft.archie:archie-core-fabric", version.ref = "archie-mod" }
+archie-neoforge = { module = "net.kernelpanicsoft.archie:archie-core-neoforge", version.ref = "archie-mod" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+architectury = { id = "architectury-plugin", version.ref = "architectury-plugin" }
+architectury-loom = { id = "dev.architectury.loom", version.ref = "architectury-loom" }
+
+shadow = { id = "com.github.johnrengelman.shadow", version.ref = "shadow" }
+modfusioner = { id = "com.hypherionmc.modutils.modfusioner", version.ref = "modfusioner" }
+
+archie = { id = "net.kernelpanicsoft.archie.archie-plugin", version.ref = "archie" }

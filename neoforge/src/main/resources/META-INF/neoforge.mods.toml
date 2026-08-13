@@ -1,0 +1,35 @@
+modLoader = "klf"
+loaderVersion = "[${versions.kotlin_neoforge_range},)"
+issueTrackerURL = ""
+license = "${mod_license}"
+
+[[mods]]
+modId = "${mod_id}"
+version = "${mod_version}"
+displayName = "${mod_display_name}"
+authors = "${mod_authors}"
+description = '''
+${mod_description}
+'''
+displayURL = "${mod_url}"
+
+[[dependencies."${mod_id}"]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${versions.neoforge_range},)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "minecraft"
+type = "required"
+versionRange = "[${versions.minecraft}]"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies."${mod_id}"]]
+modId = "archie"
+type = "required"
+versionRange = "[${versions.archie_mod},)"
+ordering = "NONE"
+side = "BOTH"

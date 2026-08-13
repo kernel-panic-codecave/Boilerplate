@@ -26,7 +26,6 @@ loom {
 	mods {
 		maybeCreate("main").apply {
 			sourceSet(sourceSets.main.get())
-			sourceSet(project(":tubularstorage-common").sourceSets.main.get())
 		}
 	}
 
@@ -41,8 +40,6 @@ loom {
 			source(sourceSets.main.get())
 			vmArgs("-XX:+AllowEnhancedClassRedefinition")
 		}
-		// "gradlew runGametest"/"runGametestClient" - see the dependency comment below for why
-		// archie-gametest is safe to have on this run's classpath despite never shipping.
 		create("gametest") {
 			server()
 			name = "Minecraft GameTest"
@@ -68,29 +65,9 @@ dependencies {
 	implementation(libs.kotlin.neoforge)
 	modApi(libs.archie.neoforge)
 
-	// Workaround, not a real Tubular Storage dependency - see the matching comment in
-	// fabric/build.gradle.kts: Archie's own config init requires cloth-config's ModifierKeyCode
-	// class present at runtime regardless of consumer.
 	modImplementation(libs.clothConfig.neoforge)
 
-	// NeoForge's FML classloader layering means a plain implementation/modApi dependency on a
-	// Kotlin-ecosystem library isn't reliably visible at the right point in the mod-bus lifecycle
-	// (forgeRuntimeLibrary alone lands things on MC-BOOTSTRAP, invisible to KotlinLangForge's
-	// stdlib on PLUGIN). import net.kernelpanicsoft.archie.plugin.runtimeLibrary (or
-	// .bundleRuntimeLibrary if it also needs to ship in our jar) and use that instead of a plain
-	// implementation/modImplementation for any future Kotlin-ecosystem dependency added here - it
-	// routes the dependency through the archie-plugin's PatchFMLModType artifact transform.
-	// Fabric doesn't have this problem.
-
-	// Dev-only: compile-time visibility for GameTest code (gated behind
-	// AGameTestPlatform.isGameTest - see common/build.gradle.kts) plus runtime presence for the
-	// "gametest"/"gametestClient" runs above. modLocalRuntime never ships in the production jar
-	// (it isn't part of the "common"/"shadowCommon" configurations shadowJar draws from), so these
-	// two lines are exactly what keeps archie-gametest off the classpath in production while still
-	// letting it run in dev.
-	modCompileOnly(libs.archie.gametest.common)
 	modCompileOnly(libs.archie.gametest.neoforge)
-	modLocalRuntime(libs.archie.gametest.common)
 	modLocalRuntime(libs.archie.gametest.neoforge)
 
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
@@ -105,6 +82,10 @@ tasks {
 	base.archivesName.set(base.archivesName.get() + "-neoforge")
 
 	processResources {
+		from(project(":tubularstorage-common").sourceSets.main.get().resources) {
+			include("assets/tubularstorage/**")
+			include("data/tubularstorage/**")
+		}
 		dependsOn(processTestResources)
 	}
 

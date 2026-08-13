@@ -10,7 +10,7 @@ parchment = "2024.11.17"
 
 architectury = "13.0.8"
 architectury-plugin = { require = "[3.4, 3.5[" }
-architectury-loom = { require = "1.13.469" }
+architectury-loom = { require = "1.17.491" }
 
 modfusioner = "1.0.12"
 

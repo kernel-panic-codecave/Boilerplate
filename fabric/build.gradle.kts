@@ -63,22 +63,9 @@ dependencies {
 	modImplementation(libs.kotlin.fabric)
 	modApi(libs.archie.fabric)
 
-	// Workaround, not a real Tubular Storage dependency: Archie's own Archie.init() eagerly
-	// touches cloth-config's ModifierKeyCode class while initializing its config on the client,
-	// even though Archie declares cloth-config as merely compileOnlyApi/suggested. Without this
-	// present at runtime, loading any mod that depends on Archie crashes with a
-	// NoClassDefFoundError. Remove once that's fixed upstream in Archie.
 	modImplementation(libs.clothConfig.fabric)
 
-	// Dev-only: compile-time visibility for GameTest code (gated behind
-	// AGameTestPlatform.isGameTest - see common/build.gradle.kts) plus runtime presence for the
-	// "gametest"/"gametestClient" runs above. modLocalRuntime never ships in the production jar
-	// (it isn't part of the "common"/"shadowCommon" configurations shadowJar draws from), so these
-	// two lines are exactly what keeps archie-gametest off the classpath in production while still
-	// letting it run in dev.
-	modCompileOnly(libs.archie.gametest.common)
 	modCompileOnly(libs.archie.gametest.fabric)
-	modLocalRuntime(libs.archie.gametest.common)
 	modLocalRuntime(libs.archie.gametest.fabric)
 
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
@@ -93,6 +80,10 @@ tasks {
 	base.archivesName.set(base.archivesName.get() + "-fabric")
 
 	processResources {
+		from(project(":tubularstorage-common").sourceSets.main.get().resources) {
+			include("assets/tubularstorage/**")
+			include("data/tubularstorage/**")
+		}
 		dependsOn(processTestResources)
 	}
 

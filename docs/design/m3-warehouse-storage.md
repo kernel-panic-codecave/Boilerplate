@@ -47,6 +47,15 @@ Single crane per controller in v1 — multi-gantry parallelism is a stretch upgr
 - A "withdraw" button enqueues an extract job targeting the requesting player's inventory, wrapped as a CSL sink via `AbstractVanillaContainer` — the same CSL vanilla-container adapter `ComposeContainerMenuBase` already uses internally for plain-`Container` slots.
 - Multiple requested items in one withdrawal batch into a single crane run rather than returning the crane "home" between each item, for usability.
 
+## Rack types
+
+Three built-in rack block families, distinguished by storage strategy rather than capacity alone (addon mods can register more, since "rack" is just "anything the bound volume finds exposing `ItemApi.BLOCK`" - see above):
+
+- **Bulk/deep storage** — a large quantity of a single item, minimal per-slot overhead. For warehousing stacks-of-stacks of one resource (cobblestone, dirt, ore) without the index needing to track many separate `RackSlotRef`s for what's conceptually one pile.
+- **General storage** — ordinary multi-item shelving, closest to a plain chest/barrel's semantics, just at warehouse scale.
+- **Unstackable storage** — purpose-built for the NBT-heavy, `maxStackSize == 1` case (enchanted tools/bows, written books, etc. - the mob-farm-drops problem) so a warehouse doesn't either reject them or accumulate the chunk-data bloat vanilla containers full of unique-NBT single-count stacks cause. Candidate strategy: dedupe by item id + full data components, storing one record with a count rather than one `ItemStack` per physical item - two drops with identical enchantments/components collapse into one entry, and only genuinely distinct component sets get their own record.
+
 ## Deferred to playtesting / not blocking
 
 - Multi-gantry parallelism as a later upgrade (not core M3 scope).
+- Exact rack block implementation (block entity shape, capacity tuning, addon-mod registration surface) - noted here as a placeholder ahead of M3 design work proper.

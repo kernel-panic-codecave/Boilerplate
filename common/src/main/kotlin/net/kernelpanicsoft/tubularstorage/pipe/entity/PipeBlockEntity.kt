@@ -5,13 +5,16 @@ import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.archie.serialization.Sync
+import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.network.PipeContentsSyncPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.client.PipeContentsClientCache
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
+import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -27,9 +30,10 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 
 /**
- * A plain pipe segment. Holds and advances [TravelingItem]s in transit; never initiates a pull
- * itself (see [net.kernelpanicsoft.tubularstorage.pipe.entity.ExtractorPipeBlockEntity]). Doubles
- * as the [SortingPipeMenu]'s menu provider once [hasSortingModule] is set - see [PipeBlock].
+ * A pipe segment. Holds and advances [TravelingItem]s in transit, and carries zero or more
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] attachments - one per face, keyed by
+ * [Direction.name] in [hooks] - each ticked every server tick. Doubles as
+ * [SortingPipeMenu]'s menu provider for whichever face's hook last opened it - see [PipeBlock].
  */
 open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(type, pos, state), PressureConsumer, ExtendedMenuProvider {
@@ -38,23 +42,52 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 	val travelingItems by listField(TravelingItem.serializer()) { emptyList() }
 
-	/** Whether a sorting module item has been used on this pipe — gates the sorting GUI and M2 routing behavior. */
-	var hasSortingModule by booleanField()
+	/** Which [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] (if any) is attached to each face, keyed by [Direction.name]. */
+	val hooks by mapField(HookState.serializer()) { emptyMap() }
 
+	val filterNorth by itemField(9)
+	val filterSouth by itemField(9)
+	val filterEast by itemField(9)
+	val filterWest by itemField(9)
+	val filterUp by itemField(9)
+	val filterDown by itemField(9)
+
+	/**
+	 * One [RoutingModule] per face (see [FaceRouting]), consulted by a sorting hook on that face
+	 * (mode/priority/color) or an extraction hook on that face (`color` only, to tag what it sends
+	 * out) - see [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter].
+	 */
 	@Sync
-	var routing by field(RoutingModule.serializer()) { RoutingModule() }
+	var routing by field(FaceRouting.serializer()) { FaceRouting() }
 
-	/** 3x3 filter grid consulted when [hasSortingModule] and [RoutingModule.mode] restrict which resources this pipe accepts as a sorting junction. */
-	val filter by itemField(9)
+	/** The face last targeted by a menu-opening interaction - not persisted, only meaningful for the duration of [createMenu]/[saveExtraData]. */
+	var pendingMenuFace: Direction = Direction.NORTH
 
 	private var ticksSinceSync = 0
 
-	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu = SortingPipeMenu(id, inventory, this)
+	fun routingFor(direction: Direction): RoutingModule = routing[direction]
+
+	fun setRoutingFor(direction: Direction, module: RoutingModule) {
+		routing = routing.with(direction, module)
+	}
+
+	/** The 3x3 filter grid a sorting hook on [direction] consults - see [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]. */
+	fun filterFor(direction: Direction): ArchieItemStorage = when (direction) {
+		Direction.NORTH -> filterNorth
+		Direction.SOUTH -> filterSouth
+		Direction.EAST -> filterEast
+		Direction.WEST -> filterWest
+		Direction.UP -> filterUp
+		Direction.DOWN -> filterDown
+	}
+
+	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu = SortingPipeMenu(id, inventory, this, pendingMenuFace)
 
 	override fun getDisplayName(): Component = blockState.block.name
 
 	override fun saveExtraData(buf: FriendlyByteBuf) {
 		buf.writeBlockPos(blockPos)
+		buf.writeEnum(pendingMenuFace)
 	}
 
 	override fun setRemoved() {
@@ -65,13 +98,13 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	}
 
 	/**
-	 * Archie's [listField] decodes a fresh list from storage on every property access; only the
-	 * structural operations [ObservableList][net.kernelpanicsoft.archie.serialization.ObservableList]
-	 * actually intercepts (`add`/`removeAt`/`set`/`clear`, ...) persist. Mutating a `var` field on
-	 * an element already in the list, or removing via an `Iterator`, silently affects only a
-	 * throwaway copy - the next access re-decodes from the (unchanged) backing storage. So
-	 * [travelingItems] is fetched exactly once here and touched only through `set`/`removeAt`,
-	 * with [TravelingItem.copy] standing in for field mutation.
+	 * Archie's [listField]/[mapField] decode a fresh collection from storage on every property
+	 * access; only the structural operations [net.kernelpanicsoft.archie.serialization.ObservableList]/
+	 * [net.kernelpanicsoft.archie.serialization.ObservableMap] actually intercept (`add`/`removeAt`/
+	 * `set`/`clear`/`put`, ...) persist. [travelingItems] and [hooks] are each fetched exactly once
+	 * here and touched only through index-/key-based mutation, with [TravelingItem.copy]/
+	 * [HookState.copy] standing in for field mutation - in-place mutation of an element already in
+	 * the collection, or removal via an `Iterator`, silently affects only a throwaway copy.
 	 */
 	open fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
@@ -142,6 +175,15 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					index++
 				}
 			}
+		}
+
+		val attached = hooks
+		for (directionName in attached.keys.toList()) {
+			val hookState = attached[directionName] ?: continue
+			val direction = Direction.valueOf(directionName)
+			val hookType = HookTypeRegistry.byId(hookState.type) ?: continue
+			val next = hookType.tick(serverLevel, pos, direction, this, hookState)
+			if (next != hookState) attached[directionName] = next
 		}
 
 		ticksSinceSync++

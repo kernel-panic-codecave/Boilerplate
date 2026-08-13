@@ -14,6 +14,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.DyeColorSerializer
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
+import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistrar
+import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.Direction
@@ -41,7 +43,6 @@ object TubularStorage {
 	@JvmStatic
 	fun init() {
 		LOGGER.info("Tubular Storage initializing")
-		AGametestEvents += MOD
 		SerializationManager {
 			module {
 				contextual(Direction::class, DirectionSerializer)
@@ -49,6 +50,8 @@ object TubularStorage {
 			}
 		}
 
+		HookTypeRegistrar.init()
+		HookTypeRegistry.init()
 		BlockRegistry.init()
 		ItemRegistry.init()
 		TileRegistry.init()
@@ -71,11 +74,14 @@ object TubularStorage {
 	 * Reserved for common-side initialization that must run after both [init] and platform
 	 * bootstrap. Registers Tubular Storage's GameTest suite, but only when actually launched via
 	 * `runGametest`/`runGametestClient` - see [TubularStorageGameTest]'s KDoc for why this check
-	 * matters beyond just "don't waste time registering tests nobody's running".
+	 * matters beyond just "don't waste time registering tests nobody's running": every reference to
+	 * an `archie-gametest-common` type, including [AGametestEvents]'s own `+=`, must stay inside
+	 * this guard, since that dependency is absent from the production runtime classpath.
 	 */
 	@JvmStatic
 	fun initCommon() {
 		if (AGameTestPlatform.isGameTest) {
+			AGametestEvents += MOD
 			TubularStorageGameTest.init()
 		}
 	}

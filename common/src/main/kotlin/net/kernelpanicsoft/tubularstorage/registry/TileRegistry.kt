@@ -1,9 +1,10 @@
 package net.kernelpanicsoft.tubularstorage.registry
 
+import dev.architectury.registry.client.rendering.BlockEntityRendererRegistry
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.blockEntityType
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.pipe.entity.ExtractorPipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -16,9 +17,7 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 		}
 	}
 
-	val ExtractorPipe: BlockEntityType<ExtractorPipeBlockEntity> by register("extractor_pipe") {
-		blockEntityType(::ExtractorPipeBlockEntity) {
-			add(BlockRegistry.ExtractorPipe)
-		}
+	override fun initClient() {
+		BlockEntityRendererRegistry.register(Pipe, ::PipeHookBlockEntityRenderer)
 	}
 }

@@ -6,6 +6,7 @@ import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeScreen
+import net.minecraft.core.Direction
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.inventory.MenuType
 
@@ -14,7 +15,8 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 	val SortingPipe: MenuType<SortingPipeMenu> by register("sorting_pipe") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
 			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as PipeBlockEntity
-			SortingPipeMenu(id, inventory, tile)
+			val direction = buf.readEnum(Direction::class.java)
+			SortingPipeMenu(id, inventory, tile, direction)
 		}
 	}
 

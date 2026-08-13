@@ -1,7 +1,6 @@
 package net.kernelpanicsoft.tubularstorage.gametest
 
 import net.kernelpanicsoft.archie.gametest.assertTrue
-import net.kernelpanicsoft.archie.gametest.internal.EMPTY
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.minecraft.core.BlockPos
@@ -16,7 +15,7 @@ import net.minecraft.world.level.block.Blocks
  */
 @Suppress("unused")
 class PipeNetworkGameTest {
-	@GameTest(template = EMPTY)
+	@GameTest(template = SMALL)
 	fun GameTestHelper.testAdjacentPipesMergeIntoOneNetwork() {
 		val posA = BlockPos(0, 2, 0)
 		val posB = BlockPos(0, 2, 1)
@@ -36,7 +35,7 @@ class PipeNetworkGameTest {
 		succeed()
 	}
 
-	@GameTest(template = EMPTY)
+	@GameTest(template = SMALL)
 	fun GameTestHelper.testRemovingConnectorPipeSplitsNetwork() {
 		val posA = BlockPos(0, 2, 0)
 		val posB = BlockPos(0, 2, 1)

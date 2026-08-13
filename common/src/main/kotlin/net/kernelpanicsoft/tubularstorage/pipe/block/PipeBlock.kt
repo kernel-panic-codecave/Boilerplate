@@ -4,7 +4,9 @@ import com.mojang.serialization.MapCodec
 import dev.architectury.registry.menu.MenuRegistry
 import earth.terrarium.common_storage_lib.item.ItemApi
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
-import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
+import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
+import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -91,7 +93,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 
 	override fun isPathfindable(state: BlockState, pathComputationType: PathComputationType): Boolean = false
 
-	/** Right-clicking with the sorting module item applies it to this pipe (one-time unlock, see `docs/design/m2-sorting-routing.md`). */
+	/** Right-clicking a face with a [HookItem] attaches that hook to it (see `docs/design/m1-pipe-network.md`), unless that face already carries one. */
 	override fun useItemOn(
 		stack: ItemStack,
 		state: BlockState,
@@ -101,21 +103,29 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		hand: InteractionHand,
 		hitResult: BlockHitResult,
 	): ItemInteractionResult {
+		val hookItem = stack.item as? HookItem ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		if (level.isClientSide) return ItemInteractionResult.SUCCESS
-		if (!stack.`is`(ItemRegistry.SortingModule)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		val tile = level.getBlockEntity(pos) as? PipeBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
-		if (tile.hasSortingModule) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		val direction = hitResult.direction
+		if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 
-		tile.hasSortingModule = true
+		tile.hooks[direction.name] = HookState(type = hookItem.hookId)
 		if (!player.abilities.instabuild) stack.shrink(1)
 		return ItemInteractionResult.SUCCESS
 	}
 
-	/** Empty-hand right-click opens the sorting GUI, once [PipeBlockEntity.hasSortingModule] is set. */
+	/** Empty-hand right-click on a hooked face opens that hook's GUI (if it has one), or - while sneaking - removes it. */
 	override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
+		val tile = level.getBlockEntity(pos) as? PipeBlockEntity ?: return InteractionResult.PASS
+		val direction = hitResult.direction
+		val hookState = tile.hooks[direction.name] ?: return InteractionResult.PASS
+		val hookType = HookTypeRegistry.byId(hookState.type) ?: return InteractionResult.PASS
+
 		if (!level.isClientSide) {
-			val tile = level.getBlockEntity(pos) as? PipeBlockEntity
-			if (tile != null && tile.hasSortingModule) {
+			if (player.isShiftKeyDown) {
+				tile.hooks.remove(direction.name)
+			} else if (hookType.hasMenu) {
+				tile.pendingMenuFace = direction
 				MenuRegistry.openExtendedMenu(player as ServerPlayer, tile)
 			}
 		}

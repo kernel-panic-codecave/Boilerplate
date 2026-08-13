@@ -17,6 +17,7 @@ import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.tubularstorage.pipe.entity.FaceRouting
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.minecraft.network.chat.Component
@@ -25,15 +26,17 @@ import net.minecraft.world.item.DyeColor
 import kotlin.math.roundToInt
 
 /**
- * Sorting configuration for a [SortingPipeMenu]'s pipe: filter grid, whitelist/blacklist mode,
- * priority, and consignment color. Color is a discrete [DyeColor] pick (not Archie's continuous
- * [net.kernelpanicsoft.archie.gui.composables.input.ColorPicker]) since routing compares it by
- * exact equality against a traveling item's color - see `docs/design/m2-sorting-routing.md`.
+ * Sorting configuration for [SortingPipeMenu.direction]'s hook: filter grid, whitelist/blacklist
+ * mode, priority, and consignment color. Color is a discrete [DyeColor] pick (not Archie's
+ * continuous [net.kernelpanicsoft.archie.gui.composables.input.ColorPicker]) since routing
+ * compares it by exact equality against a traveling item's color - see
+ * `docs/design/m2-sorting-routing.md`.
  */
 class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<SortingPipeMenu>(menu, playerInventory, title) {
 
 	private val contentWidth = 18 * 9
+	private val direction = menu.direction
 
 	init {
 		start { content() }
@@ -41,8 +44,13 @@ class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title
 
 	@Composable
 	fun content() {
-		var synced by observeProperty("routing", RoutingModule())
-		val module = synced ?: RoutingModule()
+		var synced by observeProperty("routing", FaceRouting())
+		val faceRouting = synced ?: FaceRouting()
+		val module = faceRouting[direction]
+
+		fun update(next: RoutingModule) {
+			synced = faceRouting.with(direction, next)
+		}
 
 		Theme {
 			Box(modifier = Modifier.width(contentWidth + 16)) {
@@ -58,13 +66,13 @@ class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title
 								RadioOption(FilterMode.BLACKLIST, Component.literal("Blacklist")),
 							),
 							selected = module.mode,
-							onSelected = { synced = module.copy(mode = it) },
+							onSelected = { update(module.copy(mode = it)) },
 						)
 
 						Text(Component.literal("Priority: ${module.priority}"), dropShadow = false)
 						Slider(
 							value = module.priority.toFloat() / PRIORITY_MAX,
-							onValueChange = { synced = module.copy(priority = (it * PRIORITY_MAX).roundToInt()) },
+							onValueChange = { update(module.copy(priority = (it * PRIORITY_MAX).roundToInt())) },
 							steps = PRIORITY_MAX,
 							modifier = Modifier.width(contentWidth),
 						)
@@ -78,7 +86,7 @@ class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title
 								}
 							},
 							selected = module.color,
-							onSelected = { synced = module.copy(color = it) },
+							onSelected = { update(module.copy(color = it)) },
 						)
 					}
 				}

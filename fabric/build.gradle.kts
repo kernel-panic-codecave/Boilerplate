@@ -35,6 +35,24 @@ loom {
 			source(sourceSets.main.get())
 			vmArgs("-XX:+AllowEnhancedClassRedefinition")
 		}
+		// "gradlew runGametest"/"runGametestClient" - see the dependency comment below for why
+		// archie-gametest is safe to have on this run's classpath despite never shipping.
+		create("gametest") {
+			server()
+			name = "Minecraft GameTest"
+			property("fabric-api.gametest")
+			property("archie.gametest", "true")
+			property("archie.gametest.side", "server")
+			property("archie.gametest.modid", "tubularstorage")
+		}
+		create("gametestClient") {
+			client()
+			name = "Minecraft GameTest Client"
+			property("fabric-api.gametest")
+			property("archie.gametest", "true")
+			property("archie.gametest.side", "client")
+			property("archie.gametest.modid", "tubularstorage")
+		}
 	}
 }
 
@@ -51,6 +69,17 @@ dependencies {
 	// present at runtime, loading any mod that depends on Archie crashes with a
 	// NoClassDefFoundError. Remove once that's fixed upstream in Archie.
 	modImplementation(libs.clothConfig.fabric)
+
+	// Dev-only: compile-time visibility for GameTest code (gated behind
+	// AGameTestPlatform.isGameTest - see common/build.gradle.kts) plus runtime presence for the
+	// "gametest"/"gametestClient" runs above. modLocalRuntime never ships in the production jar
+	// (it isn't part of the "common"/"shadowCommon" configurations shadowJar draws from), so these
+	// two lines are exactly what keeps archie-gametest off the classpath in production while still
+	// letting it run in dev.
+	modCompileOnly(libs.archie.gametest.common)
+	modCompileOnly(libs.archie.gametest.fabric)
+	modLocalRuntime(libs.archie.gametest.common)
+	modLocalRuntime(libs.archie.gametest.fabric)
 
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":tubularstorage-common", "transformProductionFabric")) { isTransitive = false }

@@ -50,6 +50,10 @@ archie-common = { module = "net.kernelpanicsoft.archie:archie-core-common", vers
 archie-fabric = { module = "net.kernelpanicsoft.archie:archie-core-fabric", version.ref = "archie-mod" }
 archie-neoforge = { module = "net.kernelpanicsoft.archie:archie-core-neoforge", version.ref = "archie-mod" }
 
+archie-gametest-common = { module = "net.kernelpanicsoft.archie:archie-gametest-common", version.ref = "archie-mod" }
+archie-gametest-fabric = { module = "net.kernelpanicsoft.archie:archie-gametest-fabric", version.ref = "archie-mod" }
+archie-gametest-neoforge = { module = "net.kernelpanicsoft.archie:archie-gametest-neoforge", version.ref = "archie-mod" }
+
 clothConfig-fabric = { module = "me.shedaniel.cloth:cloth-config-fabric", version.ref = "cloth-config" }
 clothConfig-neoforge = { module = "me.shedaniel.cloth:cloth-config-neoforge", version.ref = "cloth-config" }
 

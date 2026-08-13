@@ -4,7 +4,10 @@ import com.mojang.logging.LogUtils
 import dev.architectury.event.events.common.TickEvent
 import dev.architectury.platform.Mod
 import dev.architectury.platform.Platform
+import net.kernelpanicsoft.archie.events.gametest.AGametestEvents
+import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
 import net.kernelpanicsoft.archie.serialization.SerializationManager
+import net.kernelpanicsoft.tubularstorage.gametest.TubularStorageGameTest
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.entity.DirectionSerializer
 import net.kernelpanicsoft.tubularstorage.pipe.entity.DyeColorSerializer
@@ -38,6 +41,7 @@ object TubularStorage {
 	@JvmStatic
 	fun init() {
 		LOGGER.info("Tubular Storage initializing")
+		AGametestEvents += MOD
 		SerializationManager {
 			module {
 				contextual(Direction::class, DirectionSerializer)
@@ -65,9 +69,14 @@ object TubularStorage {
 
 	/**
 	 * Reserved for common-side initialization that must run after both [init] and platform
-	 * bootstrap.
+	 * bootstrap. Registers Tubular Storage's GameTest suite, but only when actually launched via
+	 * `runGametest`/`runGametestClient` - see [TubularStorageGameTest]'s KDoc for why this check
+	 * matters beyond just "don't waste time registering tests nobody's running".
 	 */
 	@JvmStatic
 	fun initCommon() {
+		if (AGameTestPlatform.isGameTest) {
+			TubularStorageGameTest.init()
+		}
 	}
 }

@@ -38,6 +38,15 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		PipeContentsClientCache.remove(blockPos)
 	}
 
+	/**
+	 * Archie's [listField] decodes a fresh list from storage on every property access; only the
+	 * structural operations [ObservableList][net.kernelpanicsoft.archie.serialization.ObservableList]
+	 * actually intercepts (`add`/`removeAt`/`set`/`clear`, ...) persist. Mutating a `var` field on
+	 * an element already in the list, or removing via an `Iterator`, silently affects only a
+	 * throwaway copy - the next access re-decodes from the (unchanged) backing storage. So
+	 * [travelingItems] is fetched exactly once here and touched only through `set`/`removeAt`,
+	 * with [TravelingItem.copy] standing in for field mutation.
+	 */
 	open fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
@@ -46,16 +55,21 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		PipeNetworkManager.get(serverLevel).ensureRegistered(serverLevel, pos)
 		var hopped = false
 
-		val iterator = travelingItems.iterator()
-		while (iterator.hasNext()) {
-			val item = iterator.next()
-			item.progress += SEGMENT_SPEED
-			if (item.progress < 1f) continue
+		val items = travelingItems
+		var index = 0
+		while (index < items.size) {
+			val item = items[index]
+			val progress = item.progress + SEGMENT_SPEED
+			if (progress < 1f) {
+				items[index] = item.copy(progress = progress)
+				index++
+				continue
+			}
 
 			val nextPos = item.path.firstOrNull()
 			if (nextPos == null) {
 				jam(serverLevel, pos, item)
-				iterator.remove()
+				items.removeAt(index)
 				hopped = true
 				continue
 			}
@@ -64,13 +78,13 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				val nextTile = serverLevel.getBlockEntity(nextPos) as? PipeBlockEntity
 				if (nextTile == null) {
 					jam(serverLevel, pos, item)
-					iterator.remove()
+					items.removeAt(index)
 					hopped = true
 					continue
 				}
 				val direction = Direction.fromDelta(nextPos.x - pos.x, nextPos.y - pos.y, nextPos.z - pos.z)
 				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1))
-				iterator.remove()
+				items.removeAt(index)
 				hopped = true
 				continue
 			}
@@ -79,7 +93,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			val storage = ItemApi.BLOCK.find(serverLevel, nextPos, direction?.opposite)
 			if (storage == null) {
 				jam(serverLevel, pos, item)
-				iterator.remove()
+				items.removeAt(index)
 				hopped = true
 				continue
 			}
@@ -88,22 +102,26 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			val inserted = storage.insert(resource, item.stack.count.toLong(), false)
 			when {
 				inserted >= item.stack.count -> {
-					iterator.remove()
+					items.removeAt(index)
 					hopped = true
 				}
 				inserted > 0 -> {
 					item.stack.shrink(inserted.toInt())
-					item.progress = 1f
+					items[index] = item.copy(progress = 1f)
 					hopped = true
+					index++
 				}
-				else -> item.progress = 1f // stall, retry next tick
+				else -> {
+					items[index] = item.copy(progress = 1f) // stall, retry next tick
+					index++
+				}
 			}
 		}
 
 		ticksSinceSync++
-		if (hopped || (travelingItems.isNotEmpty() && ticksSinceSync >= SYNC_INTERVAL_TICKS)) {
+		if (hopped || (items.isNotEmpty() && ticksSinceSync >= SYNC_INTERVAL_TICKS)) {
 			ticksSinceSync = 0
-			syncToNearbyPlayers(serverLevel, pos)
+			syncToNearbyPlayers(serverLevel, pos, items)
 		}
 	}
 
@@ -112,10 +130,10 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			.also { level.addFreshEntity(it) }
 	}
 
-	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos) {
+	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos, items: List<TravelingItem>) {
 		TubularStorageNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, SYNC_RADIUS,
-			PipeContentsSyncPacket(pos, travelingItems.toList()),
+			PipeContentsSyncPacket(pos, items.toList()),
 		)
 	}
 

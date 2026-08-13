@@ -37,6 +37,8 @@ Each `PipeBlockEntity` with a non-empty `travelingItems` list is an active ticke
    - Next hop is a resolved inventory endpoint → attempt `storage.insert(resource, amount, simulate = false)` via `ItemApi.BLOCK.find`.
 3. On insertion failure (full/rejected): the item **stalls at `progress = 1f`** and retries insertion every subsequent tick — no backoff in v1 (flagged for playtesting). If the route becomes permanently invalid (target endpoint removed) and no alternate route exists, the item **jams**: eject as a dropped-item entity at the stalled pipe. Thematically appropriate (a jammed tube), and avoids items silently vanishing.
 
+**Implementation note**: `travelingItems` is fetched exactly once per `tick()` call and mutated only through index-based `set`/`removeAt` (`TravelingItem.copy(...)` standing in for field mutation) — see [README.md](README.md#gotcha-archies-listfieldmapfieldfield-only-persist-through-structural-mutation) for why in-place field mutation and iterator-based removal don't persist against Archie's `listField`.
+
 **Client sync**: server is authoritative. A lightweight `PipeContentsSyncPacket(pos, items: List<TravelingItemDto>)` is broadcast via `toNearPlayers` periodically (e.g. every 4 ticks, or immediately on a hop) rather than every tick; the client interpolates `progress` locally between syncs (same dead-reckoning idea as vanilla entity motion), avoiding a packet-per-item-per-tick cost.
 
 ## Pipe network graph

@@ -39,6 +39,15 @@ These came up during design as genuine forks and were decided with the user — 
 
 Deferred and *not* blocking any of this: exact balance numbers (extraction interval, gantry speed, pressure costs — playtesting), whether over-pressure should be dangerous (M5, optional stretch), and exact block names/textures/art.
 
+## Gotcha: Archie's `listField`/`mapField`/`field` only persist through structural mutation
+
+`NBTHolderImpl`'s property getter for `by listField(...)` (and `mapField`/`field`) **decodes a fresh copy from storage on every single access** — it does not hand back a stable reference. Persistence happens only through `ObservableList`'s intercepted structural operations (`add`, `removeAt`, `set`, `clear`, ...), each of which re-encodes the whole collection back into storage. Two patterns silently do nothing as a result:
+
+- Mutating a `var` field on an element already inside the list (e.g. `item.progress += x`) — not a structural operation, so `ObservableList` never sees it. The mutation lands on a throwaway copy; the next access re-decodes from the unchanged backing storage as if it never happened.
+- Removing via an `Iterator` (`iterator.remove()`) — `ObservableList` doesn't override `iterator()`, so removal isn't observed either.
+
+Correct pattern: fetch the property **exactly once** per use (into a local `val`), and touch it only through the intercepted operations — index-based `list[i] = element.copy(...)` and `list.removeAt(i)`, never in-place field mutation or iterator removal. This bit M1's `PipeBlockEntity` tick loop for real (`TravelingItem.progress` silently never advanced) before being caught and fixed — see [m1-pipe-network.md](m1-pipe-network.md).
+
 ## Registries
 
 One `ADeferredRegistryHolder<T>` singleton per registrable type, mirroring Archie's own `test/` example mod exactly:

@@ -2,7 +2,6 @@ package net.kernelpanicsoft.tubularstorage.pipe.client
 
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.math.Axis
-import net.kernelpanicsoft.archie.util.div
 import net.kernelpanicsoft.archie.util.plus
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
@@ -29,8 +28,7 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 		val consumer = bufferSource.getBuffer(RenderType.solid())
 		for ((directionName, hookState) in tile.hooks) {
 			val direction = Direction.valueOf(directionName)
-			val modelId = modelIdFor(hookState.type)
-			val model = modelManager.getModel(ModelResourceLocation(modelId, "inventory"))
+			val model = modelManager.getModel(modelIdFor(hookState.type))
 
 			poseStack.pushPose()
 			poseStack.translate(0.5, 0.5, 0.5)
@@ -41,8 +39,16 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 		}
 	}
 
-	/** `mymod:extraction` -> `mymod:block/extraction_hook` - a convention, not a lookup, so an addon's own [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] gets a model reference for free as long as it follows it. */
-	private fun modelIdFor(hookTypeId: ResourceLocation): ResourceLocation = "block" / hookTypeId + "_hook"
+	/**
+	 * `mymod:extraction` -> the `inventory` variant of `mymod:extraction_hook`'s item model - the
+	 * same baked model already guaranteed to exist for that hook's `HookItem` icon (registered as
+	 * `<hook type path>_hook`, per [net.kernelpanicsoft.tubularstorage.registry.ItemRegistry]), so
+	 * this never queries a model that was never actually baked. A convention, not a lookup table,
+	 * so an addon's own [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] gets a model
+	 * reference for free as long as it follows it.
+	 */
+	private fun modelIdFor(hookTypeId: ResourceLocation): ModelResourceLocation =
+		ModelResourceLocation(hookTypeId + "_hook", "inventory")
 
 	/** Each hook's model faces north by default; this rotates it in place to face [direction] instead. */
 	private fun rotationFor(direction: Direction): Quaternionf = when (direction) {

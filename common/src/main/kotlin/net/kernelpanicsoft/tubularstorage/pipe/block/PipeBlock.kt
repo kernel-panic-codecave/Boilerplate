@@ -110,6 +110,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 
 		tile.hooks[direction.name] = HookState(type = hookItem.hookId)
+		level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
 		if (!player.abilities.instabuild) stack.shrink(1)
 		return ItemInteractionResult.SUCCESS
 	}
@@ -124,6 +125,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		if (!level.isClientSide) {
 			if (player.isShiftKeyDown) {
 				tile.hooks.remove(direction.name)
+				level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
 			} else if (hookType.hasMenu) {
 				tile.pendingMenuFace = direction
 				MenuRegistry.openExtendedMenu(player as ServerPlayer, tile)

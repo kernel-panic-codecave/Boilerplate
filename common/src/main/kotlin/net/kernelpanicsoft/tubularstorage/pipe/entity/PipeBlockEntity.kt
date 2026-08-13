@@ -42,7 +42,16 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 	val travelingItems by listField(TravelingItem.serializer()) { emptyList() }
 
-	/** Which [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] (if any) is attached to each face, keyed by [Direction.name]. */
+	/**
+	 * Which [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] (if any) is attached to
+	 * each face, keyed by [Direction.name]. Structural changes alone (`setChanged()`, called
+	 * automatically by the underlying [net.kernelpanicsoft.archie.serialization.NBTHolder] field)
+	 * only mark the chunk dirty for saving - they never push a network resync, so attach/remove
+	 * sites ([net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.useItemOn]/[useWithoutItem])
+	 * additionally call `level.sendBlockUpdated(...)` themselves, otherwise a client's own copy of
+	 * this field (and hence [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]'s
+	 * view of it) never advances past whatever it was at the last chunk load.
+	 */
 	val hooks by mapField(HookState.serializer()) { emptyMap() }
 
 	val filterNorth by itemField(9)

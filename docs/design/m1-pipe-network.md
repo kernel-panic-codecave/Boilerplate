@@ -18,14 +18,14 @@ See [README.md](README.md) for the shared registry/CSL-adapter/GUI/`PressureCons
 ```kotlin
 @Serializable
 data class TravelingItem(
-    val stack: @Serializable(with = ResourceStackItemSerializer::class) ResourceStack<ItemResource>,
-    val fromDirection: Direction,
-    var progress: Float,       // 0f..1f across the current pipe segment
-    var path: List<BlockPos> = emptyList(),
+    val stack: SItemStack,     // Archie's @Contextual ItemStack typealias, backed by CodecSerializer(ItemStack.CODEC)
+    val fromDirection: @Serializable(with = DirectionSerializer::class) Direction,
+    var progress: Float = 0f,  // 0f..1f across the current pipe segment
+    var path: List<SBlockPos> = emptyList(),
 )
 ```
 
-`ResourceStackItemSerializer` wraps Archie's own `ResourceStack.ITEM_CODEC.kSerializer` — the same surrogate `ArchieItemSlot.Serializer` already uses internally — so the in-flight resource representation matches what the storage layer already speaks; no bespoke item-id/component encoding needed.
+`SItemStack`/`SBlockPos` are Archie's own contextual-serializer typealiases (`net.kernelpanicsoft.archie.serialization.serializers`) — already wired into the format's `SerializersModule`, so no bespoke item-id/component encoding is needed. `DirectionSerializer` is a small local `KSerializer<Direction>` (Archie doesn't ship one) encoding the enum by name, the same pattern Archie's own `BlockHitResultSerializer` uses inline for its `side` field. At the storage layer, conversion to/from CSL's `ItemResource` (needed to call `CommonStorage<ItemResource>.insert`/`.extract`) happens via `ItemResource.of(stack)`/`resource.toStack(count)` at the point of insertion/extraction, not on `TravelingItem` itself.
 
 ## Tick model
 

@@ -1,8 +1,15 @@
 package net.kernelpanicsoft.tubularstorage
 
 import com.mojang.logging.LogUtils
+import dev.architectury.event.events.common.TickEvent
 import dev.architectury.platform.Mod
 import dev.architectury.platform.Platform
+import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
+import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
+import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
+import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
+import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import org.slf4j.Logger
 
 /**
@@ -26,6 +33,15 @@ object TubularStorage {
 	@JvmStatic
 	fun init() {
 		LOGGER.info("Tubular Storage initializing")
+
+		BlockRegistry.init()
+		ItemRegistry.init()
+		TileRegistry.init()
+		GuiRegistry.init()
+
+		TubularStorageNetworkChannel.init()
+
+		TickEvent.SERVER_LEVEL_POST.register { level -> PipeNetworkManager.get(level).tick() }
 	}
 
 	/**

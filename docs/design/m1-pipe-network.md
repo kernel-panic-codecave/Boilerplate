@@ -41,7 +41,7 @@ Each `PipeBlockEntity` with a non-empty `travelingItems` list is an active ticke
 
 ## Pipe network graph
 
-`PipeNetworkManager` — a per-`ServerLevel` `SavedData` — owns `BlockPos → networkId` and `networkId → PipeNetwork`:
+`PipeNetworkManager` — one instance per `ServerLevel` (`WeakHashMap`-cached, not a persisted `SavedData`) — owns `BlockPos → networkId` and `networkId → PipeNetwork`. State is derived entirely from currently-loaded pipes, populated via `ensureRegistered` called idempotently at the top of every pipe's own `tick()` (there's no dedicated "block entity now active" lifecycle hook to call it from instead), rather than from serialized graph data:
 
 ```kotlin
 class PipeNetwork(val id: UUID) {
@@ -55,9 +55,12 @@ class PipeNetwork(val id: UUID) {
 
 ## Routing (M1 = unweighted)
 
-Not per-item Dijkstra. Each extractor's pull resolves a target via plain BFS over `PipeNetwork.members` from the source pipe, testing each pipe-adjacent inventory with a **simulated** insert (`simulate = true`) until one accepts. Result is cached per `(networkId, network.version, resource)` and invalidated automatically whenever `version` changes. M2 upgrades the cache key and candidate selection to weighted priority + color without touching this BFS machinery — see [m2-sorting-routing.md](m2-sorting-routing.md).
+Not per-item Dijkstra. Each extractor's pull resolves a target via plain BFS from the source pipe over live pipe blockstate (not `PipeNetwork.members` directly — the network object is only consulted for the routing-cache key), testing each pipe-adjacent inventory with a **simulated** insert (`simulate = true`) until one accepts. The inventory the extractor is pulling *from* is passed as an `exclude` position and never considered a candidate — without this, a source with room for more of the same item (the common case, right after extracting from it) routes the item straight back to itself, which re-extracts it next cycle and never actually delivers anything. Result is cached per `(networkId, network.version, resource, exclude)` and invalidated automatically whenever `version` changes. M2 upgrades the cache key and candidate selection to weighted priority + color without touching this BFS machinery — see [m2-sorting-routing.md](m2-sorting-routing.md).
+
+Sync is skipped entirely for a pipe that's idle (no items, nothing hopped this tick) rather than pinging empty state on the 4-tick timer regardless — every placed pipe ticks, so unconditional periodic sync means every idle pipe on a build broadcasts nothing-happened packets forever.
 
 ## Deferred to playtesting / not blocking
 
 - Stall/backpressure behavior tuning beyond "retry every tick, then jam."
 - Pipe tier speed/art (brass/copper/lead, speed-per-tier).
+- Routing only excludes the immediate extraction source, not general cycles elsewhere in the network (e.g. a loop that could route an item back to its origin via a different path) — not handled yet.

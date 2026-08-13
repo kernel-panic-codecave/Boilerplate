@@ -101,7 +101,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		}
 
 		ticksSinceSync++
-		if (hopped || ticksSinceSync >= SYNC_INTERVAL_TICKS) {
+		if (hopped || (travelingItems.isNotEmpty() && ticksSinceSync >= SYNC_INTERVAL_TICKS)) {
 			ticksSinceSync = 0
 			syncToNearbyPlayers(serverLevel, pos)
 		}

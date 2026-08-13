@@ -39,7 +39,7 @@ class ExtractorPipeBlockEntity(pos: BlockPos, state: BlockState) : PipeBlockEnti
 				val available = storage.extract(resource, EXTRACTION_AMOUNT, true)
 				if (available <= 0) continue
 
-				val route = PipeRouter.findRoute(level, pos, resource) ?: continue
+				val route = PipeRouter.findRoute(level, pos, resource, exclude = neighborPos) ?: continue
 
 				val extracted = storage.extract(resource, available, false)
 				if (extracted <= 0) continue

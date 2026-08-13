@@ -1,0 +1,63 @@
+# M1 — Pipe Network Core
+
+See [README.md](README.md) for the shared registry/CSL-adapter/GUI/`PressureConsumer` conventions this builds on.
+
+## Blocks & block entities
+
+- **`PipeBlock`** — the conduit. Six boolean connection `BooleanProperty`s (vanilla fence/pane-style dynamic `VoxelShape`), auto-connects to neighboring pipes and to any block exposing `ItemApi.BLOCK` storage. Implements [decision #1](README.md#resolved-architectural-decisions): a plain pipe is upgraded in place by an attachable module item (M2), not swapped for a different block.
+- **`PipeBlockEntity : NBTBlockEntity`**:
+  ```kotlin
+  class PipeBlockEntity(pos: BlockPos, state: BlockState) : NBTBlockEntity(TileRegistry.Pipe, pos, state), PressureConsumer {
+      val travelingItems by nbt.listField(TravelingItem.serializer()) { emptyList() }
+  }
+  ```
+- **`ExtractorPipeBlock : PipeBlock`** — the *only* self-initiating block in the network. Every `extractionIntervalTicks` (config, default proposal 10, scaled by `onPressureTick` once M5 lands) it simulate-extracts from the adjacent `ItemApi.BLOCK` storage; on success spawns a `TravelingItem` into the network. Plain pipes are already valid insertion targets for anything adjacent to them — no separate "insertion pipe" block is needed (mirrors BuildCraft/Logistics Pipes precedent: dumb conduit vs. active extractor).
+
+## Item representation in flight
+
+```kotlin
+@Serializable
+data class TravelingItem(
+    val stack: @Serializable(with = ResourceStackItemSerializer::class) ResourceStack<ItemResource>,
+    val fromDirection: Direction,
+    var progress: Float,       // 0f..1f across the current pipe segment
+    var path: List<BlockPos> = emptyList(),
+)
+```
+
+`ResourceStackItemSerializer` wraps Archie's own `ResourceStack.ITEM_CODEC.kSerializer` — the same surrogate `ArchieItemSlot.Serializer` already uses internally — so the in-flight resource representation matches what the storage layer already speaks; no bespoke item-id/component encoding needed.
+
+## Tick model
+
+Each `PipeBlockEntity` with a non-empty `travelingItems` list is an active ticker. Per server tick:
+
+1. `progress += speed` (speed = config-driven ticks-per-segment × `onPressureTick` multiplier once M5 exists; v1 default ≈ 1 block/second).
+2. At `progress >= 1f`:
+   - Next hop is another pipe → move the item to that `PipeBlockEntity`'s list, `progress = 0f`.
+   - Next hop is a resolved inventory endpoint → attempt `storage.insert(resource, amount, simulate = false)` via `ItemApi.BLOCK.find`.
+3. On insertion failure (full/rejected): the item **stalls at `progress = 1f`** and retries insertion every subsequent tick — no backoff in v1 (flagged for playtesting). If the route becomes permanently invalid (target endpoint removed) and no alternate route exists, the item **jams**: eject as a dropped-item entity at the stalled pipe. Thematically appropriate (a jammed tube), and avoids items silently vanishing.
+
+**Client sync**: server is authoritative. A lightweight `PipeContentsSyncPacket(pos, items: List<TravelingItemDto>)` is broadcast via `toNearPlayers` periodically (e.g. every 4 ticks, or immediately on a hop) rather than every tick; the client interpolates `progress` locally between syncs (same dead-reckoning idea as vanilla entity motion), avoiding a packet-per-item-per-tick cost.
+
+## Pipe network graph
+
+`PipeNetworkManager` — a per-`ServerLevel` `SavedData` — owns `BlockPos → networkId` and `networkId → PipeNetwork`:
+
+```kotlin
+class PipeNetwork(val id: UUID) {
+    val members: MutableSet<BlockPos> = hashSetOf()
+    var version: Int = 0   // bumped on any topology or module change; routing cache key
+}
+```
+
+- **Placement (merge)**: **union-find** (disjoint-set) over network ids — O(α(n)) per placement, checking the 6 neighbors' existing network ids and unioning them. Exactly right for "grows constantly, rarely shrinks."
+- **Removal (possible split)**: union-find can't cheaply detect splits, so removal marks the network dirty and schedules a **chunked BFS rebuild** spread across ticks (budget e.g. 500 blocks/tick, same pattern M3's warehouse scan uses) from each remaining neighbor, assigning fresh network ids to whichever connected components result. Avoids a full-network single-tick stall on large builds while staying simple to reason about — no incremental cut-vertex bookkeeping.
+
+## Routing (M1 = unweighted)
+
+Not per-item Dijkstra. Each extractor's pull resolves a target via plain BFS over `PipeNetwork.members` from the source pipe, testing each pipe-adjacent inventory with a **simulated** insert (`simulate = true`) until one accepts. Result is cached per `(networkId, network.version, resource)` and invalidated automatically whenever `version` changes. M2 upgrades the cache key and candidate selection to weighted priority + color without touching this BFS machinery — see [m2-sorting-routing.md](m2-sorting-routing.md).
+
+## Deferred to playtesting / not blocking
+
+- Stall/backpressure behavior tuning beyond "retry every tick, then jam."
+- Pipe tier speed/art (brass/copper/lead, speed-per-tier).

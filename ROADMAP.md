@@ -4,6 +4,10 @@ A first-draft milestone breakdown for Tubular Storage — a steampunk pneumatic-
 storage mod aiming for AE2/Refined Storage-level feature completeness. This is a starting point to
 revise once each milestone's actual design work begins, not a committed spec.
 
+For implementation-level detail (blocks, block entities, network packets, GUI screens, data
+structures, and how each milestone maps onto Archie/CSL's real APIs), see
+[`docs/design/README.md`](docs/design/README.md) — this file stays the high-level summary.
+
 ## M1 — Pipe network core
 
 Pipe block(s), item transport through a connected pipe network, extraction/insertion at inventory

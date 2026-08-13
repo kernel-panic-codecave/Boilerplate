@@ -7,6 +7,8 @@ plugins {
 	alias(libs.plugins.architectury.loom) apply false
 	alias(libs.plugins.kotlin.jvm)
 	alias(libs.plugins.kotlin.serialization)
+	alias(libs.plugins.kotlin.compose)
+	alias(libs.plugins.compose)
 	alias(libs.plugins.modfusioner)
 }
 
@@ -101,6 +103,8 @@ allprojects {
 	apply(plugin = "java")
 	apply(plugin = "org.jetbrains.kotlin.jvm")
 	apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
+	apply(plugin = "org.jetbrains.kotlin.plugin.compose")
+	apply(plugin = "org.jetbrains.compose")
 	apply(plugin = "architectury-plugin")
 
 	version = "mod_version".prop ?: "0.1.0-SNAPSHOT"

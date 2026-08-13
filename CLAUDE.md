@@ -17,7 +17,7 @@ One product, not Archie's three (core/datagen/gametest) — datagen and gametest
 Mirrors Archie's build conventions where they still apply, deliberately simplified elsewhere:
 
 - **No `net.kernelpanicsoft.actualizer` plugin** (no cross-module Kotlin `expect`/`actual` — Archie is the cross-loader abstraction layer already; ordinary Architectury Registries/Events work directly in common code).
-- **No Compose/Dokka/mkdocs** (those back Archie's public API-docs site; nothing consumes Tubular Storage's API).
+- **Compose is applied** (`org.jetbrains.kotlin.plugin.compose` + `org.jetbrains.compose`, both in `allprojects{}`) — required starting M2, since Archie's GUI framework (`ComposeContainerScreen`, `@Composable` functions) needs the Kotlin compiler plugin to instrument composable code, not just the runtime Archie already provides transitively. No Dokka/mkdocs though (those back Archie's public API-docs site; nothing consumes Tubular Storage's API).
 - **No `maven-publish`/Reposilite** (leaf content mod, not a library other mods depend on).
 - **Reuses `net.kernelpanicsoft.archie.archie-plugin`** in the fabric/neoforge modules for `${mod_id}`-style token expansion in `fabric.mod.json`/`neoforge.mods.toml` and for `runtimeLibrary`/`bundleRuntimeLibrary` (see the NeoForge classloading caveat below).
 - **Keeps `modfusioner`** (merges fabric+neoforge jars into one distributable artifact).

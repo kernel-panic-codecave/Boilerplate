@@ -1,35 +1,61 @@
 package net.kernelpanicsoft.tubularstorage.pipe.entity
 
+import dev.architectury.registry.menu.ExtendedMenuProvider
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
+import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.tubularstorage.network.PipeContentsSyncPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.client.PipeContentsClientCache
+import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.item.ItemEntity
+import net.minecraft.world.entity.player.Inventory
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 
 /**
  * A plain pipe segment. Holds and advances [TravelingItem]s in transit; never initiates a pull
- * itself (see [net.kernelpanicsoft.tubularstorage.pipe.entity.ExtractorPipeBlockEntity]).
+ * itself (see [net.kernelpanicsoft.tubularstorage.pipe.entity.ExtractorPipeBlockEntity]). Doubles
+ * as the [SortingPipeMenu]'s menu provider once [hasSortingModule] is set - see [PipeBlock].
  */
 open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: BlockState) :
-	NBTBlockEntity(type, pos, state), PressureConsumer {
+	NBTBlockEntity(type, pos, state), PressureConsumer, ExtendedMenuProvider {
 
 	constructor(pos: BlockPos, state: BlockState) : this(TileRegistry.Pipe, pos, state)
 
 	val travelingItems by listField(TravelingItem.serializer()) { emptyList() }
 
+	/** Whether a sorting module item has been used on this pipe — gates the sorting GUI and M2 routing behavior. */
+	var hasSortingModule by booleanField()
+
+	@Sync
+	var routing by field(RoutingModule.serializer()) { RoutingModule() }
+
+	/** 3x3 filter grid consulted when [hasSortingModule] and [RoutingModule.mode] restrict which resources this pipe accepts as a sorting junction. */
+	val filter by itemField(9)
+
 	private var ticksSinceSync = 0
+
+	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu = SortingPipeMenu(id, inventory, this)
+
+	override fun getDisplayName(): Component = blockState.block.name
+
+	override fun saveExtraData(buf: FriendlyByteBuf) {
+		buf.writeBlockPos(blockPos)
+	}
 
 	override fun setRemoved() {
 		super.setRemoved()
@@ -83,7 +109,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					continue
 				}
 				val direction = Direction.fromDelta(nextPos.x - pos.x, nextPos.y - pos.y, nextPos.z - pos.z)
-				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1))
+				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color)
 				items.removeAt(index)
 				hopped = true
 				continue

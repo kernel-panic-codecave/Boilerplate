@@ -4,6 +4,7 @@ import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.itemProperties
 import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.pipe.item.SortingModuleItem
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.CreativeModeTabs
@@ -17,5 +18,9 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val ExtractorPipe by register("extractor_pipe") {
 		BlockItem(BlockRegistry.ExtractorPipe, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	}
+
+	val SortingModule by register("sorting_module") {
+		SortingModuleItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
 }

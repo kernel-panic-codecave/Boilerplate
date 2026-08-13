@@ -1,11 +1,19 @@
 package net.kernelpanicsoft.tubularstorage.pipe.block
 
 import com.mojang.serialization.MapCodec
+import dev.architectury.registry.menu.MenuRegistry
 import earth.terrarium.common_storage_lib.item.ItemApi
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.ItemInteractionResult
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelAccessor
@@ -20,6 +28,7 @@ import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.block.state.properties.BlockStateProperties
 import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.level.pathfinder.PathComputationType
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
@@ -81,6 +90,37 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		createTickerHelper(type, TileRegistry.Pipe, PipeBlockEntity::tick)
 
 	override fun isPathfindable(state: BlockState, pathComputationType: PathComputationType): Boolean = false
+
+	/** Right-clicking with the sorting module item applies it to this pipe (one-time unlock, see `docs/design/m2-sorting-routing.md`). */
+	override fun useItemOn(
+		stack: ItemStack,
+		state: BlockState,
+		level: Level,
+		pos: BlockPos,
+		player: Player,
+		hand: InteractionHand,
+		hitResult: BlockHitResult,
+	): ItemInteractionResult {
+		if (level.isClientSide) return ItemInteractionResult.SUCCESS
+		if (!stack.`is`(ItemRegistry.SortingModule)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		val tile = level.getBlockEntity(pos) as? PipeBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		if (tile.hasSortingModule) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+
+		tile.hasSortingModule = true
+		if (!player.abilities.instabuild) stack.shrink(1)
+		return ItemInteractionResult.SUCCESS
+	}
+
+	/** Empty-hand right-click opens the sorting GUI, once [PipeBlockEntity.hasSortingModule] is set. */
+	override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
+		if (!level.isClientSide) {
+			val tile = level.getBlockEntity(pos) as? PipeBlockEntity
+			if (tile != null && tile.hasSortingModule) {
+				MenuRegistry.openExtendedMenu(player as ServerPlayer, tile)
+			}
+		}
+		return InteractionResult.sidedSuccess(level.isClientSide)
+	}
 
 	companion object {
 		val CODEC: MapCodec<PipeBlock> = simpleCodec(::PipeBlock)

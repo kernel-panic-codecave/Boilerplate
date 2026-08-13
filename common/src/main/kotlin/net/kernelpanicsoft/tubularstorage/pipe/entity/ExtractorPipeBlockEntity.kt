@@ -27,6 +27,10 @@ class ExtractorPipeBlockEntity(pos: BlockPos, state: BlockState) : PipeBlockEnti
 	}
 
 	private fun tryExtract(level: ServerLevel, pos: BlockPos) {
+		// Not a filter on what's pulled (see docs/design/m2-sorting-routing.md) - just the color
+		// tag a sorting module (if applied) stamps on whatever this extractor sends out.
+		val color = if (hasSortingModule) routing.color else null
+
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
 			if (level.getBlockState(neighborPos).block is PipeBlock) continue
@@ -39,12 +43,12 @@ class ExtractorPipeBlockEntity(pos: BlockPos, state: BlockState) : PipeBlockEnti
 				val available = storage.extract(resource, EXTRACTION_AMOUNT, true)
 				if (available <= 0) continue
 
-				val route = PipeRouter.findRoute(level, pos, resource, exclude = neighborPos) ?: continue
+				val route = PipeRouter.findRoute(level, pos, resource, color, exclude = neighborPos) ?: continue
 
 				val extracted = storage.extract(resource, available, false)
 				if (extracted <= 0) continue
 
-				travelingItems += TravelingItem(resource.toStack(extracted.toInt()), direction, 0f, route)
+				travelingItems += TravelingItem(resource.toStack(extracted.toInt()), direction, 0f, route, color)
 				return
 			}
 		}

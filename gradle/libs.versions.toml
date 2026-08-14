@@ -27,6 +27,9 @@ cloth-config = "15.0.140"
 cloth-config-range = "10.0"
 
 compose = "1.7.1"
+androidx-annotation = "1.8.0"
+androidx-collection = "1.4.0"
+okio = "3.9.0"
 
 shadow = "8.1.1"
 
@@ -60,6 +63,10 @@ archie-datagen-neoforge = { module = "net.kernelpanicsoft.archie:archie-datagen-
 
 clothConfig-fabric = { module = "me.shedaniel.cloth:cloth-config-fabric", version.ref = "cloth-config" }
 clothConfig-neoforge = { module = "me.shedaniel.cloth:cloth-config-neoforge", version.ref = "cloth-config" }
+
+androidx-annotation = { module = "androidx.annotation:annotation-jvm", version.ref = "androidx-annotation" }
+androidx-collection = { module = "androidx.collection:collection-jvm", version.ref = "androidx-collection" }
+okio = { module = "com.squareup.okio:okio-jvm", version.ref = "okio" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

@@ -1,3 +1,5 @@
+import net.kernelpanicsoft.archie.plugin.runtimeLibrary
+
 plugins {
 	alias(libs.plugins.shadow)
 	alias(libs.plugins.archie)
@@ -81,6 +83,15 @@ dependencies {
 	modApi(libs.architectury.neoforge)
 	implementation(libs.kotlin.neoforge)
 	modApi(libs.archie.neoforge)
+	// compose.runtime's own transitive deps, pulled in transitively via archie.neoforge - already
+	// embedded in archie-core-neoforge's own jar for a real deployed environment, but Loom's dev-run
+	// GAMELIBRARY discovery doesn't walk a dependency's transitive deps the way production JarJar
+	// packaging does, so each needs its own explicit declaration here too, or runClientNeoForge
+	// crashes the moment Compose touches one of them (e.g. Recomposer needing
+	// androidx.collection.MutableScatterSet) - see CLAUDE.md's NeoForge + Kotlin classloading caveat.
+	runtimeLibrary(libs.androidx.annotation)
+	runtimeLibrary(libs.androidx.collection)
+	runtimeLibrary(libs.okio)
 
 	modImplementation(libs.clothConfig.neoforge)
 

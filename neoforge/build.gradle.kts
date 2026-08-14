@@ -23,6 +23,8 @@ configurations {
 }
 
 loom {
+	accessWidenerPath.set(project(":tubularstorage-common").loom.accessWidenerPath)
+
 	mods {
 		maybeCreate("main").apply {
 			sourceSet(sourceSets.main.get())
@@ -103,6 +105,7 @@ tasks {
 		from(project(":tubularstorage-common").sourceSets.main.get().resources) {
 			include("assets/tubularstorage/**")
 			include("data/tubularstorage/**")
+			include("tubularstorage.accesswidener")
 		}
 		dependsOn(processTestResources)
 	}
@@ -120,6 +123,7 @@ tasks {
 
 	remapJar {
 		inputFile.set(shadowJar.get().archiveFile)
+		atAccessWideners.set(setOf(loom.accessWidenerPath.get().asFile.name))
 		dependsOn(shadowJar)
 	}
 

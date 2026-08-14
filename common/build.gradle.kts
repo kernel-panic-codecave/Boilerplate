@@ -2,6 +2,11 @@ architectury {
 	common("fabric", "neoforge")
 }
 
+// See tubularstorage.accesswidener's own header comment for what this unlocks and why.
+loom {
+	accessWidenerPath = file("src/main/resources/tubularstorage.accesswidener")
+}
+
 // Generated blockstate/model JSON (see TubularStorageBlockStateProvider, "gradlew runDatagen")
 // lands in its own src/main/generated tree rather than src/main/resources directly - Minecraft's
 // datagen CachedOutput treats its whole output directory as exclusively its own and deletes

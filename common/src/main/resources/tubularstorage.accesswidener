@@ -1,0 +1,12 @@
+accessWidener	v2	named
+
+# ModelBlockRenderer.AmbientOcclusionFace computes vanilla's real per-corner ambient occlusion
+# (brightness/lightmap per vertex) but is entirely package-private, with no public API exposing it
+# otherwise. WarehouseControllerBlockEntityRenderer needs it directly for the gantry drop rod's
+# manually-clipped bottom segment (see that class's KDoc) - every other segment goes through the
+# ordinary tesselateBlock path, which already gets AO for free.
+accessible	class	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace
+accessible	method	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	<init>	()V
+accessible	method	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	calculate	(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;[FLjava/util/BitSet;Z)V
+accessible	field	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	brightness	[F
+accessible	field	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	lightmap	[I

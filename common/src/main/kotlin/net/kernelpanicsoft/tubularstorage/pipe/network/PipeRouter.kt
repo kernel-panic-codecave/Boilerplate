@@ -9,6 +9,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -27,7 +28,13 @@ import java.util.UUID
  * can prefer one accepting destination over another. A candidate reached through a pipe face with
  * a [net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType] hook attached is only valid if
  * the item's [color] and that hook's filter/mode accept it; a candidate reached through a
- * hookless face always accepts, at the baseline priority (0).
+ * hookless face always accepts, at the baseline priority (0) - except on a
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity] that also carries a
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType] hook on one of its other
+ * faces, where a hookless face is never a candidate: it's the terminal's own well-defined
+ * withdrawal destination (see `WarehouseTerminalMenu.adjacentInventory`), reachable only via
+ * [findRouteTo]'s targeted routing, not something a default route or extractor's push should ever
+ * dump into.
  */
 object PipeRouter {
 	private data class CacheKey(
@@ -131,6 +138,8 @@ object PipeRouter {
 			if (storage.insert(resource, 1, true) <= 0) continue
 
 			val hookState = tile?.hooks?.get(direction.name) as? HookHolderState
+			if (hookState == null && tile != null && hasTerminal(tile)) continue
+
 			val priority = if (tile != null && hookState is SortingHookState) {
 				val module = hookState.routing
 				if (module.color != null && module.color != color) continue
@@ -148,6 +157,12 @@ object PipeRouter {
 			}
 		}
 		return step(level, resource, color, queue, visited, nextBest)
+	}
+
+	/** Whether [tile] carries a [WarehouseTerminalHookType] hook on any of its faces - see [step]'s hookless-face exclusion. */
+	private fun hasTerminal(tile: HookBlockEntity): Boolean {
+		for ((_, entry) in tile.hooks) if ((entry as HookHolderState).type == WarehouseTerminalHookType.ID) return true
+		return false
 	}
 
 	/** Empty filter grid: whitelist accepts nothing, blacklist accepts everything. Otherwise matches by item (ignoring data components), per [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.mode]. */

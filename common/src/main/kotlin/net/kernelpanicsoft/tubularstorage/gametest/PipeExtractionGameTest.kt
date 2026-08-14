@@ -15,6 +15,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -260,6 +261,49 @@ class PipeExtractionGameTest {
 				"Expected hook B to now hold the default route, got priority ${stateB.routing.priority}"
 			}
 			succeed()
+		}
+	}
+
+	/**
+	 * A hookless face on a [HookBlockEntity] that also carries a [WarehouseTerminalHookType] hook
+	 * (on any other face) is the terminal's own well-defined withdrawal destination -
+	 * `WarehouseTerminalMenu.adjacentInventory` - and must never be a [PipeRouter][net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]
+	 * push candidate, or a default route/extractor push could dump straight into it instead of the
+	 * player choosing to withdraw. An ordinary hookless chest elsewhere on the network is unaffected.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testTerminalConnectionExcludedFromPushRouting() {
+		val sourcePos = BlockPos(0, 2, 0)
+		val extractorPos = BlockPos(0, 2, 1)
+		val midPos = BlockPos(0, 2, 2)
+		val ordinaryDestPos = BlockPos(0, 2, 3)
+		val terminalHookPos = BlockPos(1, 2, 2)
+		val terminalChestPos = BlockPos(2, 2, 2)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(midPos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(ordinaryDestPos, Blocks.CHEST.defaultBlockState())
+		setBlock(terminalHookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(terminalChestPos, Blocks.CHEST.defaultBlockState())
+
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
+		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+
+		val terminalHook = getBlockEntity(terminalHookPos) as HookBlockEntity
+		terminalHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		terminalHook.hooks.getOrPut(Direction.UP.name) { WarehouseTerminalHookType.createState() }
+
+		succeedWhen {
+			val ordinaryDest = getBlockEntity(ordinaryDestPos) as ChestBlockEntity
+			assertTrue(ordinaryDest.getItem(0).`is`(Items.DIAMOND) && ordinaryDest.getItem(0).count == 8) {
+				"Expected 8 diamonds to have gone to the ordinary destination rather than the terminal's own chest, got ${ordinaryDest.getItem(0)}"
+			}
+			val terminalChest = getBlockEntity(terminalChestPos) as ChestBlockEntity
+			assertTrue(terminalChest.getItem(0).isEmpty) {
+				"Expected nothing to have been pushed into the terminal's own bare inventory connection, got ${terminalChest.getItem(0)}"
+			}
 		}
 	}
 }

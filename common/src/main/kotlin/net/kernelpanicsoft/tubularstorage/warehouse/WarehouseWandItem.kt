@@ -36,7 +36,7 @@ class WarehouseWandItem(properties: Properties) : Item(properties) {
 		if (controller != null && first != null && second != null) {
 			controller.bounds = Bounds.of(first, second)
 			selection = Selection()
-			level.playSound(context.player, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 1f, 1f)
+			level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 1f, 1f)
 			return InteractionResult.SUCCESS
 		}
 
@@ -45,7 +45,7 @@ class WarehouseWandItem(properties: Properties) : Item(properties) {
 			second == null -> Selection(first = first, second = pos)
 			else -> Selection(first = pos)
 		}
-		level.playSound(context.player, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 1f, 1f)
+		level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 1f, 1f)
 		return InteractionResult.SUCCESS
 	}
 }

@@ -54,6 +54,10 @@ archie-gametest-common = { module = "net.kernelpanicsoft.archie:archie-gametest-
 archie-gametest-fabric = { module = "net.kernelpanicsoft.archie:archie-gametest-fabric", version.ref = "archie-mod" }
 archie-gametest-neoforge = { module = "net.kernelpanicsoft.archie:archie-gametest-neoforge", version.ref = "archie-mod" }
 
+archie-datagen-common = { module = "net.kernelpanicsoft.archie:archie-datagen-common", version.ref = "archie-mod" }
+archie-datagen-fabric = { module = "net.kernelpanicsoft.archie:archie-datagen-fabric", version.ref = "archie-mod" }
+archie-datagen-neoforge = { module = "net.kernelpanicsoft.archie:archie-datagen-neoforge", version.ref = "archie-mod" }
+
 clothConfig-fabric = { module = "me.shedaniel.cloth:cloth-config-fabric", version.ref = "cloth-config" }
 clothConfig-neoforge = { module = "me.shedaniel.cloth:cloth-config-neoforge", version.ref = "cloth-config" }
 

@@ -43,7 +43,8 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	 * so a future second pipe type (e.g. a glass tier) keeps its own appearance after promotion
 	 * instead of all hook blocks looking alike.
 	 */
-	var pipeBlockId: ResourceLocation by field(ResourceLocationSerializer) { BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe) }
+	@Sync
+	var pipeBlockId?: ResourceLocation by field(ResourceLocationSerializer) { null }
 
 	val filterNorth by itemField(9)
 	val filterSouth by itemField(9)

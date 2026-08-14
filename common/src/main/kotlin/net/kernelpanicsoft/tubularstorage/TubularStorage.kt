@@ -4,9 +4,12 @@ import com.mojang.logging.LogUtils
 import dev.architectury.event.events.common.TickEvent
 import dev.architectury.platform.Mod
 import dev.architectury.platform.Platform
+import net.kernelpanicsoft.archie.data.platform.ADataGeneratorPlatform
+import net.kernelpanicsoft.archie.events.datagen.ADatagenEvents
 import net.kernelpanicsoft.archie.events.gametest.AGametestEvents
 import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
 import net.kernelpanicsoft.archie.serialization.SerializationManager
+import net.kernelpanicsoft.tubularstorage.datagen.TubularStorageDatagen
 import net.kernelpanicsoft.tubularstorage.gametest.TubularStorageGameTest
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.entity.DirectionSerializer
@@ -48,7 +51,8 @@ object TubularStorage {
 	 * [TubularStorageGameTest]'s KDoc for why this check matters beyond just "don't waste time
 	 * registering tests nobody's running": every reference to an `archie-gametest-common` type,
 	 * including [AGametestEvents]'s own `+=`, must stay inside this guard, since that dependency is
-	 * absent from the production runtime classpath.
+	 * absent from the production runtime classpath. [TubularStorageDatagen]'s `archie-datagen-common`
+	 * dependency behind [ADataGeneratorPlatform.isDataGen] is the same story, for `runDatagen`.
 	 */
 	@JvmStatic
 	fun init() {
@@ -74,6 +78,11 @@ object TubularStorage {
 		if (AGameTestPlatform.isGameTest) {
 			AGametestEvents += MOD
 			TubularStorageGameTest.init()
+		}
+
+		if (ADataGeneratorPlatform.isDataGen) {
+			ADatagenEvents += MOD
+			TubularStorageDatagen.init()
 		}
 	}
 

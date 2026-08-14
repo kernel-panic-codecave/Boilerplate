@@ -57,6 +57,20 @@ loom {
 			property("archie.gametest", "true")
 			property("archie.gametest.modid", "tubularstorage")
 		}
+		// "gradlew runDatagen" - see TubularStorageBlockStateProvider. Writes to common's own
+		// src/main/generated (wired in as an extra resources root there), not src/main/resources
+		// directly - Minecraft's datagen cache deletes anything in its output directory it didn't
+		// just write, which would otherwise destroy the hand-placed textures/gametest structures
+		// living alongside it.
+		create("datagen") {
+			data()
+			name = "Minecraft Datagen"
+			property("archie.datagen", "true")
+			property("archie.datagen.client", "true")
+			property("archie.datagen.server", "true")
+			programArgs("--all", "--mod", "tubularstorage")
+			programArgs("--output", file("../common/src/main/generated").absolutePath)
+		}
 	}
 }
 
@@ -70,6 +84,9 @@ dependencies {
 
 	modCompileOnly(libs.archie.gametest.neoforge)
 	modLocalRuntime(libs.archie.gametest.neoforge)
+
+	modCompileOnly(libs.archie.datagen.neoforge)
+	modLocalRuntime(libs.archie.datagen.neoforge)
 
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":tubularstorage-common", "transformProductionNeoForge")) { isTransitive = false }

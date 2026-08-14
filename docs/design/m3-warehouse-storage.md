@@ -39,9 +39,26 @@ Built by iterating the bound volume, calling `ItemApi.BLOCK.find` per block, the
 
 Single crane per controller in v1 — multi-gantry parallelism is a stretch upgrade, not core scope. `ArrayDeque<GantryJob>` where a job is an insert or extract request against a `RackSlotRef` chosen from the index (nearest by travel time, or first-fit). Requests arrive from:
 
-- A pipe-network-facing `WarehouseInterfaceBlock`, which **queues** rather than instantly completing CSL calls — physical travel time is the point.
+- The pipe network, via the controller itself — no separate interface block. `WarehouseControllerBlockEntity` exposes a small staging `ArchieItemStorage` buffer through `ItemApi.BLOCK` (the standard "expose once at block-entity-type registration" pattern, see `README.md#csl-storage-adapter-pattern`), which is what actually **queues** rather than instantly completing CSL calls — a gantry job has to physically retrieve/stow before the buffer's contents change, and physical travel time is the point.
+  - *Inbound* (pipe → warehouse) needs no warehouse-specific code at all: the staging buffer is just another `ItemApi.BLOCK`-accepting destination as far as `PipeRouter.findRoute`/`ExtractionHookType` are concerned, so M1/M2 already route deliveries into it. The controller notices new contents in the buffer on its own tick and enqueues a put-away job into the best rack.
+  - *Outbound* (warehouse → requester, see Request-based routing below) does need controller-side code: once a retrieval job lands the item in the staging buffer, the controller checks its own six neighbors for a connected `PipeBlockEntity` and injects a `TravelingItem` directly into *that* pipe's own queue - the same thing `ExtractionHookType.tryExtract` does to its own tile, just initiated by the controller instead of a hook.
 - The search/retrieval terminal (below).
 - A **defrag** request (terminal button or standalone item, TBD): for each `ItemResource` with more than one `RackSlotRef` in the index, enqueues move-jobs consolidating it into the fewest slots/racks (biggest partial stacks absorb the smallest first), freeing up whole racks the same way disk defragmentation frees contiguous space. Purely a batch of ordinary insert/extract jobs against the existing queue — no new gantry/job machinery needed, just a planner that reads `WarehouseIndex.locations` and emits jobs. Runs opportunistically (low job-queue priority) rather than blocking other requests, since it's housekeeping, not time-critical.
+
+### Request-based routing (Logistics Pipes' Request/Provider Pipes)
+
+M2's extraction/sorting hooks are **push**-based: an extractor decides what to pull and the network finds *any* accepting destination. Fulfilling a specific item request needs the opposite: find a *source* that has the item and route it to one *specific* destination, the requester. Two new `PipeHookType`s, alongside M2's extraction/sorting hooks:
+
+- **`RequesterHookType`**: placed on a pipe face, declares a standing order - one `ItemResource` plus a target quantity to keep stocked in the adjacent inventory. Ticks the same way `ExtractionHookType` does: if the adjacent inventory's current amount is below target, issues a request for the shortfall. (One-off, browse-and-request-anything fulfillment is the terminal's job, not this hook's - see Terminal below.)
+- **`ProviderHookType`**: placed on a pipe face touching a chest, opts that inventory into being pullable by network requests. Deliberately explicit rather than "every reachable inventory is automatically a source" ([resolved](README.md#resolved-architectural-decisions) - matches Logistics Pipes' actual Provider Pipe, and this mod's stated non-AE2 direction) - purely passive, no periodic tick behavior of its own, only consulted when a request needs resolving.
+
+Resolving a request for `resource`/`amount` from `requesterPos`:
+
+1. Search the network's `ProviderHookType` hooks for one whose adjacent inventory currently has `resource` in stock. If found, extract from it (same mechanics as `ExtractionHookType.tryExtract`) and route a `TravelingItem` to `requesterPos`.
+2. Otherwise, search bound warehouses reachable from the network whose `WarehouseIndex.locations` has `resource`. If found, enqueue a `GantryJob` retrieving it into that warehouse's own staging buffer, from which the controller spawns the `TravelingItem` as described above.
+3. Otherwise, the request stays unfulfilled and retries on `RequesterHookType`'s next tick (or, for a terminal request, surfaces as "unavailable").
+
+Both cases need `PipeRouter.findRouteTo(level, from, to, resource): List<BlockPos>?` - a new routing mode alongside the existing `findRoute` (any accepting destination). This one's simpler than `findRoute`: with a known target, it's a shortest path *to* that position through the pipe network, not an evaluate-every-candidate search - no per-candidate filter/color/priority weighing needed along the way, since the destination isn't being chosen, it's given.
 
 ## Terminal
 

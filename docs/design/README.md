@@ -36,6 +36,7 @@ These came up during design as genuine forks and were decided with the user — 
 2. **Warehouse bounds (M3)**: a `WarehouseWandItem` defines the storage volume by right-clicking two corners, then binding to the controller. No literal built shell required.
 3. **Gantry rails (M3)**: the crane moves within the wand-defined volume with no physical rail blocks, no collision, no construction cost — but the client renders a **ghost/translucent rail overlay** along its travel path for visual readability, as an actual rail model (not a dashed line or particle trail). Purely a rendering feature layered onto the wand-defined envelope.
 4. **Crafting execution (M4)**: a physical Assembly Table processes crafts over time, rather than resolving instantly once inputs are available. This is what M5's pressure mechanic gates.
+5. **Request fulfillment sources (M3)**: item requests (from a `RequesterHookType` or the terminal) are only fulfillable from chests explicitly opted in via a `ProviderHookType`, or from a bound warehouse - not from every inventory the pipe network happens to reach. Matches Logistics Pipes' actual Provider Pipe (explicit opt-in), not an AE2/Refined-Storage-style "everything connected is automatically storage" model.
 
 Deferred and *not* blocking any of this: exact balance numbers (extraction interval, gantry speed, pressure costs — playtesting), whether over-pressure should be dangerous (M5, optional stretch), and exact block names/textures/art.
 

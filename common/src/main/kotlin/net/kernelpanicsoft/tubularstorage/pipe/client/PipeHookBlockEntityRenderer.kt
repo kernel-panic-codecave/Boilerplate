@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.client.resources.model.ModelResourceLocation
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.util.RandomSource
 import org.joml.Quaternionf
 
 /**
@@ -25,6 +26,7 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 	private val modelRenderer = context.blockRenderDispatcher.modelRenderer
 
 	override fun render(tile: PipeBlockEntity, partialTick: Float, poseStack: PoseStack, bufferSource: MultiBufferSource, packedLight: Int, packedOverlay: Int) {
+		val level = tile.level ?: return
 		val consumer = bufferSource.getBuffer(RenderType.solid())
 		for ((directionName, hookState) in tile.hooks) {
 			val direction = Direction.valueOf(directionName)
@@ -34,7 +36,10 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 			poseStack.translate(0.5, 0.5, 0.5)
 			poseStack.mulPose(rotationFor(direction))
 			poseStack.translate(-0.5, -0.5, -0.5)
-			modelRenderer.renderModel(poseStack.last(), consumer, null, model, 1f, 1f, 1f, packedLight, packedOverlay)
+			// tesselateBlock (not the deprecated flat renderModel overload) samples real block/sky
+			// light and applies Minecraft's per-face directional shade itself - the flat overload
+			// paints every quad with one uniform light value and no shading, i.e. fullbright.
+			modelRenderer.tesselateBlock(level, model, tile.blockState, tile.blockPos, poseStack, consumer, false, RandomSource.create(), tile.blockPos.asLong(), packedOverlay)
 			poseStack.popPose()
 		}
 	}

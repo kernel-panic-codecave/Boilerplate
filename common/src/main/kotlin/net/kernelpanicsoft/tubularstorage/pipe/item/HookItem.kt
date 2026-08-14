@@ -26,7 +26,7 @@ import net.minecraft.world.level.block.Block
 class HookItem(properties: Properties, val hookId: ResourceLocation) : BlockItem(BlockRegistry.Hook, properties) {
 
 	override fun place(context: BlockPlaceContext): InteractionResult {
-		val result = super.place(context)
+		var result = super.place(context)
 		if (!result.consumesAction() && result != InteractionResult.FAIL) return result
 		val level = context.level
 		if (level.isClientSide) return result
@@ -43,11 +43,13 @@ class HookItem(properties: Properties, val hookId: ResourceLocation) : BlockItem
 			val hookState = propertiesByDirection.values.fold(BlockRegistry.Hook.defaultBlockState()) { result, property ->
 				result.setValue(property, state.getValue(property))
 			}
-			level.setBlock(pos, hookState, Block.UPDATE_CLIENTS)
-			level.playSound(null, pos, state.soundType.placeSound, SoundSource.BLOCKS, 1f, 1f)
+			level.setBlockAndUpdate(pos, hookState)
+			level.playSound(null, pos, hookState.soundType.placeSound, SoundSource.BLOCKS, 1f, 1f)
 			val newTile = level.getBlockEntity(pos) as? HookBlockEntity ?: return InteractionResult.SUCCESS
 			newTile.loadFromTag(tag)
 			newTile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(state.block)
+			hookState.updateNeighbourShapes(level, pos, Block.UPDATE_ALL)
+			result = InteractionResult.SUCCESS
 		}
 		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return result
 		val direction = context.clickedFace.opposite
@@ -55,7 +57,7 @@ class HookItem(properties: Properties, val hookId: ResourceLocation) : BlockItem
 		val hookType = HookTypeRegistry.byId(hookId) ?: return result
 
 		tile.hooks.getOrPut(direction.name) { hookType.createState() }
-		level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
+		level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
 		return result
 	}
 }

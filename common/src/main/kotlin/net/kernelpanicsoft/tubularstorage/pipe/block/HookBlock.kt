@@ -5,6 +5,7 @@ import dev.architectury.registry.menu.MenuRegistry
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
+import net.kernelpanicsoft.tubularstorage.pipe.item.PipeItem
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
@@ -84,12 +85,12 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 
 		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		val hookItem = stack.item as? HookItem
-		val pipeBlock = (stack.item as? BlockItem)?.block as? PipeBlock
-		if (pipeBlock != null && pipeBlock !is HookBlock)
+		val pipeItem = stack.item as? PipeItem
+		if (pipeItem != null)
 		{
 			if (tile.pipeBlockId != HookBlockEntity.NONE) return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION
 			if (level.isClientSide) return ItemInteractionResult.SUCCESS
-			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(pipeBlock)
+			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(pipeItem.block)
 		}
 		else if (hookItem != null)
 		{

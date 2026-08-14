@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.network
 
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
@@ -11,6 +12,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.DyeColor
+import net.minecraft.world.level.LevelAccessor
 import java.util.UUID
 
 /**
@@ -61,6 +63,8 @@ object PipeRouter {
 		return route
 	}
 
+	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = level.getBlockState(pos).block.let { (it !is HookBlock && it is PipeBlock) || (it is HookBlock && (level.getBlockEntity(pos) as HookBlockEntity).pipeBlockId != HookBlockEntity.NONE) }
+
 	private fun search(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor?, exclude: BlockPos?): List<BlockPos>? {
 		val visited = hashSetOf(from)
 		if (exclude != null) visited += exclude
@@ -85,7 +89,7 @@ object PipeRouter {
 			val neighborPos = current.relative(direction)
 			if (!visited.add(neighborPos)) continue
 
-			if (level.getBlockState(neighborPos).block is PipeBlock) {
+			if (isPipe(level, neighborPos)) {
 				queue += neighborPos to (path + neighborPos)
 				continue
 			}

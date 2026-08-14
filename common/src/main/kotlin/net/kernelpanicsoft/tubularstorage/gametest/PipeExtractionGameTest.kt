@@ -12,6 +12,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.item.ItemStack
@@ -40,6 +41,7 @@ class PipeExtractionGameTest {
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
 		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
 		succeedWhen {
@@ -63,9 +65,11 @@ class PipeExtractionGameTest {
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 4))
 		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
 		val sortPipe = getBlockEntity(sortPipePos) as HookBlockEntity
+		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 
@@ -90,9 +94,11 @@ class PipeExtractionGameTest {
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.REDSTONE, 4))
 		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
 		val sortPipe = getBlockEntity(sortPipePos) as HookBlockEntity
+		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 

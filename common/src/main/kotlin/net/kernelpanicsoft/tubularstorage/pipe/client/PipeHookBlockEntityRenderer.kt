@@ -55,14 +55,32 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 
 	override fun render(tile: HookBlockEntity, partialTick: Float, poseStack: PoseStack, bufferSource: MultiBufferSource, packedLight: Int, packedOverlay: Int) {
 		val level = tile.level ?: return
-
-		val pipeBlock = BuiltInRegistries.BLOCK.get(tile.pipeBlockId) as? PipeBlock ?: BlockRegistry.Pipe
-		val pipeState = pipeStateFor(tile, pipeBlock)
-		val pipeModel = blockModelShaper.getBlockModel(pipeState)
-		val pipeRenderType = if (pipeBlock.isTranslucent) RenderType.translucent() else RenderType.solid()
-		val pipeConsumer = bufferSource.getBuffer(pipeRenderType)
-		modelRenderer.tesselateBlock(level, pipeModel, pipeState, tile.blockPos, poseStack, pipeConsumer, false, RandomSource.create(), tile.blockPos.asLong(), packedOverlay)
-
+		if (tile.pipeBlockId != HookBlockEntity.NONE)
+		{
+			val pipeBlock = BuiltInRegistries.BLOCK.get(tile.pipeBlockId) as? PipeBlock ?: BlockRegistry.Pipe
+			val pipeState = pipeStateFor(tile, pipeBlock)
+			val pipeModel = blockModelShaper.getBlockModel(pipeState)
+			val pipeRenderType = if (pipeBlock.isTranslucent) RenderType.translucent() else RenderType.solid()
+			val pipeConsumer = bufferSource.getBuffer(pipeRenderType)
+			modelRenderer.tesselateBlock(
+				level,
+				pipeModel,
+				pipeState,
+				tile.blockPos,
+				poseStack,
+				pipeConsumer,
+				false,
+				RandomSource.create(),
+				tile.blockPos.asLong(),
+				packedOverlay
+			)
+			if (pipeBlock.showsTravelingItems) {
+				TravelingItemRenderer.render(
+					PipeContentsClientCache.get(tile.blockPos), itemRenderer, level, tile.blockPos,
+					poseStack, bufferSource, packedLight, packedOverlay, partialTick,
+				)
+			}
+		}
 		val hookConsumer = bufferSource.getBuffer(RenderType.solid())
 		for ((directionName, hookState) in tile.hooks) {
 			val direction = Direction.valueOf(directionName)
@@ -76,12 +94,7 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 			poseStack.popPose()
 		}
 
-		if (pipeBlock.showsTravelingItems) {
-			TravelingItemRenderer.render(
-				PipeContentsClientCache.get(tile.blockPos), itemRenderer, level, tile.blockPos,
-				poseStack, bufferSource, packedLight, packedOverlay, partialTick,
-			)
-		}
+
 	}
 
 	/**

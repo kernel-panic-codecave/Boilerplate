@@ -1,9 +1,12 @@
 package net.kernelpanicsoft.tubularstorage.pipe.entity
 
 import dev.architectury.registry.menu.ExtendedMenuProvider
+import kotlinx.serialization.builtins.nullable
 import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.archie.serialization.serializers.ResourceLocationSerializer
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.archie.util.rem
+import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
@@ -44,7 +47,7 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	 * instead of all hook blocks looking alike.
 	 */
 	@Sync
-	var pipeBlockId?: ResourceLocation by field(ResourceLocationSerializer) { null }
+	var pipeBlockId: ResourceLocation by field(ResourceLocationSerializer) { NONE }
 
 	val filterNorth by itemField(9)
 	val filterSouth by itemField(9)
@@ -92,6 +95,7 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	companion object {
+		val NONE = TubularStorage.MOD % "none"
 		fun tick(level: Level, pos: BlockPos, state: BlockState, tile: HookBlockEntity) = tile.tick(level, pos, state)
 	}
 }

@@ -1,6 +1,8 @@
 package net.kernelpanicsoft.tubularstorage.pipe.network
 
+import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
+import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -38,7 +40,7 @@ class PipeNetworkManager {
 
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
-			if (!isPipe(level, neighborPos)) continue
+			if (!PipeRouter.isPipe(level, neighborPos)) continue
 			ensureRegistered(level, neighborPos)
 			val ownId = networkOf.getValue(pos)
 			val neighborId = networkOf.getValue(neighborPos)
@@ -100,7 +102,6 @@ class PipeNetworkManager {
 		target.members += source.members
 	}
 
-	private fun isPipe(level: ServerLevel, pos: BlockPos): Boolean = level.getBlockState(pos).block is PipeBlock
 
 	companion object {
 		private const val REBUILD_BUDGET_PER_TICK = 500

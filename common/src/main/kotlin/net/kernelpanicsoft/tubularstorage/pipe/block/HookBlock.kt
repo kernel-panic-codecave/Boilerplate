@@ -8,13 +8,18 @@ import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.core.registries.Registries
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.ItemInteractionResult
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.RenderShape
@@ -23,6 +28,10 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.shapes.BooleanOp
+import net.minecraft.world.phys.shapes.CollisionContext
+import net.minecraft.world.phys.shapes.Shapes
+import net.minecraft.world.phys.shapes.VoxelShape
 
 /**
  * A pipe segment that can additionally carry a
@@ -61,9 +70,9 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 		player: Player,
 		hand: InteractionHand,
 		hitResult: BlockHitResult,
-	): ItemInteractionResult = clickModule(stack, state, level, pos, player, hand, hitResult)
+	): ItemInteractionResult = clickBlockWithItem(stack, state, level, pos, player, hand, hitResult)
 
-	fun clickModule(
+	fun clickBlockWithItem(
 		stack: ItemStack,
 		state: BlockState,
 		level: Level,
@@ -72,14 +81,29 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 		hand: InteractionHand,
 		hitResult: BlockHitResult,
 	): ItemInteractionResult {
-		val hookItem = stack.item as? HookItem ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+
 		if (level.isClientSide) return ItemInteractionResult.SUCCESS
 		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
-		val direction = armFor(state, pos, hitResult) ?: hitResult.direction
-		if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
-
-		tile.hooks[direction.name] = HookState(type = hookItem.hookId)
-		level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
+		val hookItem = stack.item as? HookItem
+		val pipeBlock = (stack.item as? BlockItem)?.block as? PipeBlock
+		if (pipeBlock != null && pipeBlock !is HookBlock)
+		{
+			if (tile.pipeBlockId != HookBlockEntity.NONE)
+			{
+				level.playSound(null, pos.relative(hitResult.direction), pipeBlock.defaultBlockState().soundType.placeSound, SoundSource.BLOCKS, 1f, 1f)
+				return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION
+			}
+			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(pipeBlock)
+		}
+		else if (hookItem != null)
+		{
+			val direction = armFor(state, pos, hitResult) ?: hitResult.direction
+			if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			tile.hooks[direction.name] = HookState(type = hookItem.hookId)
+		}
+		else return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
+		state.updateNeighbourShapes(level, pos, Block.UPDATE_ALL)
 		level.playSound(null, pos, state.soundType.placeSound, SoundSource.BLOCKS, 1f, 1f)
 		if (!player.abilities.instabuild) stack.shrink(1)
 		return ItemInteractionResult.SUCCESS
@@ -95,7 +119,8 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 		if (!level.isClientSide) {
 			if (player.isShiftKeyDown) {
 				tile.hooks.remove(direction.name)
-				level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
+				level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
+				state.updateNeighbourShapes(level, pos, Block.UPDATE_ALL)
 				level.playSound(null, pos, state.soundType.breakSound, SoundSource.BLOCKS, 1f, 1f)
 			} else if (hookType.hasMenu) {
 				tile.pendingMenuFace = direction
@@ -103,6 +128,20 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 			}
 		}
 		return InteractionResult.sidedSuccess(level.isClientSide)
+	}
+
+	override fun getShape(
+		state: BlockState,
+		level: BlockGetter,
+		pos: BlockPos,
+		context: CollisionContext
+	): VoxelShape
+	{
+		val shape = super.getShape(state, level, pos, context)
+		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return shape
+		val hooksShape = tile.hooks.entries.fold(Shapes.empty()) { shape, entry -> Shapes.or(shape, armShapes[Direction.valueOf(entry.key)]!!)}
+		if (tile.pipeBlockId != HookBlockEntity.NONE) return Shapes.or(shape, hooksShape)
+		return hooksShape
 	}
 
 	companion object {

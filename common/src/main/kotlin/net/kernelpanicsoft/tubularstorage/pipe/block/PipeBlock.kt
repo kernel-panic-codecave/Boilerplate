@@ -5,6 +5,7 @@ import earth.terrarium.common_storage_lib.item.ItemApi
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
+import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
@@ -92,7 +93,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 
 	private fun canConnect(level: LevelAccessor, pos: BlockPos, direction: Direction): Boolean {
 		val neighborPos = pos.relative(direction)
-		if (level.getBlockState(neighborPos).block is PipeBlock) return true
+		if (PipeRouter.isPipe(level, neighborPos)) return true
 		val realLevel = level as? Level ?: return false
 		return ItemApi.BLOCK.find(realLevel, neighborPos, direction.opposite) != null
 	}
@@ -144,7 +145,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		newTile.loadFromTag(tag)
 		newTile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(this)
 
-		return BlockRegistry.Hook.clickModule(stack, level.getBlockState(pos), level, pos, player, hand, hitResult)
+		return BlockRegistry.Hook.clickBlockWithItem(stack, level.getBlockState(pos), level, pos, player, hand, hitResult)
 	}
 
 	/**

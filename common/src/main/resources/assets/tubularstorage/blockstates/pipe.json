@@ -1,11 +1,11 @@
 {
 	"multipart": [
 		{ "apply": { "model": "tubularstorage:block/pipe_core" } },
-		{ "when": { "north": "true", "hook_north": "false" }, "apply": { "model": "tubularstorage:block/pipe_arm" } },
-		{ "when": { "south": "true", "hook_south": "false" }, "apply": { "model": "tubularstorage:block/pipe_arm", "y": 180 } },
-		{ "when": { "east": "true", "hook_east": "false" }, "apply": { "model": "tubularstorage:block/pipe_arm", "y": 90 } },
-		{ "when": { "west": "true", "hook_west": "false" }, "apply": { "model": "tubularstorage:block/pipe_arm", "y": 270 } },
-		{ "when": { "up": "true", "hook_up": "false" }, "apply": { "model": "tubularstorage:block/pipe_arm", "x": 270 } },
-		{ "when": { "down": "true", "hook_down": "false" }, "apply": { "model": "tubularstorage:block/pipe_arm", "x": 90 } }
+		{ "when": { "north": "true" }, "apply": { "model": "tubularstorage:block/pipe_arm" } },
+		{ "when": { "south": "true" }, "apply": { "model": "tubularstorage:block/pipe_arm", "y": 180 } },
+		{ "when": { "east": "true" }, "apply": { "model": "tubularstorage:block/pipe_arm", "y": 90 } },
+		{ "when": { "west": "true" }, "apply": { "model": "tubularstorage:block/pipe_arm", "y": 270 } },
+		{ "when": { "up": "true" }, "apply": { "model": "tubularstorage:block/pipe_arm", "x": 270 } },
+		{ "when": { "down": "true" }, "apply": { "model": "tubularstorage:block/pipe_arm", "x": 90 } }
 	]
 }

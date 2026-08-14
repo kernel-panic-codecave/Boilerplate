@@ -4,7 +4,7 @@ import earth.terrarium.common_storage_lib.item.ItemApi
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
-import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.minecraft.core.BlockPos
@@ -20,14 +20,14 @@ import net.minecraft.server.level.ServerLevel
 object ExtractionHookType : PipeHookType() {
 	val ID: ResourceLocation = TubularStorage.MOD % "extraction"
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: PipeBlockEntity, state: HookState): HookState {
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookState): HookState {
 		val elapsed = state.ticksSinceExtraction + 1
 		if (elapsed < EXTRACTION_INTERVAL_TICKS) return state.copy(ticksSinceExtraction = elapsed)
 		tryExtract(level, pos, direction, tile, state)
 		return state.copy(ticksSinceExtraction = 0)
 	}
 
-	private fun tryExtract(level: ServerLevel, pos: BlockPos, direction: Direction, tile: PipeBlockEntity, state: HookState) {
+	private fun tryExtract(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookState) {
 		// Not a filter on what's pulled (see docs/design/m2-sorting-routing.md) - just the color
 		// tag this face's routing (if any) stamps on whatever it sends out.
 		val color = tile.routingFor(direction).color

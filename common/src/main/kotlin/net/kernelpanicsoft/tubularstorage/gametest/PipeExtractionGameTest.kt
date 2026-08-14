@@ -3,6 +3,7 @@ package net.kernelpanicsoft.tubularstorage.gametest
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
+import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
@@ -34,11 +35,11 @@ class PipeExtractionGameTest {
 		val extractorPos = BlockPos(0, 2, 1)
 		val destPos = BlockPos(0, 2, 2)
 		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
-		setBlock(extractorPos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Hook.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
-		val extractor = getBlockEntity(extractorPos) as PipeBlockEntity
+		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
 		succeedWhen {
@@ -56,15 +57,15 @@ class PipeExtractionGameTest {
 		val sortPipePos = BlockPos(0, 2, 2)
 		val destPos = BlockPos(0, 2, 3)
 		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
-		setBlock(extractorPos, BlockRegistry.Pipe.defaultBlockState())
-		setBlock(sortPipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(sortPipePos, BlockRegistry.Hook.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 4))
-		val extractor = getBlockEntity(extractorPos) as PipeBlockEntity
+		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
-		val sortPipe = getBlockEntity(sortPipePos) as PipeBlockEntity
+		val sortPipe = getBlockEntity(sortPipePos) as HookBlockEntity
 		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 
@@ -83,15 +84,15 @@ class PipeExtractionGameTest {
 		val sortPipePos = BlockPos(0, 2, 2)
 		val destPos = BlockPos(0, 2, 3)
 		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
-		setBlock(extractorPos, BlockRegistry.Pipe.defaultBlockState())
-		setBlock(sortPipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(sortPipePos, BlockRegistry.Hook.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.REDSTONE, 4))
-		val extractor = getBlockEntity(extractorPos) as PipeBlockEntity
+		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
-		val sortPipe = getBlockEntity(sortPipePos) as PipeBlockEntity
+		val sortPipe = getBlockEntity(sortPipePos) as HookBlockEntity
 		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 

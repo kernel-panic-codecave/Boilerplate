@@ -3,7 +3,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.network
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
-import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
@@ -78,7 +78,7 @@ object PipeRouter {
 		best: Candidate?,
 	): List<BlockPos>? {
 		val (current, path) = queue.removeFirstOrNull() ?: return best?.path
-		val tile = level.getBlockEntity(current) as? PipeBlockEntity
+		val tile = level.getBlockEntity(current) as? HookBlockEntity
 
 		var nextBest = best
 		for (direction in Direction.entries) {
@@ -114,7 +114,7 @@ object PipeRouter {
 	}
 
 	/** Empty filter grid: whitelist accepts nothing, blacklist accepts everything. Otherwise matches by item (ignoring data components), per [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.mode]. */
-	private fun matchesFilter(tile: PipeBlockEntity, direction: Direction, routing: RoutingModule, resource: ItemResource): Boolean {
+	private fun matchesFilter(tile: HookBlockEntity, direction: Direction, routing: RoutingModule, resource: ItemResource): Boolean {
 		val filter = tile.filterFor(direction)
 		val entries = (0 until filter.size()).map { filter[it].resource }.filter { !it.isBlank }
 		if (entries.isEmpty()) return routing.mode == FilterMode.BLACKLIST

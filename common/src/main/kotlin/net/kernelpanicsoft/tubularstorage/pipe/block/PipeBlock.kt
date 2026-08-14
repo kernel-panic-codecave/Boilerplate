@@ -1,19 +1,17 @@
 package net.kernelpanicsoft.tubularstorage.pipe.block
 
 import com.mojang.serialization.MapCodec
-import dev.architectury.registry.menu.MenuRegistry
 import earth.terrarium.common_storage_lib.item.ItemApi
+import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
-import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
+import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.server.level.ServerPlayer
-import net.minecraft.sounds.SoundSource
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.InteractionHand
-import net.minecraft.world.InteractionResult
 import net.minecraft.world.ItemInteractionResult
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
@@ -31,27 +29,27 @@ import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.block.state.properties.BlockStateProperties
 import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.level.pathfinder.PathComputationType
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 
-/** A pipe segment: transports items through [PipeBlockEntity], auto-connecting to neighboring pipes and inventories. */
+/**
+ * A plain pipe segment: transports items through [PipeBlockEntity], auto-connecting to
+ * neighboring pipes and inventories. Carries no hooks - see [HookBlock] for the (heavier,
+ * hook-carrying) variant this promotes into the moment a [HookItem] is used against it.
+ */
 open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 
 	init {
-		registerDefaultState(
-			(propertiesByDirection.values + hookPropertiesByDirection.values).fold(stateDefinition.any()) { state, property ->
-				state.setValue(property, false)
-			}
-		)
+		registerDefaultState(propertiesByDirection.values.fold(stateDefinition.any()) { state, property -> state.setValue(property, false) })
 	}
 
 	override fun codec(): MapCodec<out BaseEntityBlock> = CODEC
 
 	override fun createBlockStateDefinition(builder: StateDefinition.Builder<Block, BlockState>) {
 		propertiesByDirection.values.forEach { builder.add(it) }
-		hookPropertiesByDirection.values.forEach { builder.add(it) }
 	}
 
 	override fun getStateForPlacement(context: net.minecraft.world.item.context.BlockPlaceContext): BlockState =
@@ -95,7 +93,12 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 
 	override fun isPathfindable(state: BlockState, pathComputationType: PathComputationType): Boolean = false
 
-	/** Right-clicking a face with a [HookItem] attaches that hook to it (see `docs/design/m1-pipe-network.md`), unless that face already carries one. */
+	/**
+	 * Right-clicking a plain pipe with a [HookItem] promotes it into a [HookBlock] carrying the
+	 * same connections, transplanting this block entity's data across via [CompoundTag] (not
+	 * vanilla's "with metadata" API, to keep this independent of Archie's own persistence format),
+	 * then delegates to [HookBlock.useItemOn] to actually attach the hook.
+	 */
 	override fun useItemOn(
 		stack: ItemStack,
 		state: BlockState,
@@ -105,39 +108,22 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		hand: InteractionHand,
 		hitResult: BlockHitResult,
 	): ItemInteractionResult {
-		val hookItem = stack.item as? HookItem ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		if (stack.item !is HookItem) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		if (level.isClientSide) return ItemInteractionResult.SUCCESS
-		val tile = level.getBlockEntity(pos) as? PipeBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
-		val direction = armFor(state, pos, hitResult) ?: hitResult.direction
-		if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		val oldTile = level.getBlockEntity(pos) as? PipeBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 
-		tile.hooks[direction.name] = HookState(type = hookItem.hookId)
-		level.setBlock(pos, state.setValue(hookPropertiesByDirection.getValue(direction), true), Block.UPDATE_CLIENTS)
-		level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
-		level.playSound(null, pos, state.soundType.placeSound, SoundSource.BLOCKS, 1f, 1f)
-		if (!player.abilities.instabuild) stack.shrink(1)
-		return ItemInteractionResult.SUCCESS
-	}
+		val tag = CompoundTag()
+		oldTile.saveToTag(tag)
 
-	/** Empty-hand right-click on a hooked face opens that hook's GUI (if it has one), or - while sneaking - removes it. */
-	override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
-		val tile = level.getBlockEntity(pos) as? PipeBlockEntity ?: return InteractionResult.PASS
-		val direction = armFor(state, pos, hitResult) ?: hitResult.direction
-		val hookState = tile.hooks[direction.name] ?: return InteractionResult.PASS
-		val hookType = HookTypeRegistry.byId(hookState.type) ?: return InteractionResult.PASS
-
-		if (!level.isClientSide) {
-			if (player.isShiftKeyDown) {
-				tile.hooks.remove(direction.name)
-				level.setBlock(pos, state.setValue(hookPropertiesByDirection.getValue(direction), false), Block.UPDATE_CLIENTS)
-				level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
-				level.playSound(null, pos, state.soundType.breakSound, SoundSource.BLOCKS, 1f, 1f)
-			} else if (hookType.hasMenu) {
-				tile.pendingMenuFace = direction
-				MenuRegistry.openExtendedMenu(player as ServerPlayer, tile)
-			}
+		val hookState = propertiesByDirection.values.fold(BlockRegistry.Hook.defaultBlockState()) { result, property ->
+			result.setValue(property, state.getValue(property))
 		}
-		return InteractionResult.sidedSuccess(level.isClientSide)
+		level.setBlock(pos, hookState, Block.UPDATE_CLIENTS)
+		val newTile = level.getBlockEntity(pos) as? HookBlockEntity ?: return ItemInteractionResult.SUCCESS
+		newTile.loadFromTag(tag)
+		newTile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(this)
+
+		return BlockRegistry.Hook.clickModule(stack, level.getBlockState(pos), level, pos, player, hand, hitResult)
 	}
 
 	/**
@@ -146,15 +132,28 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	 * tip - clicking one of its (narrower-than-a-full-face) lateral sides reports that side's own
 	 * direction instead, e.g. the *east* side of a *north*-pointing arm reports EAST. Resolves the
 	 * hit point back to whichever connected arm's own shape it actually landed in, if any.
+	 *
+	 * A click lands exactly on the clicked face's plane, i.e. exactly on one of the arm shape's own
+	 * bounds - [net.minecraft.world.phys.AABB.contains] is exclusive on the *max* bound, so it
+	 * silently rejects a hit on an arm's south/east/up-facing side while accepting one on its
+	 * north/west/down-facing side. [containsInclusive] checks both bounds inclusively (with a small
+	 * epsilon for floating-point slop in the hit point itself) so every side matches consistently.
 	 */
-	private fun armFor(state: BlockState, pos: BlockPos, hitResult: BlockHitResult): Direction? {
+	protected fun armFor(state: BlockState, pos: BlockPos, hitResult: BlockHitResult): Direction? {
 		val local = hitResult.location.subtract(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
 		return propertiesByDirection.entries
-			.firstOrNull { (direction, property) -> state.getValue(property) && armShapes.getValue(direction).bounds().contains(local.x, local.y, local.z) }
+			.firstOrNull { (direction, property) -> state.getValue(property) && containsInclusive(armShapes.getValue(direction).bounds(), local.x, local.y, local.z) }
 			?.key
 	}
 
+	private fun containsInclusive(bounds: AABB, x: Double, y: Double, z: Double): Boolean =
+		x >= bounds.minX - EPSILON && x <= bounds.maxX + EPSILON &&
+			y >= bounds.minY - EPSILON && y <= bounds.maxY + EPSILON &&
+			z >= bounds.minZ - EPSILON && z <= bounds.maxZ + EPSILON
+
 	companion object {
+		private const val EPSILON = 1.0E-5
+
 		val CODEC: MapCodec<PipeBlock> = simpleCodec(::PipeBlock)
 
 		val propertiesByDirection: Map<Direction, BooleanProperty> = mapOf(
@@ -166,19 +165,9 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 			Direction.DOWN to BlockStateProperties.DOWN,
 		)
 
-		/** Whether a hook is attached to each face - kept as real blockstate (not just block-entity `hooks`) so the multipart model can skip a plain arm where a hook would clip into it. */
-		val hookPropertiesByDirection: Map<Direction, BooleanProperty> = mapOf(
-			Direction.NORTH to BooleanProperty.create("hook_north"),
-			Direction.SOUTH to BooleanProperty.create("hook_south"),
-			Direction.EAST to BooleanProperty.create("hook_east"),
-			Direction.WEST to BooleanProperty.create("hook_west"),
-			Direction.UP to BooleanProperty.create("hook_up"),
-			Direction.DOWN to BooleanProperty.create("hook_down"),
-		)
+		val CORE_SHAPE: VoxelShape = Shapes.box(0.375, 0.375, 0.375, 0.625, 0.625, 0.625)
 
-		private val CORE_SHAPE: VoxelShape = Shapes.box(0.375, 0.375, 0.375, 0.625, 0.625, 0.625)
-
-		private val armShapes: Map<Direction, VoxelShape> = mapOf(
+		val armShapes: Map<Direction, VoxelShape> = mapOf(
 			Direction.NORTH to Shapes.box(0.375, 0.375, 0.0, 0.625, 0.625, 0.375),
 			Direction.SOUTH to Shapes.box(0.375, 0.375, 0.625, 0.625, 0.625, 1.0),
 			Direction.WEST to Shapes.box(0.0, 0.375, 0.375, 0.375, 0.625, 0.625),

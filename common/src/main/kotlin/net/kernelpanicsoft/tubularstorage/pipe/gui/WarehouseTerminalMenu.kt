@@ -7,8 +7,10 @@ import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.archie.serialization.serializers.SItemStack
+import net.kernelpanicsoft.tubularstorage.network.RequestWarehouseSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.network.WarehouseSearchResultsPacket
+import net.kernelpanicsoft.tubularstorage.network.WithdrawFromWarehousePacket
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
@@ -45,9 +47,19 @@ class WarehouseTerminalMenu(id: Int, inventory: Inventory, tile: HookBlockEntity
 
 	override fun registerSlotHandlers() {}
 
+	/**
+	 * Requests fresh results from the client side, rather than the server eagerly pushing them the
+	 * moment its own menu instance is constructed - the server's own construction (and so this
+	 * `onMenuOpened` firing there) happens *before* the client has necessarily finished opening the
+	 * screen and become the active `containerMenu`, so an eager server push routinely lost the race
+	 * and got silently dropped by [WarehouseSearchResultsPacket.handleOnClient]'s own `containerMenu`
+	 * cast, requiring a manual refresh click to ever populate anything. The client's own
+	 * `onMenuOpened` only fires once its menu construction is what NeoForge/Fabric already resolved
+	 * as the active menu, so a request sent from there can't lose that race.
+	 */
 	override fun onMenuOpened() {
 		super.onMenuOpened()
-		if (!level.isClientSide) sendSearchResults()
+		if (level.isClientSide) TubularStorageNetworkChannel.toServer(RequestWarehouseSearchResultsPacket)
 	}
 
 	/** Client-side: applies a freshly received [WarehouseSearchResultsPacket]. */
@@ -80,13 +92,33 @@ class WarehouseTerminalMenu(id: Int, inventory: Inventory, tile: HookBlockEntity
 	 * Requests up to [amount] of [resource] be delivered to [adjacentInventory] - a reachable
 	 * provider or warehouse, whichever [RequestFulfillment.request] finds first, exactly as a
 	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType] standing order would. Re-sends
-	 * fresh results either way, reflecting whatever the withdrawal actually took.
+	 * fresh results either way, reflecting whatever the withdrawal actually took - immediately
+	 * accurate for a provider (an ordinary synchronous CSL extract), but only once the gantry
+	 * physically finishes for a warehouse-sourced one, which is what [requestWithdraw]'s own
+	 * client-side optimistic update is for.
 	 */
 	fun withdraw(resource: ItemResource, amount: Long) {
 		val level = level as? ServerLevel ?: return
 		val destination = adjacentInventory(level) ?: return
 		RequestFulfillment.request(level, tile.blockPos, resource, amount, destination)
 		sendSearchResults()
+	}
+
+	/**
+	 * Client-side: sends a withdrawal request for [amount] of [resource] and immediately reflects it
+	 * in [results] itself, rather than waiting on a round trip back from the server - which, for a
+	 * warehouse-sourced withdrawal, only arrives once the gantry physically finishes the retrieval
+	 * (see [withdraw]'s KDoc), not the instant the request is made. Whatever the server's own next
+	 * [WarehouseSearchResultsPacket] says (that eventual completion, a manual refresh, or simply the
+	 * post-[withdraw] resync) still overwrites this guess with the authoritative total.
+	 */
+	fun requestWithdraw(resource: ItemResource, amount: Long) {
+		results = results.mapNotNull { stack ->
+			if (ItemResource.of(stack) != resource) return@mapNotNull stack
+			val remaining = stack.count - amount
+			if (remaining <= 0) null else stack.copyWithCount(remaining.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+		}
+		TubularStorageNetworkChannel.toServer(WithdrawFromWarehousePacket(resource.toStack(amount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())))
 	}
 
 	/** The position of the first inventory directly attached to one of [tile]'s own six faces, or `null` if nothing's plugged in - the well-defined destination every [withdraw] delivers to. */

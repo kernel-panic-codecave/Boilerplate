@@ -5,12 +5,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.Panel
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
 import net.kernelpanicsoft.archie.gui.composables.input.Clickable
 import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
+import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Box
 import net.kernelpanicsoft.archie.gui.layout.Column
@@ -22,7 +24,6 @@ import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
 import net.kernelpanicsoft.tubularstorage.network.RequestWarehouseSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
-import net.kernelpanicsoft.tubularstorage.network.WithdrawFromWarehousePacket
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.ItemStack
@@ -35,7 +36,8 @@ import net.minecraft.world.item.ItemStack
  * aggregate, on open, after a withdrawal, or in response to the refresh button
  * ([RequestWarehouseSearchResultsPacket]).
  *
- * Clicking a result row withdraws up to one stack of it - see [WarehouseTerminalMenu.withdraw].
+ * Clicking a result row opens a [requestQuantityDialog] asking how many to request rather than
+ * instantly withdrawing a full stack - see [WarehouseTerminalMenu.requestWithdraw].
  */
 class WarehouseTerminalScreen(private val menu: WarehouseTerminalMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<WarehouseTerminalMenu>(menu, playerInventory, title) {
@@ -81,8 +83,13 @@ class WarehouseTerminalScreen(private val menu: WarehouseTerminalMenu, playerInv
 
 	@Composable
 	private fun ResultRow(stack: ItemStack) {
+		val layers = LocalLayerManager.current
 		Clickable(
-			onClick = { withdraw(stack) },
+			onClick = {
+				layers.requestQuantityDialog(stack) { amount ->
+					menu.requestWithdraw(ItemResource.of(stack), amount)
+				}
+			},
 			modifier = Modifier.width(contentWidth).height(18),
 		) { _, _, _ ->
 			Row(modifier = Modifier.padding(left = 2), horizontalArrangement = Arrangement.spacedBy(4)) {
@@ -90,10 +97,5 @@ class WarehouseTerminalScreen(private val menu: WarehouseTerminalMenu, playerInv
 				Text(stack.hoverName, dropShadow = false)
 			}
 		}
-	}
-
-	private fun withdraw(stack: ItemStack) {
-		val amount = stack.count.coerceAtMost(stack.item.defaultMaxStackSize)
-		TubularStorageNetworkChannel.toServer(WithdrawFromWarehousePacket(ItemStack(stack.item, amount)))
 	}
 }

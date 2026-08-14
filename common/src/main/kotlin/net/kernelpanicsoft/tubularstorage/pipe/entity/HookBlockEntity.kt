@@ -6,7 +6,6 @@ import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.archie.serialization.serializers.ResourceLocationSerializer
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
@@ -61,7 +60,11 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	/** The [SortingHookState] filter grid attached to [direction] - callers must already know it carries a sorting hook. */
 	fun filterFor(direction: Direction) = (hooks[direction.name] as SortingHookState).filter
 
-	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu = SortingPipeMenu(id, inventory, this, pendingMenuFace)
+	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu {
+		val hookState = hooks[pendingMenuFace.name] as HookHolderState
+		val hookType = HookTypeRegistry.byId(hookState.type) ?: error("Unknown hook type ${hookState.type} at $blockPos/$pendingMenuFace")
+		return hookType.createMenu(id, inventory, this, pendingMenuFace)
+	}
 	override fun getDisplayName(): Component = blockState.block.name
 	override fun saveExtraData(buf: FriendlyByteBuf) {
 		buf.writeBlockPos(blockPos)

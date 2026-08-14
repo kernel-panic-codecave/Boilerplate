@@ -2,8 +2,10 @@ package net.kernelpanicsoft.tubularstorage.warehouse.client
 
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
+import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.GantryClientCache
+import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
@@ -12,26 +14,40 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.client.resources.model.ModelResourceLocation
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.util.RandomSource
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
-import kotlin.math.ceil
+import kotlin.math.floor
 
 /**
- * Renders the ghost rail overlay and crane head for [tile]'s gantry - see
- * `docs/design/m3-warehouse-storage.md`. Only draws anything while the (dead-reckoned, from
- * [GantryClientCache]) gantry is actually mid-move: the rail is a readability aid for an active
- * job, not a permanent grid over the whole bound volume.
+ * Renders the *moving* half of a warehouse gantry, styled after BuildCraft's Quarry: the static
+ * perimeter is real [BlockRegistry.GantryRail] blocks placed by
+ * [WarehouseControllerBlockEntity.bounds] (ordinary chunk sync handles those), but the two
+ * crossbeams that slide to track the head, the vertical drop rod connecting down to it, and the
+ * head itself all change every tick and aren't practical as real blocks - so they stay a
+ * client-only dynamic render instead, drawn (dead-reckoned, from [GantryClientCache]) only while
+ * the gantry is actually mid-move.
  *
- * Both the rail segments (spaced one per block along each leg of the active path) and the head
- * itself are drawn as [ItemRegistry.GantryRail]/[ItemRegistry.GantryHead]'s baked models - real
- * placeholder geometry (translucent for the rail, solid for the head), not an abstract line or
- * particle trail. Those two items exist purely as bake targets for this renderer, not for players.
+ * The crossbeams reuse [GantryRailBlock]'s own baked model - looked up once, in [eastWestModel]
+ * etc., against a synthetic fully-connected [BlockState] rather than any placed block - so they
+ * read as an extension of the real frame rather than a different material. One beam spans the
+ * bound footprint's full X extent at the head's current Z, the other spans the full Z extent at
+ * the head's current X, intersecting directly above wherever the head is; the drop rod does the
+ * same straight down from rail height to the head. The head itself keeps using
+ * [ItemRegistry.GantryHead]'s placeholder model, a fake item that exists purely as a bake target
+ * for this renderer.
  */
 class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvider.Context) : BlockEntityRenderer<WarehouseControllerBlockEntity> {
-	private val modelManager = context.blockRenderDispatcher.blockModelShaper.modelManager
+	private val blockModelShaper = context.blockRenderDispatcher.blockModelShaper
 	private val modelRenderer = context.blockRenderDispatcher.modelRenderer
+
+	private val eastWestModel = blockModelShaper.getBlockModel(EAST_WEST_STATE)
+	private val northSouthModel = blockModelShaper.getBlockModel(NORTH_SOUTH_STATE)
+	private val upDownModel = blockModelShaper.getBlockModel(UP_DOWN_STATE)
+	private val headModel = blockModelShaper.modelManager.getModel(HEAD_MODEL_ID)
 
 	override fun render(
 		tile: WarehouseControllerBlockEntity,
@@ -42,29 +58,24 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		packedOverlay: Int,
 	) {
 		val level = tile.level ?: return
-		val gantry = GantryClientCache.get(tile.blockPos) ?: return
+		val (gantry, bounds) = GantryClientCache.get(tile.blockPos) ?: return
 		if (!gantry.isMoving) return
 
-		val railModel = modelManager.getModel(RAIL_MODEL_ID)
-		val railConsumer = bufferSource.getBuffer(RenderType.translucent())
-		var from = gantry.pos
-		for (waypoint in gantry.remainingPath) {
-			for (point in pointsAlong(from, waypoint)) {
-				drawAt(tile.blockPos, point, level, poseStack, railConsumer, railModel, packedOverlay)
-			}
-			from = waypoint
+		val consumer = bufferSource.getBuffer(RenderType.solid())
+		val railY = bounds.max.y
+		val head = gantry.pos
+
+		for (x in bounds.min.x..bounds.max.x) {
+			drawAt(tile.blockPos, Vec3(x + 0.5, railY + 0.5, head.z), level, poseStack, consumer, eastWestModel, EAST_WEST_STATE, packedOverlay)
+		}
+		for (z in bounds.min.z..bounds.max.z) {
+			drawAt(tile.blockPos, Vec3(head.x, railY + 0.5, z + 0.5), level, poseStack, consumer, northSouthModel, NORTH_SOUTH_STATE, packedOverlay)
+		}
+		for (y in floor(head.y).toInt()..railY) {
+			drawAt(tile.blockPos, Vec3(head.x, y + 0.5, head.z), level, poseStack, consumer, upDownModel, UP_DOWN_STATE, packedOverlay)
 		}
 
-		val headModel = modelManager.getModel(HEAD_MODEL_ID)
-		val headConsumer = bufferSource.getBuffer(RenderType.solid())
-		drawAt(tile.blockPos, gantry.pos, level, poseStack, headConsumer, headModel, packedOverlay)
-	}
-
-	/** One point per block of travel from [from] to [to], not including [from] itself - so consecutive legs don't double-draw their shared endpoint. */
-	private fun pointsAlong(from: Vec3, to: Vec3): List<Vec3> {
-		val distance = to.subtract(from).length()
-		val steps = ceil(distance).toInt().coerceAtLeast(1)
-		return (1..steps).map { step -> from.lerp(to, step.toDouble() / steps) }
+		drawAt(tile.blockPos, head, level, poseStack, consumer, headModel, level.getBlockState(BlockPos.containing(head)), packedOverlay)
 	}
 
 	private fun drawAt(
@@ -74,20 +85,32 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		poseStack: PoseStack,
 		consumer: VertexConsumer,
 		model: BakedModel,
+		state: BlockState,
 		packedOverlay: Int,
 	) {
 		val blockPos = BlockPos.containing(worldPos)
 		poseStack.pushPose()
 		poseStack.translate(worldPos.x - originPos.x - 0.5, worldPos.y - originPos.y - 0.5, worldPos.z - originPos.z - 0.5)
 		modelRenderer.tesselateBlock(
-			level, model, level.getBlockState(blockPos), blockPos, poseStack, consumer, false,
+			level, model, state, blockPos, poseStack, consumer, false,
 			RandomSource.create(), blockPos.asLong(), packedOverlay,
 		)
 		poseStack.popPose()
 	}
 
 	companion object {
-		private val RAIL_MODEL_ID = ModelResourceLocation(BuiltInRegistries.ITEM.getKey(ItemRegistry.GantryRail), "inventory")
+		private val EAST_WEST_STATE: BlockState = BlockRegistry.GantryRail.defaultBlockState()
+			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.EAST), true)
+			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.WEST), true)
+
+		private val NORTH_SOUTH_STATE: BlockState = BlockRegistry.GantryRail.defaultBlockState()
+			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.NORTH), true)
+			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.SOUTH), true)
+
+		private val UP_DOWN_STATE: BlockState = BlockRegistry.GantryRail.defaultBlockState()
+			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.UP), true)
+			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN), true)
+
 		private val HEAD_MODEL_ID = ModelResourceLocation(BuiltInRegistries.ITEM.getKey(ItemRegistry.GantryHead), "inventory")
 	}
 }

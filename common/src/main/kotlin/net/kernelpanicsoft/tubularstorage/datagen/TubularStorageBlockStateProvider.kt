@@ -7,31 +7,36 @@ import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.state.properties.BooleanProperty
 
 /**
  * Generates every blockstate/block-model/item-model JSON under `assets/tubularstorage` -
  * `pipe`/`glass_pipe`'s connection-driven `"multipart"` bodies, `hook`'s unused placeholder (its
  * block is [net.minecraft.world.level.block.RenderShape.INVISIBLE] - see
  * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]), the four hook item
- * models, the plain-cube warehouse controller block plus its wand item, and the placeholder
- * `gantry_rail`/`gantry_head` models
+ * models, the plain-cube warehouse controller block plus its wand item,
+ * [net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock]'s own connection-driven
+ * `"multipart"` body (a real, player-visible block auto-placed as the gantry frame), and the
+ * placeholder `gantry_head` model
  * [net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer]
- * looks up directly (registered as [net.kernelpanicsoft.tubularstorage.registry.ItemRegistry] items
- * purely so they bake, not because they're player-obtainable). Replaces what was previously
- * hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
- * `common/src/main/resources`.
+ * looks up directly (registered as an [net.kernelpanicsoft.tubularstorage.registry.ItemRegistry]
+ * item purely so it bakes, not because it's player-obtainable - the gantry head is always a
+ * dynamic render, never a placed block). Replaces what was previously hand-written JSON; running
+ * `./gradlew runDatagen` regenerates it in place under `common/src/main/resources`.
  */
 internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	val pipeCore = cuboidModel("pipe_core", blockTexture(BlockRegistry.Pipe), 6f, 6f, 6f, 10f, 10f, 10f)
 	val pipeArm = cuboidModel("pipe_arm", blockTexture(BlockRegistry.Pipe), 6f, 6f, 0f, 10f, 10f, 6f)
-	pipeMultipart(BlockRegistry.Pipe, pipeCore, pipeArm)
+	sixWayMultipart(BlockRegistry.Pipe, PipeBlock.propertiesByDirection, pipeCore, pipeArm)
 	itemModels().getBuilder("pipe").parent(pipeCore)
 
 	val glassPipeCore = cuboidModel("glass_pipe_core", blockTexture(BlockRegistry.GlassPipe), 6f, 6f, 6f, 10f, 10f, 10f, translucent = true)
 	val glassPipeArm = cuboidModel("glass_pipe_arm", blockTexture(BlockRegistry.GlassPipe), 6f, 6f, 0f, 10f, 10f, 6f, translucent = true)
-	pipeMultipart(BlockRegistry.GlassPipe, glassPipeCore, glassPipeArm)
+	sixWayMultipart(BlockRegistry.GlassPipe, PipeBlock.propertiesByDirection, glassPipeCore, glassPipeArm)
 	itemModels().getBuilder("glass_pipe").parent(glassPipeCore)
 
 	getMultipartBuilder(BlockRegistry.Hook) {
@@ -46,8 +51,10 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	simpleBlockWithItem(BlockRegistry.WarehouseController)
 	itemModels().basicItem(ItemRegistry.WarehouseWand)
 
-	val gantryRail = cuboidModel("gantry_rail", TubularStorage.MOD % "block/gantry_rail", 4f, 7f, 4f, 12f, 9f, 12f, translucent = true)
-	itemModels().getBuilder("gantry_rail").parent(gantryRail)
+	val gantryRailCore = cuboidModel("gantry_rail_core", blockTexture(BlockRegistry.GantryRail), 5f, 5f, 5f, 11f, 11f, 11f)
+	val gantryRailArm = cuboidModel("gantry_rail_arm", blockTexture(BlockRegistry.GantryRail), 5f, 5f, 0f, 11f, 11f, 5f)
+	sixWayMultipart(BlockRegistry.GantryRail, GantryRailBlock.propertiesByDirection, gantryRailCore, gantryRailArm)
+	itemModels().getBuilder("gantry_rail").parent(gantryRailCore)
 
 	val gantryHead = cuboidModel("gantry_head", TubularStorage.MOD % "block/gantry_head", 3f, 3f, 3f, 13f, 13f, 13f)
 	itemModels().getBuilder("gantry_head").parent(gantryHead)
@@ -72,11 +79,17 @@ private fun ABlockStateProvider.cuboidModel(
 	}
 }
 
-/** [core] unconditionally, plus [arm] rotated onto each connected face - see `blockstates/pipe.json`'s original hand-written shape, now generated identically. */
-private fun ABlockStateProvider.pipeMultipart(block: PipeBlock, core: AModelFile, arm: AModelFile) {
+/**
+ * [core] unconditionally, plus [arm] rotated onto each direction [propertiesByDirection] marks
+ * connected - the shape every six-way connecting block in this mod uses
+ * ([PipeBlock]/[net.kernelpanicsoft.tubularstorage.pipe.block.GlassPipeBlock]'s original
+ * hand-written `blockstates/pipe.json` shape, now generated identically, and
+ * [net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock] reusing the same pattern).
+ */
+private fun ABlockStateProvider.sixWayMultipart(block: Block, propertiesByDirection: Map<Direction, BooleanProperty>, core: AModelFile, arm: AModelFile) {
 	getMultipartBuilder(block) {
 		part().modelFile(core).addModel().end()
-		for ((direction, property) in PipeBlock.propertiesByDirection) {
+		for ((direction, property) in propertiesByDirection) {
 			part()
 				.modelFile(arm)
 				.rotationX(rotationXFor(direction))

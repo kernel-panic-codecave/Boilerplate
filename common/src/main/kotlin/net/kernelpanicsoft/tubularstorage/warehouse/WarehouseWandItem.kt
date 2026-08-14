@@ -16,7 +16,10 @@ import net.minecraft.world.item.context.UseOnContext
  * region). The first two right-clicks record corners on the wand itself, via its own
  * [NBTHolder.item] state rather than any block entity, so the pending selection survives between
  * clicks and travels with the stack. A third right-click, against the controller to bind, commits
- * [Bounds.of] those two corners to it and clears the wand's selection. Right-clicking anything
+ * [Bounds.of] those two corners to it and clears the wand's selection - provided the controller
+ * itself sits on the resulting footprint's border, inline with the outer rail lines (the gantry
+ * can't reach outside its own rails to reach the controller otherwise); off-border attempts are
+ * rejected with a "no" sound and leave the pending selection untouched. Right-clicking anything
  * else while both corners are already set restarts the selection from that click instead of
  * getting stuck waiting for a controller.
  */
@@ -34,7 +37,12 @@ class WarehouseWandItem(properties: Properties) : Item(properties) {
 
 		val controller = level.getBlockEntity(pos) as? WarehouseControllerBlockEntity
 		if (controller != null && first != null && second != null) {
-			controller.bounds = Bounds.of(first, second)
+			val bounds = Bounds.of(first, second)
+			if (!bounds.isOnBorder(pos)) {
+				level.playSound(null, pos, SoundEvents.VILLAGER_NO, SoundSource.PLAYERS, 1f, 1f)
+				return InteractionResult.SUCCESS
+			}
+			controller.bounds = bounds
 			selection = Selection()
 			level.playSound(null, pos, SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 1f, 1f)
 			return InteractionResult.SUCCESS

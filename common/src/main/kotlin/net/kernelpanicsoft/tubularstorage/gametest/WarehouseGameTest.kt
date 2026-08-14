@@ -277,4 +277,74 @@ class WarehouseGameTest {
 			}
 		}
 	}
+
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testBindingPlacesGantryRailFrame() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+
+		val edgeFramePos = BlockPos(4, 3, 0)
+		assertTrue(getBlockState(edgeFramePos).block == BlockRegistry.GantryRail) {
+			"Expected a gantry rail frame block at $edgeFramePos after binding, got ${getBlockState(edgeFramePos)}"
+		}
+		val cornerFramePos = BlockPos(4, 3, 4)
+		assertTrue(getBlockState(cornerFramePos).block == BlockRegistry.GantryRail) {
+			"Expected a gantry rail frame block at the far corner $cornerFramePos after binding, got ${getBlockState(cornerFramePos)}"
+		}
+		val interiorPos = BlockPos(2, 3, 2)
+		assertTrue(getBlockState(interiorPos).block != BlockRegistry.GantryRail) {
+			"Expected the frame to trace only the footprint's border, not its interior at $interiorPos, got ${getBlockState(interiorPos)}"
+		}
+		succeed()
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testRebindingRemovesOldFrame() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val firstCornerTwoPos = BlockPos(4, 3, 4)
+		val secondCornerTwoPos = BlockPos(2, 3, 2)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(firstCornerTwoPos))
+		val staleFramePos = BlockPos(4, 3, 4)
+		assertTrue(getBlockState(staleFramePos).block == BlockRegistry.GantryRail) {
+			"Expected the first bind to place a frame block at $staleFramePos, got ${getBlockState(staleFramePos)}"
+		}
+
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(secondCornerTwoPos))
+		assertTrue(getBlockState(staleFramePos).block != BlockRegistry.GantryRail) {
+			"Expected rebinding to a smaller volume to remove the old frame block at $staleFramePos, got ${getBlockState(staleFramePos)}"
+		}
+		val newFramePos = BlockPos(2, 3, 2)
+		assertTrue(getBlockState(newFramePos).block == BlockRegistry.GantryRail) {
+			"Expected the new bind to place a frame block at $newFramePos, got ${getBlockState(newFramePos)}"
+		}
+		succeed()
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testWandRejectsBindingOffBorder() {
+		val controllerPos = BlockPos(2, 2, 2)
+		val cornerOnePos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+
+		val player = makeMockPlayer(GameType.CREATIVE)
+		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehouseWand))
+
+		useBlock(cornerOnePos, player)
+		useBlock(cornerTwoPos, player)
+		useBlock(controllerPos, player)
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		assertTrue(controller.bounds == null) {
+			"Expected binding to be rejected since $controllerPos isn't on the bound footprint's border, got ${controller.bounds}"
+		}
+		succeed()
+	}
 }

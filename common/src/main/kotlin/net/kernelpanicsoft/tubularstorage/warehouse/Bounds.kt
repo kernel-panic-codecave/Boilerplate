@@ -27,6 +27,28 @@ data class Bounds(val min: SBlockPos, val max: SBlockPos) {
 	/** [min]/[max] as a vanilla [BoundingBox], for APIs that expect one. */
 	fun toBoundingBox(): BoundingBox = BoundingBox(min.x, min.y, min.z, max.x, max.y, max.z)
 
+	/** Whether [pos] sits on this footprint's border, inline with the outer rail lines - where [WarehouseControllerBlock] is required to bind (see [railPerimeter]). */
+	fun isOnBorder(pos: BlockPos): Boolean = pos.x == min.x || pos.x == max.x || pos.z == min.z || pos.z == max.z
+
+	/**
+	 * The hollow rectangle [GantryRailBlock] frame traces around this footprint's border, at [max]'s
+	 * y (rail height) - every position with `x`/`z` on the min/max edge, inclusive of corners, each
+	 * listed once.
+	 */
+	fun railPerimeter(): List<BlockPos> {
+		val y = max.y
+		val positions = mutableListOf<BlockPos>()
+		for (x in min.x..max.x) {
+			positions += BlockPos(x, y, min.z)
+			if (max.z != min.z) positions += BlockPos(x, y, max.z)
+		}
+		for (z in (min.z + 1) until max.z) {
+			positions += BlockPos(min.x, y, z)
+			if (max.x != min.x) positions += BlockPos(max.x, y, z)
+		}
+		return positions
+	}
+
 	companion object {
 		/** Builds a [Bounds] from two arbitrary corners, normalizing them into (min, max) order regardless of which one the player clicked first. */
 		fun of(first: BlockPos, second: BlockPos): Bounds = Bounds(

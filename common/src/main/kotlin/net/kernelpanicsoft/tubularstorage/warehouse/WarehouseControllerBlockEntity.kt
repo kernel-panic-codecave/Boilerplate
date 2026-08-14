@@ -11,6 +11,7 @@ import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
+import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -42,12 +43,39 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	@Sync
 	private var boundsSlot: BoundsSlot by field(BoundsSlot.serializer()) { BoundsSlot() }
 
-	/** The bound warehouse volume, or `null` until a [WarehouseWandItem] binds one. */
+	/**
+	 * The bound warehouse volume, or `null` until a [WarehouseWandItem] binds one. Setting it also
+	 * traces [GantryRailBlock]'s static perimeter frame at rail height - removing the old volume's
+	 * frame (if any) and placing the new one's, real solid blocks rather than anything synced, so
+	 * ordinary chunk updates carry them to clients for free. A no-op on the client, since the wand
+	 * only ever calls this server-side and the block changes it makes arrive there through normal
+	 * world sync instead.
+	 */
 	var bounds: Bounds?
 		get() = boundsSlot.bounds
 		set(value) {
+			val old = boundsSlot.bounds
 			boundsSlot = BoundsSlot(value)
+			val level = level
+			if (level != null && !level.isClientSide) {
+				old?.let { removeFrame(level, it) }
+				value?.let { placeFrame(level, it) }
+			}
 		}
+
+	private fun placeFrame(level: Level, bounds: Bounds) {
+		for (framePos in bounds.railPerimeter()) {
+			if (framePos == blockPos) continue
+			if (level.getBlockState(framePos).isAir) level.setBlockAndUpdate(framePos, BlockRegistry.GantryRail.defaultBlockState())
+		}
+	}
+
+	private fun removeFrame(level: Level, bounds: Bounds) {
+		for (framePos in bounds.railPerimeter()) {
+			if (framePos == blockPos) continue
+			if (level.getBlockState(framePos).block is GantryRailBlock) level.removeBlock(framePos, false)
+		}
+	}
 
 	val index: WarehouseIndex = WarehouseIndex()
 	val gantry: GantryState = GantryState(Vec3.atCenterOf(pos))
@@ -107,12 +135,13 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	private fun tickGantrySync(level: ServerLevel, pos: BlockPos) {
 		if (!gantry.isMoving) return
+		val volume = bounds ?: return
 		ticksSinceGantrySync++
 		if (ticksSinceGantrySync < GANTRY_SYNC_INTERVAL_TICKS) return
 		ticksSinceGantrySync = 0
 		TubularStorageNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, GANTRY_SYNC_RADIUS,
-			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath),
+			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath, volume),
 		)
 	}
 

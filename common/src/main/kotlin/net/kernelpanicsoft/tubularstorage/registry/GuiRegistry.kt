@@ -6,6 +6,8 @@ import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeScreen
+import net.kernelpanicsoft.tubularstorage.pipe.gui.WarehouseTerminalMenu
+import net.kernelpanicsoft.tubularstorage.pipe.gui.WarehouseTerminalScreen
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.inventory.MenuType
@@ -20,7 +22,15 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 		}
 	}
 
+	val WarehouseTerminal: MenuType<WarehouseTerminalMenu> by register("warehouse_terminal") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			WarehouseTerminalMenu(id, inventory, tile)
+		}
+	}
+
 	override fun initClient() {
 		MenuRegistry.registerScreenFactory(SortingPipe, ::SortingPipeScreen)
+		MenuRegistry.registerScreenFactory(WarehouseTerminal, ::WarehouseTerminalScreen)
 	}
 }

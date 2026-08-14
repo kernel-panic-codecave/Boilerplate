@@ -13,6 +13,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.Bounds
+import net.kernelpanicsoft.tubularstorage.warehouse.DeliveryTarget
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseIndex
 import net.minecraft.core.BlockPos
@@ -27,6 +28,7 @@ import net.minecraft.world.level.GameType
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 
 /** GameTest coverage for [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem]'s bind flow. */
 @Suppress("unused")
@@ -379,5 +381,37 @@ class WarehouseGameTest {
 			"Expected binding to be rejected since $controllerPos isn't on the bound footprint's border, got ${controller.bounds}"
 		}
 		succeed()
+	}
+
+	/**
+	 * A retrieval whose [DeliveryTarget.Pipe] destination can't actually be reached - here, no pipe
+	 * is even attached to the controller - shouldn't silently lose the item: it should stay in the
+	 * outbound buffer, retrievable normally, rather than [WarehouseControllerBlockEntity]'s internals
+	 * extracting it into the void.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testRetrieveWithUnreachablePipeTargetKeepsItemInOutboundBuffer() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val rackPos = BlockPos(3, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		val resource = ItemResource.of(ItemStack(Items.DIAMOND))
+		val slot = WarehouseIndex.RackSlotRef(absolutePos(rackPos), null, 5)
+
+		controller.enqueueRetrieve(slot, resource, 5, DeliveryTarget.Pipe(absolutePos(BlockPos(100, 100, 100))))
+
+		succeedWhen {
+			val rack = getBlockEntity(rackPos) as ChestBlockEntity
+			assertTrue(rack.getItem(0).isEmpty) { "Expected the rack to have been emptied by the retrieval regardless, got ${rack.getItem(0)}" }
+			assertTrue(controller.outboundBuffer.getAmount(0) == 5L && controller.outboundBuffer.getResource(0) == resource) {
+				"Expected the 5 diamonds to still be sitting in the outbound buffer since no pipe could route to the target, got amount ${controller.outboundBuffer.getAmount(0)} resource ${controller.outboundBuffer.getResource(0)}"
+			}
+			assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished its trip home by now" }
+		}
 	}
 }

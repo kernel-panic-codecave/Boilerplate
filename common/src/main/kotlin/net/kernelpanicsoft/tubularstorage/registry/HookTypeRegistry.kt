@@ -12,6 +12,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType
 import net.minecraft.core.Registry
 import net.minecraft.resources.ResourceKey
 import net.minecraft.resources.ResourceLocation
@@ -26,6 +28,7 @@ object HookTypeRegistry : ADeferredRegistryHolder<PipeHookType<out HookHolderSta
 	val Sorting: PipeHookType<SortingHookState> by register(SortingHookType.ID) { SortingHookType }
 	val Provider: PipeHookType<ProviderHookState> by register(ProviderHookType.ID) { ProviderHookType }
 	val Requester: PipeHookType<RequesterHookState> by register(RequesterHookType.ID) { RequesterHookType }
+	val WarehouseTerminal: PipeHookType<WarehouseTerminalHookState> by register(WarehouseTerminalHookType.ID) { WarehouseTerminalHookType }
 
 	/**
 	 * Looks up a registered [PipeHookType] by its full id (e.g.

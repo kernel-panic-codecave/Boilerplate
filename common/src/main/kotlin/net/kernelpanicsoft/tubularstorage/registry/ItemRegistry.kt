@@ -8,6 +8,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.PipeItem
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem
@@ -40,6 +41,10 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val RequesterHook by register("requester_hook") {
 		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = RequesterHookType.ID)
+	}
+
+	val WarehouseTerminalHook by register("warehouse_terminal_hook") {
+		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = WarehouseTerminalHookType.ID)
 	}
 
 	val WarehouseController by register("warehouse_controller") {

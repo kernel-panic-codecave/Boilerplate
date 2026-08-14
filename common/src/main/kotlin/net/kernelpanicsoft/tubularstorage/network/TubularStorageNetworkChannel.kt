@@ -11,8 +11,11 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 		onClient {
 			clientbound(PipeContentsSyncPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(GantrySyncPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(WarehouseSearchResultsPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(RequestWarehouseSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(WithdrawFromWarehousePacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

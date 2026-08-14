@@ -47,6 +47,7 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	hookModel("sorting_hook")
 	hookModel("provider_hook")
 	hookModel("requester_hook")
+	warehouseTerminalHookModel("warehouse_terminal_hook")
 
 	simpleBlockWithItem(BlockRegistry.WarehouseController)
 	itemModels().basicItem(ItemRegistry.WarehouseWand)
@@ -117,5 +118,31 @@ private fun rotationYFor(direction: Direction): Int = when (direction) {
 /** A hook's placeholder block model (see `docs/design/m1-pipe-network.md`) at `block/[name]`, and its item model inheriting it. */
 private fun ABlockStateProvider.hookModel(name: String) {
 	val model = cuboidModel(name, TubularStorage.MOD % "block/$name", 6f, 6f, 0f, 10f, 10f, 6f)
+	itemModels().getBuilder(name).parent(model)
+}
+
+/**
+ * The warehouse terminal hook's own model - unlike [hookModel]'s small centered box, a full 16x16
+ * face plate (a terminal panel bolted onto the pipe, not a plain fitting) sitting flush with a
+ * connecting strut underneath it, same total depth as [hookModel]'s box so it doesn't clip through
+ * or float clear of the pipe body it's attached to.
+ */
+private fun ABlockStateProvider.warehouseTerminalHookModel(name: String) {
+	val texture = TubularStorage.MOD % "block/$name"
+	val model = blockModels().getBuilder(name) {
+		parent(AModelFile("minecraft:block/block"))
+		texture("particle", texture)
+		texture("all", texture)
+		element {
+			from(6f, 6f, 0f)
+			to(10f, 10f, 4f)
+			allFaces { _, face -> face.texture("#all").uvs(0f, 0f, 16f, 16f) }
+		}
+		element {
+			from(0f, 0f, 4f)
+			to(16f, 16f, 6f)
+			allFaces { _, face -> face.texture("#all").uvs(0f, 0f, 16f, 16f) }
+		}
+	}
 	itemModels().getBuilder(name).parent(model)
 }

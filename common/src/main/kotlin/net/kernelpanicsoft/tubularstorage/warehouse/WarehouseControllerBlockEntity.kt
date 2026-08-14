@@ -96,8 +96,8 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	/** What's actually in the gantry's hands right now - each entry picked up but not yet dropped off. */
 	private val deliveryQueue: ArrayDeque<CarriedStack> = ArrayDeque()
 
-	/** Queues a job retrieving [slot]'s [resource]/[amount] into [outboundBuffer], shipping it straight on to [deliverTo] once it lands there if given - see `RequestFulfillment`. */
-	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, resource: ItemResource, amount: Long, deliverTo: BlockPos? = null) {
+	/** Queues a job retrieving [slot]'s [resource]/[amount] into [outboundBuffer], dispersing it via [deliverTo] once it lands there if given - see `RequestFulfillment`. */
+	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, resource: ItemResource, amount: Long, deliverTo: DeliveryTarget? = null) {
 		jobs += GantryJob.Retrieve(slot, resource, amount, deliverTo)
 	}
 
@@ -227,7 +227,9 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		when (job) {
 			is GantryJob.Retrieve -> {
 				val inserted = outboundBuffer.insert(resource, amount, false)
-				if (inserted > 0 && job.deliverTo != null) shipOut(level, pos, resource, inserted, job.deliverTo)
+				if (inserted <= 0) return
+				val target = job.deliverTo
+				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos)
 			}
 			is GantryJob.Stow -> {
 				val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)

@@ -9,6 +9,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.client.TravelingItemBlockEntityRe
 import net.kernelpanicsoft.tubularstorage.pipe.entity.GlassPipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
 
@@ -29,6 +30,12 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 	val GlassPipe: BlockEntityType<GlassPipeBlockEntity> by register("glass_pipe") {
 		blockEntityType(::GlassPipeBlockEntity) {
 			add(BlockRegistry.GlassPipe)
+		}
+	}
+
+	val WarehouseController: BlockEntityType<WarehouseControllerBlockEntity> by register("warehouse_controller") {
+		blockEntityType(::WarehouseControllerBlockEntity) {
+			add(BlockRegistry.WarehouseController)
 		}
 	}
 

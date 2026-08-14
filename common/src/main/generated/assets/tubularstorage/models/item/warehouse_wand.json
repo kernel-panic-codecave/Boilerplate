@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "tubularstorage:item/warehouse_wand"
+  }
+}

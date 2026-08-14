@@ -8,6 +8,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.PipeItem
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.CreativeModeTabs
@@ -29,5 +30,13 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val SortingHook by register("sorting_hook") {
 		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = SortingHookType.ID)
+	}
+
+	val WarehouseController by register("warehouse_controller") {
+		BlockItem(BlockRegistry.WarehouseController, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	}
+
+	val WarehouseWand by register("warehouse_wand") {
+		WarehouseWandItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES); stacksTo(1) })
 	}
 }

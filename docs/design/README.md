@@ -9,7 +9,7 @@ Implementation-level design for `ROADMAP.md`'s milestones. Each milestone gets i
 - [M5 — Steampunk Power Layer](m5-pressure-power.md)
 - [M6 — Polish & Parity](m6-polish-parity.md)
 
-All of this is grounded in Archie's and `earth.terrarium.common_storage_lib`'s (CSL) real, verified APIs — no invented classes or method names. Nothing here is implemented yet; this is the spec each milestone gets built against.
+All of this is grounded in Archie's and `earth.terrarium.common_storage_lib`'s (CSL) real, verified APIs — no invented classes or method names. This is the spec each milestone gets built against; M1/M2 are implemented, M3 is in progress, M4+ aren't started yet.
 
 ## Package layout
 

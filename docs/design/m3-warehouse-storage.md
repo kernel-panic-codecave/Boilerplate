@@ -4,7 +4,9 @@ See [README.md](README.md) for shared conventions. This is the centerpiece miles
 
 ## Bounding volume
 
-`WarehouseControllerBlockEntity` stores a `BoundingBox` bound via a `WarehouseWandItem`: right-click two corners, then right-click the controller ([decision #2](README.md#resolved-architectural-decisions) — no literal sealed multiblock shell required). This is the deliberate tradeoff that makes large warehouses cheap to set up: a wand-defined volume reads less as a "physical multiblock" than a Mekanism-style built shell would, but doesn't punish scale.
+`WarehouseControllerBlockEntity` stores a `Bounds` (`min`/`max` `SBlockPos`, normalized regardless of click order - see `Bounds.of`) bound via a `WarehouseWandItem`: right-click two corners, then right-click the controller ([decision #2](README.md#resolved-architectural-decisions) — no literal sealed multiblock shell required). This is the deliberate tradeoff that makes large warehouses cheap to set up: a wand-defined volume reads less as a "physical multiblock" than a Mekanism-style built shell would, but doesn't punish scale.
+
+Implemented as: the wand's own pending selection (`first`/`second` corner) lives on the wand `ItemStack` itself via `NBTHolder.item(stack)`, not any block entity, so it survives between the three clicks and travels with the stack. A third click against a `WarehouseControllerBlockEntity` while both corners are set commits `Bounds.of(first, second)` to it and clears the wand's selection; a click against anything else while both are already set restarts the selection from that click instead of getting stuck. `WarehouseControllerBlockEntity.bounds: Bounds?` is `null` until bound - wrapped in a private `BoundsSlot` data class the same way `ExtractionHookState`'s `ColorSlot` wraps its nullable color, since a bare nullable `NBTHolder.field` can't round-trip (see that type's KDoc).
 
 ## Gantry / crane
 

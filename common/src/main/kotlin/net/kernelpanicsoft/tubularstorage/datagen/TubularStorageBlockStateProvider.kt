@@ -6,6 +6,7 @@ import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
+import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 
@@ -13,9 +14,10 @@ import net.minecraft.resources.ResourceLocation
  * Generates every blockstate/block-model/item-model JSON under `assets/tubularstorage` -
  * `pipe`/`glass_pipe`'s connection-driven `"multipart"` bodies, `hook`'s unused placeholder (its
  * block is [net.minecraft.world.level.block.RenderShape.INVISIBLE] - see
- * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]), and the two hook
- * item models. Replaces what was previously hand-written JSON; running `./gradlew runDatagen`
- * regenerates it in place under `common/src/main/resources`.
+ * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]), the two hook item
+ * models, and the plain-cube warehouse controller block plus its wand item. Replaces what was
+ * previously hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
+ * `common/src/main/resources`.
  */
 internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	val pipeCore = cuboidModel("pipe_core", blockTexture(BlockRegistry.Pipe), 6f, 6f, 6f, 10f, 10f, 10f)
@@ -34,6 +36,9 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 
 	hookModel("extraction_hook")
 	hookModel("sorting_hook")
+
+	simpleBlockWithItem(BlockRegistry.WarehouseController)
+	itemModels().basicItem(ItemRegistry.WarehouseWand)
 }
 
 /** A cuboid element from ([fromX],[fromY],[fromZ]) to ([toX],[toY],[toZ]) textured [texture] on every face, UVs stretched to the full [0,16] range regardless of the cuboid's actual size. */

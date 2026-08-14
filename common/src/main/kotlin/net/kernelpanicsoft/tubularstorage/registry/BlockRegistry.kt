@@ -7,6 +7,7 @@ import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.block.GlassPipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlock
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.Block
@@ -24,6 +25,10 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(TubularStorage.MOD, Regist
 
 	val GlassPipe: GlassPipeBlock by register("glass_pipe") {
 		GlassPipeBlock(blockProperties(Blocks.GLASS) { })
+	}
+
+	val WarehouseController: WarehouseControllerBlock by register("warehouse_controller") {
+		WarehouseControllerBlock(blockProperties(Blocks.IRON_BLOCK) { })
 	}
 
 	override fun initClient() {

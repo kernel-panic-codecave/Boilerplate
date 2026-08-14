@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.registry
 
 import dev.architectury.registry.client.rendering.BlockEntityRendererRegistry
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
+import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.archie.util.blockEntityType
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer
@@ -34,11 +35,19 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 		}
 	}
 
+	/**
+	 * [exposeItemStorage] is chained here, on the raw `RegistrySupplier` [register] returns, rather
+	 * than on this property once resolved - unlike Fabric, NeoForge's `RegistrySupplier.get()`
+	 * throws if called before the entry is actually bound, which [TubularStorage.init] calling
+	 * straight after [init] (still inside `FMLConstructModEvent`) is too early for. Chaining on the
+	 * supplier instead defers via `RegistrySupplier.listen(...)`, which waits for the entry to
+	 * actually register - confirmed the hard way via a `runGametest` crash on NeoForge specifically.
+	 */
 	val WarehouseController: BlockEntityType<WarehouseControllerBlockEntity> by register("warehouse_controller") {
 		blockEntityType(::WarehouseControllerBlockEntity) {
 			add(BlockRegistry.WarehouseController)
 		}
-	}
+	}.apply { exposeItemStorage(WarehouseControllerBlockEntity::stagingBuffer) }
 
 	override fun initClient() {
 		BlockEntityRendererRegistry.register(Hook, ::PipeHookBlockEntityRenderer)

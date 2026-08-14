@@ -8,6 +8,9 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
@@ -25,9 +28,12 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity
  * GameTest coverage for the real extraction/travel/insertion pipeline
  * ([net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType.tick] pulling into a
  * [PipeBlockEntity]'s [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem] queue, then
- * [PipeBlockEntity.tick] advancing and finally inserting it) and M2's sorting-hook filtering.
- * Unlike [PipeNetworkGameTest], these place real blocks and let the world tick, rather than
- * driving [net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager] directly.
+ * [PipeBlockEntity.tick] advancing and finally inserting it), M2's sorting-hook filtering, and M3's
+ * request-based routing ([net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType] pulling
+ * from a [net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType] via
+ * [net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment]). Unlike
+ * [PipeNetworkGameTest], these place real blocks and let the world tick, rather than driving
+ * [net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager] directly.
  */
 @Suppress("unused")
 class PipeExtractionGameTest {
@@ -117,6 +123,35 @@ class PipeExtractionGameTest {
 			}
 			assertTrue(dest.getItem(0).isEmpty) { "Expected the destination chest to stay empty, got ${dest.getItem(0)}" }
 			succeed()
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testRequesterHookPullsFromProviderHook() {
+		val sourcePos = BlockPos(0, 2, 0)
+		val providerHookPos = BlockPos(0, 2, 1)
+		val requesterHookPos = BlockPos(0, 2, 2)
+		val destPos = BlockPos(0, 2, 3)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(providerHookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(requesterHookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
+		val provider = getBlockEntity(providerHookPos) as HookBlockEntity
+		provider.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		provider.hooks.getOrPut(Direction.NORTH.name) { ProviderHookType.createState() }
+
+		val requester = getBlockEntity(requesterHookPos) as HookBlockEntity
+		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+
+		succeedWhen {
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 4) {
+				"Expected 4 diamonds (the requester's standing order) to have arrived, got ${dest.getItem(0)}"
+			}
 		}
 	}
 }

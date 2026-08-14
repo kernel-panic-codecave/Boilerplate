@@ -8,6 +8,9 @@ import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.network.GantrySyncPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
+import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
+import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -27,9 +30,9 @@ import net.minecraft.world.phys.Vec3
  * *inbound* deliveries need no warehouse-specific code at all - it's just another accepting
  * destination as far as [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]/
  * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType] are concerned. New arrivals
- * there get planned into a [GantryJob.Stow] the next idle tick. *Outbound* deliveries (from later
- * M3 phases, once requester/provider hooks exist) are the controller's own job: find a connected
- * pipe and inject a `TravelingItem` into it directly, the same thing
+ * there get planned into a [GantryJob.Stow] the next idle tick. *Outbound* deliveries (a
+ * `RequestFulfillment`-planned [GantryJob.Retrieve] with `deliverTo` set) are [shipOut]'s job: find
+ * a connected pipe and inject a `TravelingItem` into it directly, the same thing
  * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType.tryExtract] already does to its
  * own tile.
  */
@@ -59,9 +62,9 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	private var pickedUp = false
 	private var carrying: Pair<ItemResource, Long>? = null
 
-	/** Queues a job retrieving [slot]'s [resource]/[amount] into [stagingBuffer] - for requester/provider hook fulfillment (later M3 phase) or manual testing. */
-	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, resource: ItemResource, amount: Long) {
-		jobs += GantryJob.Retrieve(slot, resource, amount)
+	/** Queues a job retrieving [slot]'s [resource]/[amount] into [stagingBuffer], shipping it straight on to [deliverTo] once it lands there if given - see `RequestFulfillment`. */
+	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, resource: ItemResource, amount: Long, deliverTo: BlockPos? = null) {
+		jobs += GantryJob.Retrieve(slot, resource, amount, deliverTo)
 	}
 
 	/** Queues [gantry] motion to [target] via the current [bounds]' rail height - a no-op while unbound. */
@@ -135,7 +138,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			return
 		}
 
-		dropOff(level, job)
+		dropOff(level, pos, job)
 		activeJob = null
 		carrying = null
 	}
@@ -162,15 +165,37 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
-	private fun dropOff(level: ServerLevel, job: GantryJob) {
+	private fun dropOff(level: ServerLevel, pos: BlockPos, job: GantryJob) {
 		val (resource, amount) = carrying ?: return
 		when (job) {
-			is GantryJob.Retrieve -> stagingBuffer.insert(resource, amount, false)
+			is GantryJob.Retrieve -> {
+				val inserted = stagingBuffer.insert(resource, amount, false)
+				if (inserted > 0 && job.deliverTo != null) shipOut(level, pos, resource, inserted, job.deliverTo)
+			}
 			is GantryJob.Stow -> {
 				val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
 				val inserted = storage?.insert(resource, amount, false) ?: 0
 				if (inserted < amount) stagingBuffer.insert(resource, amount - inserted, false)
 			}
+		}
+	}
+
+	/**
+	 * Looks for a connected pipe among [pos]'s own six neighbors and, if one can route to
+	 * [deliverTo], pulls [amount] of [resource] back out of [stagingBuffer] and injects it as a
+	 * `TravelingItem` directly into that pipe's own queue - the same thing
+	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType.tryExtract] does to its own
+	 * tile. Leaves it in the buffer (for the next put-away pass) if no route is found.
+	 */
+	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos) {
+		for (direction in Direction.entries) {
+			val neighborPos = pos.relative(direction)
+			val pipeTile = level.getBlockEntity(neighborPos) as? PipeBlockEntity ?: continue
+			val route = PipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
+			val extracted = stagingBuffer.extract(resource, amount, false)
+			if (extracted <= 0) continue
+			pipeTile.travelingItems += TravelingItem(resource.toStack(extracted.toInt()), direction.opposite, 0f, route, null)
+			return
 		}
 	}
 

@@ -2,12 +2,17 @@ package net.kernelpanicsoft.tubularstorage.gametest
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
+import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.Bounds
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseIndex
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.InteractionHand
@@ -164,6 +169,36 @@ class WarehouseGameTest {
 			}
 			val rack = getBlockEntity(rackPos) as ChestBlockEntity
 			assertTrue(rack.getItem(0).isEmpty) { "Expected the rack to be emptied by the retrieval, got ${rack.getItem(0)}" }
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testRequesterHookPullsFromWarehouse() {
+		val rackPos = BlockPos(0, 2, 0)
+		val controllerPos = BlockPos(1, 2, 0)
+		val pipePos = BlockPos(2, 2, 0)
+		val requesterHookPos = BlockPos(3, 2, 0)
+		val destPos = BlockPos(3, 2, 1)
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(requesterHookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
+
+		val requester = getBlockEntity(requesterHookPos) as HookBlockEntity
+		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+
+		succeedWhen {
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 4) {
+				"Expected 4 diamonds pulled from the warehouse to have arrived, got ${dest.getItem(0)}"
+			}
 		}
 	}
 }

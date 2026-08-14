@@ -14,7 +14,7 @@ import net.minecraft.resources.ResourceLocation
  * Generates every blockstate/block-model/item-model JSON under `assets/tubularstorage` -
  * `pipe`/`glass_pipe`'s connection-driven `"multipart"` bodies, `hook`'s unused placeholder (its
  * block is [net.minecraft.world.level.block.RenderShape.INVISIBLE] - see
- * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]), the two hook item
+ * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]), the four hook item
  * models, the plain-cube warehouse controller block plus its wand item, and the placeholder
  * `gantry_rail`/`gantry_head` models
  * [net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer]
@@ -40,6 +40,8 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 
 	hookModel("extraction_hook")
 	hookModel("sorting_hook")
+	hookModel("provider_hook")
+	hookModel("requester_hook")
 
 	simpleBlockWithItem(BlockRegistry.WarehouseController)
 	itemModels().basicItem(ItemRegistry.WarehouseWand)

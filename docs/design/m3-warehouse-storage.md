@@ -58,7 +58,9 @@ Resolving a request for `resource`/`amount` from `requesterPos`:
 2. Otherwise, search bound warehouses reachable from the network whose `WarehouseIndex.locations` has `resource`. If found, enqueue a `GantryJob` retrieving it into that warehouse's own staging buffer, from which the controller spawns the `TravelingItem` as described above.
 3. Otherwise, the request stays unfulfilled and retries on `RequesterHookType`'s next tick (or, for a terminal request, surfaces as "unavailable").
 
-Both cases need `PipeRouter.findRouteTo(level, from, to, resource): List<BlockPos>?` - a new routing mode alongside the existing `findRoute` (any accepting destination). This one's simpler than `findRoute`: with a known target, it's a shortest path *to* that position through the pipe network, not an evaluate-every-candidate search - no per-candidate filter/color/priority weighing needed along the way, since the destination isn't being chosen, it's given.
+Both cases need `PipeRouter.findRouteTo(level, from, to): List<BlockPos>?` - a new routing mode alongside the existing `findRoute` (any accepting destination). This one's simpler than `findRoute`: with a known target, it's a shortest path *to* that position through the pipe network, not an evaluate-every-candidate search - no per-candidate filter/color/priority weighing needed along the way (so no `resource` parameter either, unlike `findRoute`), since the destination isn't being chosen, it's given.
+
+Implemented as `RequesterHookState`/`ProviderHookState` (both under `pipe/hook/`, alongside M2's hooks) and `RequestFulfillment` (under `pipe/network/`, alongside `PipeRouter`) - `RequesterHookState.request` is a single item-storage slot doing double duty as the whole config: an empty slot means no standing order, a filled one's item identity and *stack count* are the requested resource and the quantity to keep stocked, no separate amount field or dedicated GUI needed.
 
 ## Terminal
 

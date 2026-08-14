@@ -5,6 +5,8 @@ import net.kernelpanicsoft.archie.util.itemProperties
 import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.PipeItem
@@ -30,6 +32,14 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val SortingHook by register("sorting_hook") {
 		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = SortingHookType.ID)
+	}
+
+	val ProviderHook by register("provider_hook") {
+		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = ProviderHookType.ID)
+	}
+
+	val RequesterHook by register("requester_hook") {
+		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = RequesterHookType.ID)
 	}
 
 	val WarehouseController by register("warehouse_controller") {

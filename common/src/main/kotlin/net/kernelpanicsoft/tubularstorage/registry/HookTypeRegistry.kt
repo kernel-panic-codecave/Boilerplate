@@ -4,6 +4,8 @@ import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.minecraft.core.Registry
 import net.minecraft.resources.ResourceKey
@@ -17,9 +19,12 @@ object HookTypeRegistry : ADeferredRegistryHolder<PipeHookType>(
 ) {
 	val Extraction: PipeHookType by register(ExtractionHookType.ID) { ExtractionHookType }
 	val Sorting: PipeHookType by register(SortingHookType.ID) { SortingHookType }
+	val Provider: PipeHookType by register(ProviderHookType.ID) { ProviderHookType }
+	val Requester: PipeHookType by register(RequesterHookType.ID) { RequesterHookType }
 
 	/**
-	 * Looks up a registered [PipeHookType] by its full id (e.g. [HookState.type]) - a real
+	 * Looks up a registered [PipeHookType] by its full id (e.g.
+	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState.type]) - a real
 	 * `ResourceLocation`, not assumed to be namespaced under Tubular Storage, so an addon mod's own
 	 * hook type resolves correctly too. Goes through the live
 	 * [Registrar][net.kernelpanicsoft.archie.registries.RegistrarHelper] rather than this holder's

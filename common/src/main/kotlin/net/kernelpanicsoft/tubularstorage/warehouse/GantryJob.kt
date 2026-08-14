@@ -13,8 +13,18 @@ sealed interface GantryJob {
 	val resource: ItemResource
 	val amount: Long
 
-	/** Move [resource]/[amount] from [slot]'s rack into the controller's own staging buffer. */
-	data class Retrieve(val slot: WarehouseIndex.RackSlotRef, override val resource: ItemResource, override val amount: Long) : GantryJob
+	/**
+	 * Move [resource]/[amount] from [slot]'s rack into the controller's own staging buffer. If
+	 * [deliverTo] is set (a request being fulfilled, see `RequestFulfillment`), the controller
+	 * attempts to ship it straight back out into a connected pipe once it lands in the buffer,
+	 * rather than leaving it there for the next put-away pass.
+	 */
+	data class Retrieve(
+		val slot: WarehouseIndex.RackSlotRef,
+		override val resource: ItemResource,
+		override val amount: Long,
+		val deliverTo: BlockPos? = null,
+	) : GantryJob
 
 	/** Move [resource]/[amount] from the controller's own staging buffer into the rack at [targetPos]/[targetDirection], resolved once up front rather than re-planned on arrival. */
 	data class Stow(

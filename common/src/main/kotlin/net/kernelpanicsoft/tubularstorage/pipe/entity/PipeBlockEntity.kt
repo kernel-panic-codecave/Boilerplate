@@ -21,7 +21,7 @@ import net.minecraft.world.level.block.state.BlockState
 /**
  * A plain pipe segment: holds and advances [TravelingItem]s in transit, and participates in the
  * [PipeNetworkManager] network. Carries no hooks - see
- * [net.kernelpanicsoft.tubularstorage.pipe.entity.PipeMountBlockEntity] for the (heavier, hook-
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity] for the (heavier, hook-
  * carrying) variant a plain pipe promotes into the moment it gets its first hook attached. Kept
  * separate rather than folding hooks onto every pipe unconditionally: hooks bring six always-
  * allocated 9-slot filter grids plus a synced map, real per-instance memory/NBT/tick cost a plain

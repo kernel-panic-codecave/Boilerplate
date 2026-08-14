@@ -66,6 +66,38 @@ object PipeRouter {
 
 	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = level.getBlockState(pos).block.let { (it !is HookBlock && it is PipeBlock) || (it is HookBlock && (level.getBlockEntity(pos) as HookBlockEntity).pipeBlockId != HookBlockEntity.NONE) }
 
+	/**
+	 * Returns the hop path (pipes, ending with [to]) from [from] to one *specific* destination,
+	 * rather than [findRoute]'s "any accepting destination" search - for request-based routing (see
+	 * `docs/design/m3-warehouse-storage.md`), where the destination is given (the requester), not
+	 * chosen. Simpler than [findRoute]: a plain shortest path through the pipe network, with no
+	 * per-candidate filter/color/priority evaluation along the way, and so no caching either -
+	 * unlike [findRoute]'s cache key, [to] varies per call rather than reflecting network topology
+	 * alone, so there's nothing stable to key a cache on.
+	 */
+	fun findRouteTo(level: ServerLevel, from: BlockPos, to: BlockPos): List<BlockPos>? {
+		val visited = hashSetOf(from)
+		val queue = ArrayDeque<Pair<BlockPos, List<BlockPos>>>()
+		queue += from to emptyList()
+		return stepTo(level, to, queue, visited)
+	}
+
+	private tailrec fun stepTo(
+		level: ServerLevel,
+		to: BlockPos,
+		queue: ArrayDeque<Pair<BlockPos, List<BlockPos>>>,
+		visited: HashSet<BlockPos>,
+	): List<BlockPos>? {
+		val (current, path) = queue.removeFirstOrNull() ?: return null
+		for (direction in Direction.entries) {
+			val neighborPos = current.relative(direction)
+			if (!visited.add(neighborPos)) continue
+			if (neighborPos == to) return path + neighborPos
+			if (isPipe(level, neighborPos)) queue += neighborPos to (path + neighborPos)
+		}
+		return stepTo(level, to, queue, visited)
+	}
+
 	private fun search(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor?, exclude: BlockPos?): List<BlockPos>? {
 		val visited = hashSetOf(from)
 		if (exclude != null) visited += exclude

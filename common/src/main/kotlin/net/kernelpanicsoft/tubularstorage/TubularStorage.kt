@@ -9,6 +9,7 @@ import net.kernelpanicsoft.archie.events.datagen.ADatagenEvents
 import net.kernelpanicsoft.archie.events.gametest.AGametestEvents
 import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
 import net.kernelpanicsoft.archie.serialization.SerializationManager
+import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.tubularstorage.datagen.TubularStorageDatagen
 import net.kernelpanicsoft.tubularstorage.gametest.TubularStorageGameTest
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
@@ -21,6 +22,7 @@ import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistrar
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.Direction
 import net.minecraft.world.item.DyeColor
 import org.slf4j.Logger
@@ -70,6 +72,8 @@ object TubularStorage {
 		ItemRegistry.init()
 		TileRegistry.init()
 		GuiRegistry.init()
+
+		TileRegistry.WarehouseController.exposeItemStorage(WarehouseControllerBlockEntity::stagingBuffer)
 
 		TubularStorageNetworkChannel.init()
 

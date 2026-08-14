@@ -1,12 +1,16 @@
 package net.kernelpanicsoft.tubularstorage.warehouse
 
+import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.archie.serialization.Sync
+import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.network.GantrySyncPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
@@ -14,9 +18,20 @@ import net.minecraft.world.phys.Vec3
 
 /**
  * A warehouse's single binding point - holds the [Bounds] volume a [WarehouseWandItem] defines for
- * it (see `docs/design/m3-warehouse-storage.md`), the [WarehouseIndex] built over that volume, and
- * the [GantryState] crane head that moves within it, and, from later M3 phases, the job queue
- * driving that gantry against the index.
+ * it, the [WarehouseIndex] built over that volume, the [GantryState] crane head that moves within
+ * it, and the [GantryJob] queue driving that gantry against the index (see
+ * `docs/design/m3-warehouse-storage.md`).
+ *
+ * Also the warehouse's own pipe-network interface, deliberately not a separate block: [stagingBuffer]
+ * is exposed to `ItemApi.BLOCK` (see [net.kernelpanicsoft.tubularstorage.TubularStorage.init]), so
+ * *inbound* deliveries need no warehouse-specific code at all - it's just another accepting
+ * destination as far as [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]/
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType] are concerned. New arrivals
+ * there get planned into a [GantryJob.Stow] the next idle tick. *Outbound* deliveries (from later
+ * M3 phases, once requester/provider hooks exist) are the controller's own job: find a connected
+ * pipe and inject a `TravelingItem` into it directly, the same thing
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType.tryExtract] already does to its
+ * own tile.
  */
 class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(TileRegistry.WarehouseController, pos, state) {
@@ -33,10 +48,21 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	val index: WarehouseIndex = WarehouseIndex()
 	val gantry: GantryState = GantryState(Vec3.atCenterOf(pos))
+	val stagingBuffer: ArchieItemStorage by itemField(STAGING_BUFFER_SIZE)
 
 	private var lastScannedBounds: Bounds? = null
 	private var ticksSinceAudit: Int = 0
 	private var ticksSinceGantrySync: Int = 0
+
+	private val jobs: ArrayDeque<GantryJob> = ArrayDeque()
+	private var activeJob: GantryJob? = null
+	private var pickedUp = false
+	private var carrying: Pair<ItemResource, Long>? = null
+
+	/** Queues a job retrieving [slot]'s [resource]/[amount] into [stagingBuffer] - for requester/provider hook fulfillment (later M3 phase) or manual testing. */
+	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, resource: ItemResource, amount: Long) {
+		jobs += GantryJob.Retrieve(slot, resource, amount)
+	}
 
 	/** Queues [gantry] motion to [target] via the current [bounds]' rail height - a no-op while unbound. */
 	fun moveGantryTo(target: BlockPos) {
@@ -47,8 +73,12 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
+
 		tickIndex(serverLevel)
-		tickGantry(serverLevel, pos)
+		val wasMoving = gantry.isMoving
+		if (wasMoving) gantry.tick()
+		tickGantrySync(serverLevel, pos)
+		if (!gantry.isMoving) tickJobs(serverLevel, pos)
 	}
 
 	private fun tickIndex(level: ServerLevel) {
@@ -72,10 +102,8 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		index.scheduleRescan(currentBounds)
 	}
 
-	private fun tickGantry(level: ServerLevel, pos: BlockPos) {
+	private fun tickGantrySync(level: ServerLevel, pos: BlockPos) {
 		if (!gantry.isMoving) return
-		gantry.tick()
-
 		ticksSinceGantrySync++
 		if (ticksSinceGantrySync < GANTRY_SYNC_INTERVAL_TICKS) return
 		ticksSinceGantrySync = 0
@@ -85,7 +113,95 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		)
 	}
 
+	/**
+	 * Advances the job queue by one step - dequeuing a fresh job (or planning a put-away, if none is
+	 * queued), completing the leg the gantry just arrived at, or starting the next one. Only called
+	 * while [gantry] is idle, so each call is exactly one leg of exactly one job.
+	 */
+	private fun tickJobs(level: ServerLevel, pos: BlockPos) {
+		val job = activeJob
+		if (job == null) {
+			val next = jobs.removeFirstOrNull() ?: run { planPutAway(level); return }
+			activeJob = next
+			pickedUp = false
+			moveGantryTo(sourcePos(next, pos))
+			return
+		}
+
+		if (!pickedUp) {
+			pickedUp = true
+			carrying = pickUp(level, job)
+			moveGantryTo(destinationPos(job, pos))
+			return
+		}
+
+		dropOff(level, job)
+		activeJob = null
+		carrying = null
+	}
+
+	private fun sourcePos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
+		is GantryJob.Retrieve -> job.slot.pos
+		is GantryJob.Stow -> controllerPos
+	}
+
+	private fun destinationPos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
+		is GantryJob.Retrieve -> controllerPos
+		is GantryJob.Stow -> job.targetPos
+	}
+
+	private fun pickUp(level: ServerLevel, job: GantryJob): Pair<ItemResource, Long>? = when (job) {
+		is GantryJob.Retrieve -> {
+			val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)
+			val extracted = storage?.extract(job.resource, job.amount, false) ?: 0
+			if (extracted > 0) job.resource to extracted else null
+		}
+		is GantryJob.Stow -> {
+			val extracted = stagingBuffer.extract(job.resource, job.amount, false)
+			if (extracted > 0) job.resource to extracted else null
+		}
+	}
+
+	private fun dropOff(level: ServerLevel, job: GantryJob) {
+		val (resource, amount) = carrying ?: return
+		when (job) {
+			is GantryJob.Retrieve -> stagingBuffer.insert(resource, amount, false)
+			is GantryJob.Stow -> {
+				val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
+				val inserted = storage?.insert(resource, amount, false) ?: 0
+				if (inserted < amount) stagingBuffer.insert(resource, amount - inserted, false)
+			}
+		}
+	}
+
+	/** Looks for anything sitting in [stagingBuffer] and, if a rack will take it, queues a [GantryJob.Stow] for it - one job per call, so a full buffer drains one item at a time across idle ticks rather than all at once. */
+	private fun planPutAway(level: ServerLevel) {
+		for (i in 0 until stagingBuffer.size()) {
+			val resource = stagingBuffer.getResource(i)
+			if (resource.isBlank) continue
+			val amount = stagingBuffer.getAmount(i)
+			if (amount <= 0) continue
+			val (targetPos, targetDirection) = bestRackFor(level, resource) ?: continue
+			jobs += GantryJob.Stow(targetPos, targetDirection, resource, amount)
+			return
+		}
+	}
+
+	/** An existing rack already holding [resource], if any (stack-with-existing preference), else the first bound position that will accept it. */
+	private fun bestRackFor(level: ServerLevel, resource: ItemResource): Pair<BlockPos, Direction?>? {
+		index.locations[resource]?.firstOrNull()?.let { return it.pos to it.direction }
+		val volume = bounds ?: return null
+		for (candidate in volume.positions()) {
+			if (candidate == blockPos) continue
+			val storage = ItemApi.BLOCK.find(level, candidate, null) ?: continue
+			if (storage.insert(resource, 1, true) > 0) return candidate to null
+		}
+		return null
+	}
+
 	companion object {
+		private const val STAGING_BUFFER_SIZE = 9
+
 		/** How often the background audit rescan runs to correct drift from racks touched by hand - 5 minutes at 20 TPS. */
 		private const val AUDIT_INTERVAL_TICKS = 6000
 

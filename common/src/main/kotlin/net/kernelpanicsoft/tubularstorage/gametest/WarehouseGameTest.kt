@@ -6,6 +6,7 @@ import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.Bounds
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseIndex
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
@@ -116,6 +117,53 @@ class WarehouseGameTest {
 			assertTrue(controller.gantry.pos.distanceTo(expected) < 0.01) {
 				"Expected the gantry to have arrived at $expected, got ${controller.gantry.pos}"
 			}
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testStagingBufferContentsGetPutAway() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val rackPos = BlockPos(3, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		controller.stagingBuffer.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 5, false)
+
+		succeedWhen {
+			val rack = getBlockEntity(rackPos) as ChestBlockEntity
+			assertTrue(rack.getItem(0).`is`(Items.DIAMOND) && rack.getItem(0).count == 5) {
+				"Expected 5 diamonds to have been stowed into the rack, got ${rack.getItem(0)}"
+			}
+			assertTrue(controller.stagingBuffer.getAmount(0) == 0L) {
+				"Expected the staging buffer to be empty after stowing, got amount ${controller.stagingBuffer.getAmount(0)}"
+			}
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testEnqueuedRetrieveDeliversToStagingBuffer() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val rackPos = BlockPos(3, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		val resource = ItemResource.of(ItemStack(Items.DIAMOND))
+		val slot = WarehouseIndex.RackSlotRef(absolutePos(rackPos), null, 5)
+		controller.enqueueRetrieve(slot, resource, 5)
+
+		succeedWhen {
+			assertTrue(controller.stagingBuffer.getAmount(0) == 5L && controller.stagingBuffer.getResource(0) == resource) {
+				"Expected 5 diamonds to have been retrieved into the staging buffer, got amount ${controller.stagingBuffer.getAmount(0)} resource ${controller.stagingBuffer.getResource(0)}"
+			}
+			val rack = getBlockEntity(rackPos) as ChestBlockEntity
+			assertTrue(rack.getItem(0).isEmpty) { "Expected the rack to be emptied by the retrieval, got ${rack.getItem(0)}" }
 		}
 	}
 }

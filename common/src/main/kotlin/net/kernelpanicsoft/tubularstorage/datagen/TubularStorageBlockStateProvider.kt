@@ -123,9 +123,10 @@ private fun ABlockStateProvider.hookModel(name: String) {
 
 /**
  * The warehouse terminal hook's own model - unlike [hookModel]'s small centered box, a full 16x16
- * face plate (a terminal panel bolted onto the pipe, not a plain fitting) sitting flush with a
- * connecting strut underneath it, same total depth as [hookModel]'s box so it doesn't clip through
- * or float clear of the pipe body it's attached to.
+ * face plate (a terminal panel bolted onto the pipe, not a plain fitting) at the outward end,
+ * facing away from the pipe core the same way every other hook's visible/interactable face does,
+ * with a short connecting strut bridging it back to the core. Same total depth as [hookModel]'s box
+ * so it doesn't clip through or float clear of the pipe body it's attached to.
  */
 private fun ABlockStateProvider.warehouseTerminalHookModel(name: String) {
 	val texture = TubularStorage.MOD % "block/$name"
@@ -134,13 +135,13 @@ private fun ABlockStateProvider.warehouseTerminalHookModel(name: String) {
 		texture("particle", texture)
 		texture("all", texture)
 		element {
-			from(6f, 6f, 0f)
-			to(10f, 10f, 4f)
+			from(6f, 6f, 2f)
+			to(10f, 10f, 6f)
 			allFaces { _, face -> face.texture("#all").uvs(0f, 0f, 16f, 16f) }
 		}
 		element {
-			from(0f, 0f, 4f)
-			to(16f, 16f, 6f)
+			from(0f, 0f, 0f)
+			to(16f, 16f, 2f)
 			allFaces { _, face -> face.texture("#all").uvs(0f, 0f, 16f, 16f) }
 		}
 	}

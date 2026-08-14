@@ -17,13 +17,12 @@ import net.minecraft.server.level.ServerLevel
  * network can route it somewhere that will accept it, spawns it as a [TravelingItem]. The only
  * self-initiating hook - a [SortingHookType] hook never pulls on its own.
  */
-object ExtractionHookType : PipeHookType() {
+object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "extraction"
 
 	override fun createState(): ExtractionHookState = ExtractionHookState()
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookHolderState) {
-		state as ExtractionHookState
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: ExtractionHookState) {
 		state.ticksSinceExtraction++
 		if (state.ticksSinceExtraction < EXTRACTION_INTERVAL_TICKS) return
 		state.ticksSinceExtraction = 0

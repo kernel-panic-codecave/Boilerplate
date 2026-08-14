@@ -15,13 +15,12 @@ import net.minecraft.server.level.ServerLevel
  * standing order and, if it's short, asks [RequestFulfillment] to top it back up - see
  * `docs/design/m3-warehouse-storage.md`.
  */
-object RequesterHookType : PipeHookType() {
+object RequesterHookType : PipeHookType<RequesterHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "requester"
 
 	override fun createState(): RequesterHookState = RequesterHookState()
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookHolderState) {
-		state as RequesterHookState
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: RequesterHookState) {
 		state.ticksSinceRequest++
 		if (state.ticksSinceRequest < REQUEST_INTERVAL_TICKS) return
 		state.ticksSinceRequest = 0

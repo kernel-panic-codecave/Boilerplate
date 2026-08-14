@@ -14,12 +14,12 @@ import net.minecraft.server.level.ServerLevel
  * own behavior and its own self-contained [HookHolderState] subclass, instead of a new standalone
  * block.
  */
-abstract class PipeHookType {
+abstract class PipeHookType<S : HookHolderState> {
 	/** Builds a fresh, default-valued state for a new attachment of this hook type. */
-	abstract fun createState(): HookHolderState
+	abstract fun createState(): S
 
 	/** Advances this hook's per-tick behavior, mutating [state] (already known to be this type's own [createState] result) in place. */
-	open fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookHolderState) {}
+	open fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: S) {}
 
 	/** Whether empty-hand right-clicking this hook's face opens [net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu]. */
 	open val hasMenu: Boolean = false

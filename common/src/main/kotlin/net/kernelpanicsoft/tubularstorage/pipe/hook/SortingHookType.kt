@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation
  * evaluation happens in [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter.search] when a
  * route is resolved, not on a per-tick basis.
  */
-object SortingHookType : PipeHookType() {
+object SortingHookType : PipeHookType<SortingHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "sorting"
 
 	override fun createState(): SortingHookState = SortingHookState()

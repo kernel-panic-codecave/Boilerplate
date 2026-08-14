@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.registry
 
 import net.kernelpanicsoft.archie.registries.RegistrarHelper
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType
 
 /**
@@ -11,5 +12,5 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType
  * Must be [init]ialized before [HookTypeRegistry].
  */
 object HookTypeRegistrar : RegistrarHelper(TubularStorage.MOD_ID) {
-	val HOOK_TYPE by registry<PipeHookType>("pipe_hook_type") { syncToClients() }
+	val HOOK_TYPE by registry<PipeHookType<out HookHolderState>>("pipe_hook_type") { syncToClients() }
 }

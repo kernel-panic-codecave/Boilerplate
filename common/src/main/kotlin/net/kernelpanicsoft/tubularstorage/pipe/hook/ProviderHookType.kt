@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation
  * passive: unlike [ExtractionHookType], a provider hook never initiates anything on its own, it's
  * only consulted while resolving a request.
  */
-object ProviderHookType : PipeHookType() {
+object ProviderHookType : PipeHookType<ProviderHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "provider"
 
 	override fun createState(): ProviderHookState = ProviderHookState()

@@ -7,6 +7,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.DirectionSerializer
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
+import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
+import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.block.Block
@@ -27,7 +29,29 @@ data class UpdateSortingRoutingPacket(val pos: SBlockPos, val direction: @Serial
 
 		hookState.routing = routing
 		tile.hooks.touch()
+		if (routing.priority == RoutingModule.DEFAULT_ROUTE_PRIORITY) clearOtherDefaultRoutes(level)
 		val state = level.getBlockState(pos)
 		level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
+	}
+
+	/** Enforces at most one [RoutingModule.DEFAULT_ROUTE_PRIORITY] sorting hook per network - resets any other hook already holding the sentinel (this update's own target excepted) back to baseline priority. */
+	private fun clearOtherDefaultRoutes(level: ServerLevel) {
+		val manager = PipeNetworkManager.get(level)
+		val networkId = manager.networkIdAt(pos) ?: return
+		val network = manager.network(networkId) ?: return
+
+		for (memberPos: BlockPos in network.members) {
+			val memberTile = level.getBlockEntity(memberPos) as? HookBlockEntity ?: continue
+			for ((directionName, entry) in memberTile.hooks) {
+				if (memberPos == pos && directionName == direction.name) continue
+				val otherState = entry as? SortingHookState ?: continue
+				if (otherState.routing.priority != RoutingModule.DEFAULT_ROUTE_PRIORITY) continue
+
+				otherState.routing = otherState.routing.copy(priority = 0)
+				memberTile.hooks.touch()
+				val memberState = level.getBlockState(memberPos)
+				level.sendBlockUpdated(memberPos, memberState, memberState, Block.UPDATE_CLIENTS)
+			}
+		}
 	}
 }

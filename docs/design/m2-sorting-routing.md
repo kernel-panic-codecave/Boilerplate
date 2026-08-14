@@ -2,6 +2,17 @@
 
 See [README.md](README.md) for shared conventions and [m1-pipe-network.md](m1-pipe-network.md) for the pipe network/BFS routing this extends — M2 does not add a new network type, it extends the pipe.
 
+## Hook taxonomy
+
+M2's `SortingHookType`/`ExtractionHookType` and M3's `RequesterHookType`/`ProviderHookType` (see [m3-warehouse-storage.md](m3-warehouse-storage.md#request-based-routing-logistics-pipes-requestprovider-pipes)) fall into a clean 2x2 once all four exist - source vs. sink, crossed with self-initiating ("active") vs. only-consulted-when-something-else-acts ("passive"):
+
+|                    | **Active** (initiates every tick/interval) | **Passive** (only acts when consulted) |
+|--------------------|---------------------------------------------|------------------------------------------|
+| **Provider** (source) | `ExtractionHookType` - pushes out on its own interval | `ProviderHookType` - available when a request finds it |
+| **Requester** (sink)  | `RequesterHookType` - issues standing-order pulls | `SortingHookType` - a push-model candidate destination, ranked by filter/priority |
+
+Not a design decision that shaped any one of the four - it fell out after M3's request-based hooks landed - but worth naming since it's a useful lens for where a *new* hook kind belongs: does it originate transfers on its own, or only respond to one already in flight; and is it a source or a sink for the resource in question.
+
 ## Module data
 
 M2's filter/priority/color config is one of `HookBlockEntity`'s per-face hooks (see [m1-pipe-network.md](m1-pipe-network.md#hooks-attachments-not-separate-blocks)) — a `SortingHookType` hook, attached to a specific face by right-clicking a `HookItem` against it, rather than a whole-pipe, one-time-unlock upgrade. Each hook type owns its own self-contained `HookHolderState` subclass, an `NBTHolder` in its own right (see [m1-pipe-network.md](m1-pipe-network.md#hooks-attachments-not-separate-blocks) for how `HookBlockEntity.hooks: NestedNBTHolderMap` holds heterogeneous entries keyed by `Direction.name`):
@@ -57,7 +68,16 @@ Filter grid entries are matched by item identity (`ItemResource.isOf(resource.it
 
 Routing cache key extended to `(networkId, network.version, resource, color, exclude)` (`exclude` already added in M1's own bugfix pass — see [m1-pipe-network.md](m1-pipe-network.md)).
 
+## Default route (Logistics Pipes homage)
+
+`RoutingModule.DEFAULT_ROUTE_PRIORITY` (`-1`) is a reserved sentinel below the normal `0`..`10` priority range - Logistics Pipes' Default Route, a catch-all sink that only wins when nothing else on the network accepts an item. Needed **zero** changes to `PipeRouter.search`'s candidate evaluation: `module.priority` was already a plain, sign-agnostic `Int` comparison, so a sorting hook set to `-1` (typically paired with blacklist mode and an empty filter, to accept anything) naturally loses to every other candidate and only gets chosen when it's the sole option. Any sorting-hook-guarded destination can claim it this way - including a bound warehouse's staging buffer (see [m3-warehouse-storage.md](m3-warehouse-storage.md)), with no warehouse-specific routing code needed either.
+
+Only one sorting hook per network may hold the sentinel at a time: `UpdateSortingRoutingPacket.handleOnServer`, when applying an edit that sets it, walks the network's members and resets any *other* hook already holding it back to `0`. Enforced at assignment time only, not on network-topology changes - see "Deferred to playtesting" below for the merge edge case this leaves open.
+
+Caught a real, previously-latent bug along the way: `FilterMode` (a plain Kotlin enum) relied on kotlinx.serialization's default `encodeEnum`, which knbt's `AbstractNbtEncoder` never overrides - it silently "worked" only because `FilterMode.WHITELIST` is the field's declared default, which kotlinx.serialization skips encoding entirely; `BLACKLIST` (or any explicit non-default enum value nested this way) crashed the instant something actually tried to persist it. Fixed with `FilterModeSerializer`, encoding by name via `encodeString`/`decodeString` - the same workaround `DirectionSerializer`/`DyeColorSerializer` already use for the same underlying knbt gap.
+
 ## Deferred to playtesting / not blocking
 
 - Priority as a 0–10 slider vs. discrete tiers (Highest/High/Normal/Low) — UX polish, not architecture.
 - Filter matching by item identity only (not data components) — revisit if a use case needs it.
+- **Default route uniqueness across a network merge**: `RoutingModule.DEFAULT_ROUTE_PRIORITY`'s "only one per network" is enforced only when a hook's priority is *set* (`UpdateSortingRoutingPacket` walks the network and clears any other holder) - not when two networks each already holding one get physically joined by a new pipe, since `PipeNetworkManager`'s merge path is deliberately hook-semantics-agnostic (pure topology bookkeeping). Post-merge, both survive until either is touched again; `PipeRouter.search`'s existing fewest-hops tie-break picks one deterministically in the meantime, so this is a soft inconsistency, not a crash or silent data loss. Revisit only if it proves to matter in practice.

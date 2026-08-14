@@ -76,11 +76,12 @@ class SortingPipeScreen(private val menu: SortingPipeMenu, playerInventory: Inve
 							onSelected = { update(module.copy(mode = it)) },
 						)
 
-						Text(Component.literal("Priority: ${module.priority}"), dropShadow = false)
+						val priorityLabel = if (module.priority == RoutingModule.DEFAULT_ROUTE_PRIORITY) "Default Route" else module.priority.toString()
+						Text(Component.literal("Priority: $priorityLabel"), dropShadow = false)
 						Slider(
-							value = module.priority.toFloat() / PRIORITY_MAX,
-							onValueChange = { update(module.copy(priority = (it * PRIORITY_MAX).roundToInt())) },
-							steps = PRIORITY_MAX,
+							value = (module.priority - PRIORITY_MIN).toFloat() / PRIORITY_RANGE,
+							onValueChange = { update(module.copy(priority = PRIORITY_MIN + (it * PRIORITY_RANGE).roundToInt())) },
+							steps = PRIORITY_RANGE,
 							modifier = Modifier.width(contentWidth),
 						)
 
@@ -102,6 +103,8 @@ class SortingPipeScreen(private val menu: SortingPipeMenu, playerInventory: Inve
 	}
 
 	companion object {
+		private const val PRIORITY_MIN = RoutingModule.DEFAULT_ROUTE_PRIORITY
 		private const val PRIORITY_MAX = 10
+		private const val PRIORITY_RANGE = PRIORITY_MAX - PRIORITY_MIN
 	}
 }

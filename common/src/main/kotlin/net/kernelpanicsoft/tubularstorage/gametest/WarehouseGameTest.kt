@@ -2,9 +2,14 @@ package net.kernelpanicsoft.tubularstorage.gametest
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
+import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
+import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.Bounds
@@ -198,6 +203,38 @@ class WarehouseGameTest {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
 			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 4) {
 				"Expected 4 diamonds pulled from the warehouse to have arrived, got ${dest.getItem(0)}"
+			}
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testWarehouseCanClaimTheDefaultRoute() {
+		val sourcePos = BlockPos(0, 2, 0)
+		val extractorPos = BlockPos(0, 2, 1)
+		val defaultHookPos = BlockPos(0, 2, 2)
+		val controllerPos = BlockPos(0, 2, 3)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(defaultHookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
+		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+
+		// The warehouse claims the network's default route the same way any other destination
+		// would - a sorting hook on the pipe facing it, at the reserved sentinel priority. No
+		// warehouse-specific mechanism needed.
+		val defaultHook = getBlockEntity(defaultHookPos) as HookBlockEntity
+		defaultHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val defaultState = defaultHook.hooks.getOrPut(Direction.SOUTH.name) { SortingHookType.createState() } as SortingHookState
+		defaultState.routing = RoutingModule(mode = FilterMode.BLACKLIST, priority = RoutingModule.DEFAULT_ROUTE_PRIORITY)
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		succeedWhen {
+			assertTrue(controller.stagingBuffer.getAmount(0) == 8L) {
+				"Expected 8 diamonds with nowhere else to go to have landed in the warehouse claiming the default route, got amount ${controller.stagingBuffer.getAmount(0)}"
 			}
 		}
 	}

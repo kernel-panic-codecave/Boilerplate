@@ -28,7 +28,6 @@ import net.minecraft.world.level.GameType
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
 import net.minecraft.world.phys.Vec3
-import java.util.UUID
 
 /** GameTest coverage for [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem]'s bind flow. */
 @Suppress("unused")
@@ -412,6 +411,79 @@ class WarehouseGameTest {
 				"Expected the 5 diamonds to still be sitting in the outbound buffer since no pipe could route to the target, got amount ${controller.outboundBuffer.getAmount(0)} resource ${controller.outboundBuffer.getResource(0)}"
 			}
 			assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished its trip home by now" }
+		}
+	}
+
+	/**
+	 * `bestRackFor` used to trust an already-indexed entry blindly, without re-checking it still had
+	 * room - here, [fullRackPos] is indexed as already holding the resource (as if scanned before it
+	 * filled up), but is actually completely full. The old bug: every `planPutAway` pass kept picking
+	 * it anyway, the resulting `Stow` failed, the leftover went straight back into `inboundBuffer`,
+	 * and the very next pass repeated the exact same failing choice - the gantry cycling an item in
+	 * and out of the buffer forever instead of ever reaching [emptyRackPos], which has room.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testPutAwaySkipsFullIndexedRackForOneWithRoom() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val fullRackPos = BlockPos(1, 2, 0)
+		val emptyRackPos = BlockPos(4, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(fullRackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(emptyRackPos, Blocks.CHEST.defaultBlockState())
+
+		val fullRack = getBlockEntity(fullRackPos) as ChestBlockEntity
+		for (slot in 0 until 27) fullRack.setItem(slot, ItemStack(Items.DIAMOND, 64))
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		val resource = ItemResource.of(ItemStack(Items.DIAMOND))
+		controller.index.recordInsertion(resource, absolutePos(fullRackPos), null, 27L * 64L)
+		controller.inboundBuffer.insert(resource, 5, false)
+
+		succeedWhen {
+			val emptyRack = getBlockEntity(emptyRackPos) as ChestBlockEntity
+			assertTrue(emptyRack.getItem(0).`is`(Items.DIAMOND) && emptyRack.getItem(0).count == 5) {
+				"Expected the 5 diamonds to have been stowed into the rack with room instead of endlessly retrying the full one, got ${emptyRack.getItem(0)}"
+			}
+			assertTrue(controller.inboundBuffer.getAmount(0) == 0L) {
+				"Expected the inbound buffer to be empty, not stuck cycling the item back in, got amount ${controller.inboundBuffer.getAmount(0)}"
+			}
+			assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished and returned home by now" }
+		}
+	}
+
+	/**
+	 * When choosing an *empty* rack (no existing indexed entry to stack with), `bestRackFor` should
+	 * prefer the one nearest the controller rather than whatever [Bounds.positions] happens to visit
+	 * first. [farRackPos] sits at `z = 0` (visited early - `z` is [net.minecraft.core.BlockPos.betweenClosed]'s
+	 * slowest-varying, outermost axis) but is spatially far from [controllerPos]; [nearRackPos] sits
+	 * right next to the controller but at `z = 4`, so it's visited late in raw scan order. A distance
+	 * sort has to actually be happening for the near one to win.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testPutAwayPrefersNearestEmptyRack() {
+		val controllerPos = BlockPos(0, 2, 4)
+		val cornerTwoPos = BlockPos(4, 3, 0)
+		val nearRackPos = BlockPos(1, 2, 4)
+		val farRackPos = BlockPos(4, 2, 0)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(nearRackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(farRackPos, Blocks.CHEST.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		controller.inboundBuffer.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 5, false)
+
+		succeedWhen {
+			val nearRack = getBlockEntity(nearRackPos) as ChestBlockEntity
+			val farRack = getBlockEntity(farRackPos) as ChestBlockEntity
+			assertTrue(nearRack.getItem(0).`is`(Items.DIAMOND) && nearRack.getItem(0).count == 5) {
+				"Expected the 5 diamonds to have been stowed into the nearer rack, got ${nearRack.getItem(0)}"
+			}
+			assertTrue(farRack.getItem(0).isEmpty) {
+				"Expected the farther rack to have been left untouched, got ${farRack.getItem(0)}"
+			}
 		}
 	}
 }

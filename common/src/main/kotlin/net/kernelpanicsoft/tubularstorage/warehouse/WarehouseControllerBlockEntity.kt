@@ -65,6 +65,15 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			}
 		}
 
+	override fun setRemoved()
+	{
+		super.setRemoved()
+		val level = level
+		if (level != null && !level.isClientSide) {
+			bounds?.let { removeFrame(level, it) }
+		}
+	}
+
 	private fun placeFrame(level: Level, bounds: Bounds) {
 		for (framePos in bounds.railPerimeter()) {
 			if (framePos == blockPos) continue
@@ -272,12 +281,26 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
-	/** An existing rack already holding [resource], if any (stack-with-existing preference), else the first bound position that will accept it. */
+	/**
+	 * An existing rack already holding [resource] that still has room (stack-with-existing
+	 * preference), else the nearest bound position to [blockPos] that will accept it - so an empty
+	 * warehouse fills outward from the controller rather than in whatever raw scan order
+	 * [Bounds.positions] happens to return, shortening the average trip. Actually re-checks room via
+	 * a simulated insert rather than trusting [WarehouseIndex.locations] blindly - an indexed entry
+	 * only records the last-known amount, not remaining capacity, so a rack that's since filled up
+	 * would otherwise keep getting chosen forever: the resulting `Stow` fails, the leftover goes
+	 * straight back into [inboundBuffer], and the next [planPutAway] pass picks the very same full
+	 * rack again, cycling the gantry in and out of the buffer indefinitely instead of ever reaching a
+	 * rack with space.
+	 */
 	private fun bestRackFor(level: ServerLevel, resource: ItemResource): Pair<BlockPos, Direction?>? {
-		index.locations[resource]?.firstOrNull()?.let { return it.pos to it.direction }
+		for (entry in index.locations[resource].orEmpty()) {
+			val storage = ItemApi.BLOCK.find(level, entry.pos, entry.direction) ?: continue
+			if (storage.insert(resource, 1, true) > 0) return entry.pos to entry.direction
+		}
 		val volume = bounds ?: return null
-		for (candidate in volume.positions()) {
-			if (candidate == blockPos) continue
+		val candidates = volume.positions().filter { it != blockPos }.sortedBy { it.distSqr(blockPos) }
+		for (candidate in candidates) {
 			val storage = ItemApi.BLOCK.find(level, candidate, null) ?: continue
 			if (storage.insert(resource, 1, true) > 0) return candidate to null
 		}

@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.tubularstorage.gametest
 
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
@@ -10,7 +11,10 @@ import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 import net.minecraft.world.level.GameType
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.entity.ChestBlockEntity
 
 /** GameTest coverage for [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem]'s bind flow. */
 @Suppress("unused")
@@ -65,5 +69,31 @@ class WarehouseGameTest {
 		}
 
 		succeed()
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 40)
+	fun GameTestHelper.testControllerIndexesRacksInsideBoundsOnly() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val insideChestPos = BlockPos(1, 2, 0)
+		val outsideChestPos = BlockPos(3, 2, 3)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(insideChestPos, Blocks.CHEST.defaultBlockState())
+		setBlock(outsideChestPos, Blocks.CHEST.defaultBlockState())
+
+		(getBlockEntity(insideChestPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
+		(getBlockEntity(outsideChestPos) as ChestBlockEntity).setItem(0, ItemStack(Items.GOLD_INGOT, 3))
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(insideChestPos))
+
+		succeedWhen {
+			val diamondEntries = controller.index.locations[ItemResource.of(ItemStack(Items.DIAMOND))]
+			assertTrue(diamondEntries != null && diamondEntries.size == 1 && diamondEntries[0].amount == 5L) {
+				"Expected one indexed diamond entry with amount 5, got $diamondEntries"
+			}
+			assertTrue(controller.index.locations[ItemResource.of(ItemStack(Items.GOLD_INGOT))] == null) {
+				"Expected the gold ingot outside the bound volume to not be indexed"
+			}
+		}
 	}
 }

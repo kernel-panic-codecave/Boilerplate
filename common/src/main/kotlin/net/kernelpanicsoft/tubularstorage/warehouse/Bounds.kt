@@ -16,8 +16,13 @@ data class Bounds(val min: SBlockPos, val max: SBlockPos) {
 	operator fun contains(pos: BlockPos): Boolean =
 		pos.x in min.x..max.x && pos.y in min.y..max.y && pos.z in min.z..max.z
 
-	/** Every position inside this volume, inclusive of both corners. */
-	fun positions(): Iterable<BlockPos> = BlockPos.betweenClosed(min, max)
+	/**
+	 * Every position inside this volume, inclusive of both corners, as distinct immutable
+	 * [BlockPos]s - [BlockPos.betweenClosed] hands back the same mutable cursor object on every
+	 * step, so callers that store/collect the result (rather than consume each position immediately
+	 * inside the loop) need copies, not the raw cursor.
+	 */
+	fun positions(): List<BlockPos> = BlockPos.betweenClosed(min, max).map { it.immutable() }
 
 	/** [min]/[max] as a vanilla [BoundingBox], for APIs that expect one. */
 	fun toBoundingBox(): BoundingBox = BoundingBox(min.x, min.y, min.z, max.x, max.y, max.z)

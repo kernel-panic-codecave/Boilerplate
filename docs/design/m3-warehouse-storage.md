@@ -41,6 +41,7 @@ Single crane per controller in v1 — multi-gantry parallelism is a stretch upgr
 
 - A pipe-network-facing `WarehouseInterfaceBlock`, which **queues** rather than instantly completing CSL calls — physical travel time is the point.
 - The search/retrieval terminal (below).
+- A **defrag** request (terminal button or standalone item, TBD): for each `ItemResource` with more than one `RackSlotRef` in the index, enqueues move-jobs consolidating it into the fewest slots/racks (biggest partial stacks absorb the smallest first), freeing up whole racks the same way disk defragmentation frees contiguous space. Purely a batch of ordinary insert/extract jobs against the existing queue — no new gantry/job machinery needed, just a planner that reads `WarehouseIndex.locations` and emits jobs. Runs opportunistically (low job-queue priority) rather than blocking other requests, since it's housekeeping, not time-critical.
 
 ## Terminal
 

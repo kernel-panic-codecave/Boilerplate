@@ -238,4 +238,43 @@ class WarehouseGameTest {
 			}
 		}
 	}
+
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testStaleIndexEntryDroppedAfterRackDepletedByHand() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val rackPos = BlockPos(3, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		val resource = ItemResource.of(ItemStack(Items.DIAMOND))
+
+		// Wait for the initial rescan to actually index the rack (rather than constructing a
+		// RackSlotRef by hand), then simulate a player emptying it directly - exactly the drift the
+		// design's own low-frequency audit rescan exists to correct, but that's minutes away. A
+		// second request against the now-stale entry shouldn't have to wait for it, or it'll keep
+		// re-discovering the same dead slot and sending the gantry back and forth forever.
+		runAfterDelay(10) {
+			val indexed = controller.index.locations[resource]?.firstOrNull()
+			assertTrue(indexed != null && indexed.amount == 5L) {
+				"Expected the initial rescan to have indexed 5 diamonds, got $indexed"
+			}
+			(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack.EMPTY)
+			controller.enqueueRetrieve(indexed!!, resource, 5)
+
+			runAfterDelay(100) {
+				assertTrue(controller.stagingBuffer.getAmount(0) == 0L) {
+					"Expected nothing to have been retrieved from the now-empty rack, got amount ${controller.stagingBuffer.getAmount(0)}"
+				}
+				assertTrue(controller.index.locations[resource].isNullOrEmpty()) {
+					"Expected the stale index entry to have been dropped after the failed retrieval, got ${controller.index.locations[resource]}"
+				}
+				assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished its trip home by now" }
+				succeed()
+			}
+		}
+	}
 }

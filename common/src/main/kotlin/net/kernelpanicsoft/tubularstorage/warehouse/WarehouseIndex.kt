@@ -22,8 +22,8 @@ import net.minecraft.server.level.ServerLevel
  * Purely a runtime cache, not persisted - rebuilt from the world on load and on every rebind, the
  * same "derive from what's actually there" approach
  * [net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager] uses for the pipe network.
- * Steady-state gantry pick/place mutates the affected [RackSlotRef] in O(1) instead of rescanning
- * (from a later M3 phase, once the gantry exists); [scheduleRescan] is for a rebind or the
+ * Steady-state gantry pick/place mutates the affected [RackSlotRef] in O(1) via [recordExtraction]/
+ * [recordInsertion] instead of rescanning; [scheduleRescan] is only for a rebind or the
  * low-frequency background audit that corrects drift from racks touched by hand.
  */
 class WarehouseIndex {
@@ -67,6 +67,40 @@ class WarehouseIndex {
 			scanPosition(level, pos, pending)
 			budget--
 		}
+	}
+
+	/**
+	 * Records that a gantry retrieval asked for [requested] of [resource] at [pos]/[direction] and
+	 * actually got [extracted] - the O(1) steady-state update a completed
+	 * [WarehouseControllerBlockEntity]'s retrieval leg makes instead of waiting for the next
+	 * [scheduleRescan]. If [extracted] fell short of [requested] (including `0`, a slot the
+	 * scanner *thought* had something but turned out not to - the trigger for a real bug: a
+	 * requester repeatedly re-discovering the same dead entry and endlessly sending the gantry
+	 * back to it), the entry is dropped outright rather than merely decremented, since direct
+	 * observation just proved the cached amount was wrong regardless of what it said.
+	 */
+	fun recordExtraction(resource: ItemResource, pos: BlockPos, direction: Direction?, requested: Long, extracted: Long) {
+		val entries = locations[resource] ?: return
+		val entry = entries.find { it.pos == pos && it.direction == direction } ?: return
+		entry.amount -= extracted
+		if (extracted < requested || entry.amount <= 0) removeEntry(resource, entries, entry)
+	}
+
+	/** Records that a gantry stow delivered [amount] of [resource] into the rack at [pos]/[direction] - the O(1) counterpart to [recordExtraction], merging into an existing entry there or adding a new one. */
+	fun recordInsertion(resource: ItemResource, pos: BlockPos, direction: Direction?, amount: Long) {
+		if (amount <= 0) return
+		val entries = locations[resource] ?: emptyList()
+		val existing = entries.find { it.pos == pos && it.direction == direction }
+		if (existing != null) {
+			existing.amount += amount
+		} else {
+			locations = locations + (resource to (entries + RackSlotRef(pos, direction, amount)))
+		}
+	}
+
+	private fun removeEntry(resource: ItemResource, entries: List<RackSlotRef>, entry: RackSlotRef) {
+		val updated = entries - entry
+		locations = if (updated.isEmpty()) locations - resource else locations + (resource to updated)
 	}
 
 	private fun scanPosition(level: ServerLevel, pos: BlockPos, into: MutableMap<ItemResource, MutableList<RackSlotRef>>) {

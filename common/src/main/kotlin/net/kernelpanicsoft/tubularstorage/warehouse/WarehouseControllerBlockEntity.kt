@@ -118,8 +118,11 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	/**
 	 * Advances the job queue by one step - dequeuing a fresh job (or planning a put-away, if none is
-	 * queued), completing the leg the gantry just arrived at, or starting the next one. Only called
-	 * while [gantry] is idle, so each call is exactly one leg of exactly one job.
+	 * queued), completing the leg the gantry just arrived at, or starting the next one. Every job
+	 * ends with the gantry heading back to [pos] (its home position) once it's done - whether that's
+	 * a genuine drop-off or an aborted pickup with nothing to carry - rather than sitting wherever it
+	 * last visited. Only called while [gantry] is idle, so each call is exactly one leg of exactly
+	 * one job (or the trip home after one).
 	 */
 	private fun tickJobs(level: ServerLevel, pos: BlockPos) {
 		val job = activeJob
@@ -134,6 +137,13 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		if (!pickedUp) {
 			pickedUp = true
 			carrying = pickUp(level, job)
+			if (carrying == null) {
+				// Nothing there to pick up - skip straight to heading home instead of visiting the
+				// (pointless) destination first.
+				activeJob = null
+				moveGantryTo(pos)
+				return
+			}
 			moveGantryTo(destinationPos(job, pos))
 			return
 		}
@@ -141,6 +151,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		dropOff(level, pos, job)
 		activeJob = null
 		carrying = null
+		moveGantryTo(pos)
 	}
 
 	private fun sourcePos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
@@ -157,6 +168,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		is GantryJob.Retrieve -> {
 			val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)
 			val extracted = storage?.extract(job.resource, job.amount, false) ?: 0
+			index.recordExtraction(job.resource, job.slot.pos, job.slot.direction, job.amount, extracted)
 			if (extracted > 0) job.resource to extracted else null
 		}
 		is GantryJob.Stow -> {
@@ -175,6 +187,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			is GantryJob.Stow -> {
 				val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
 				val inserted = storage?.insert(resource, amount, false) ?: 0
+				index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
 				if (inserted < amount) stagingBuffer.insert(resource, amount - inserted, false)
 			}
 		}

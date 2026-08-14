@@ -42,6 +42,27 @@ import net.minecraft.world.phys.shapes.VoxelShape
  */
 open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 
+	/**
+	 * Whether this pipe type's contents are visible in transit - see
+	 * [net.kernelpanicsoft.tubularstorage.pipe.client.TravelingItemRenderer]. False for the plain
+	 * (opaque) tier; [GlassPipeBlock] overrides it. Consulted by
+	 * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer] too, off whatever
+	 * pipe type a [HookBlock] was promoted from, so a promoted glass pipe keeps showing its
+	 * contents and a promoted opaque one doesn't - the trait belongs to the pipe type, not to
+	 * whether a hook happens to be attached.
+	 */
+	open val showsTravelingItems: Boolean = false
+
+	/**
+	 * Whether this pipe type's body should render translucent rather than solid. False for the
+	 * plain (opaque) tier; [GlassPipeBlock] overrides it. A plain `Boolean`, not a
+	 * `net.minecraft.client.renderer.RenderType`, deliberately - that type is client-only, and this
+	 * class is loaded on a dedicated server too; [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]
+	 * (client-only itself) is what actually maps this to a real `RenderType` for a [HookBlock]
+	 * promoted from this pipe type, exactly like [showsTravelingItems] above.
+	 */
+	open val isTranslucent: Boolean = false
+
 	init {
 		registerDefaultState(propertiesByDirection.values.fold(stateDefinition.any()) { state, property -> state.setValue(property, false) })
 	}

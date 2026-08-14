@@ -11,6 +11,7 @@ import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
+import net.minecraft.client.renderer.entity.ItemRenderer
 import net.minecraft.client.resources.model.ModelResourceLocation
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
@@ -36,20 +37,33 @@ import org.joml.Quaternionf
  * one - no pipe type does today, and doing so safely means synthesizing a throwaway block entity
  * per hook block per frame just to ask. If a pipe type ever needs one, that's the fallback below
  * (baked-model [modelRenderer.tesselateBlock]) to extend, not a new code path.
+ *
+ * Additionally renders [tile]'s carried [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem]s
+ * via [TravelingItemRenderer] if [HookBlockEntity.pipeBlockId] resolves to a pipe type whose
+ * [PipeBlock.showsTravelingItems] is true - a hook attached to a glass pipe keeps showing its
+ * contents, one attached to an opaque pipe doesn't, exactly like an unhooked pipe of either type.
+ * The pipe body itself is drawn into [PipeBlock.isTranslucent]'s corresponding buffer too, so a
+ * hook on a translucent pipe type renders its body translucent rather than solid; hooks themselves
+ * always render solid regardless, on their own buffer, since a hook is a separate physical
+ * attachment rather than part of the (possibly see-through) tube.
  */
 class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) : BlockEntityRenderer<HookBlockEntity> {
 	private val blockModelShaper = context.blockRenderDispatcher.blockModelShaper
 	private val modelManager = blockModelShaper.modelManager
 	private val modelRenderer = context.blockRenderDispatcher.modelRenderer
+	private val itemRenderer: ItemRenderer = context.itemRenderer
 
 	override fun render(tile: HookBlockEntity, partialTick: Float, poseStack: PoseStack, bufferSource: MultiBufferSource, packedLight: Int, packedOverlay: Int) {
 		val level = tile.level ?: return
-		val consumer = bufferSource.getBuffer(RenderType.solid())
 
-		val pipeState = pipeStateFor(tile)
+		val pipeBlock = BuiltInRegistries.BLOCK.get(tile.pipeBlockId) as? PipeBlock ?: BlockRegistry.Pipe
+		val pipeState = pipeStateFor(tile, pipeBlock)
 		val pipeModel = blockModelShaper.getBlockModel(pipeState)
-		modelRenderer.tesselateBlock(level, pipeModel, pipeState, tile.blockPos, poseStack, consumer, false, RandomSource.create(), tile.blockPos.asLong(), packedOverlay)
+		val pipeRenderType = if (pipeBlock.isTranslucent) RenderType.translucent() else RenderType.solid()
+		val pipeConsumer = bufferSource.getBuffer(pipeRenderType)
+		modelRenderer.tesselateBlock(level, pipeModel, pipeState, tile.blockPos, poseStack, pipeConsumer, false, RandomSource.create(), tile.blockPos.asLong(), packedOverlay)
 
+		val hookConsumer = bufferSource.getBuffer(RenderType.solid())
 		for ((directionName, hookState) in tile.hooks) {
 			val direction = Direction.valueOf(directionName)
 			val model = modelManager.getModel(modelIdFor(hookState.type))
@@ -58,23 +72,28 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 			poseStack.translate(0.5, 0.5, 0.5)
 			poseStack.mulPose(rotationFor(direction))
 			poseStack.translate(-0.5, -0.5, -0.5)
-			modelRenderer.tesselateBlock(level, model, tile.blockState, tile.blockPos, poseStack, consumer, false, RandomSource.create(), tile.blockPos.asLong(), packedOverlay)
+			modelRenderer.tesselateBlock(level, model, tile.blockState, tile.blockPos, poseStack, hookConsumer, false, RandomSource.create(), tile.blockPos.asLong(), packedOverlay)
 			poseStack.popPose()
+		}
+
+		if (pipeBlock.showsTravelingItems) {
+			TravelingItemRenderer.render(
+				PipeContentsClientCache.get(tile.blockPos), itemRenderer, level, tile.blockPos,
+				poseStack, bufferSource, packedLight, packedOverlay, partialTick,
+			)
 		}
 	}
 
 	/**
-	 * [HookBlockEntity.pipeBlockId]'s own default state, with each direction connected only if
-	 * [tile] is actually connected there *and* has no hook attached - an attached hook takes that
-	 * arm's place rather than clipping through it, mirroring what a plain (hookless) pipe of that
-	 * type would show for the same connections.
+	 * [pipeBlock]'s own default state, with each direction connected only if [tile] is actually
+	 * connected there *and* has no hook attached - an attached hook takes that arm's place rather
+	 * than clipping through it, mirroring what a plain (hookless) pipe of that type would show for
+	 * the same connections.
 	 */
-	private fun pipeStateFor(tile: HookBlockEntity): BlockState {
-		val pipeBlock = BuiltInRegistries.BLOCK.get(tile.pipeBlockId) as? PipeBlock ?: BlockRegistry.Pipe
-		return PipeBlock.propertiesByDirection.entries.fold(pipeBlock.defaultBlockState()) { state, (direction, property) ->
+	private fun pipeStateFor(tile: HookBlockEntity, pipeBlock: PipeBlock): BlockState =
+		PipeBlock.propertiesByDirection.entries.fold(pipeBlock.defaultBlockState()) { state, (direction, property) ->
 			state.setValue(property, tile.blockState.getValue(property) && !tile.hooks.containsKey(direction.name))
 		}
-	}
 
 	/**
 	 * `mymod:extraction` -> the `inventory` variant of `mymod:extraction_hook`'s item model - the

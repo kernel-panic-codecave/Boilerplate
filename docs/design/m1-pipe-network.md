@@ -83,10 +83,28 @@ Not per-item Dijkstra. Each extraction hook's pull resolves a target via plain B
 
 Sync is skipped entirely for a pipe that's idle (no items, nothing hopped this tick) rather than pinging empty state on the 4-tick timer regardless — every placed pipe ticks, so unconditional periodic sync means every idle pipe on a build broadcasts nothing-happened packets forever.
 
+## Pipe tiers: opaque vs. glass
+
+`PipeBlock` declares two traits an alternate tier can override - both plain `Boolean`s, never a `net.minecraft.client.renderer.RenderType` or other client-only type, since `PipeBlock` itself loads on a dedicated server too:
+
+- `showsTravelingItems` — whether this tier's contents are visible in transit at all.
+- `isTranslucent` — whether this tier's body renders into the translucent buffer rather than solid.
+
+`GlassPipeBlock : PipeBlock` sets both `true`; the plain (opaque) tier leaves both `false`. Mechanically identical to a plain pipe (same connection logic, shape, network participation - inherited unchanged); only its own `TileRegistry.GlassPipe` block entity type (`GlassPipeBlockEntity`, otherwise just a `PipeBlockEntity` with no fields of its own) and blockstate/models differ, registered translucent client-side via Architectury's `RenderTypeRegistry.register(RenderType.translucent(), GlassPipe)` (`BlockRegistry.initClient()`) and per-model `"render_type": "minecraft:translucent"` in `glass_pipe_core.json`/`glass_pipe_arm.json`. A second pipe type needing genuinely different behavior (not just visuals) is still just another `PipeBlock` subclass with its own blockstate/models - no hook-side changes needed, since `HookBlock`/`HookBlockEntity.pipeBlockId` and the renderer below are already generic over whatever `PipeBlock` a hook was promoted from.
+
+### Traveling items in flight
+
+`TravelingItemRenderer` (a plain object, not tied to any block entity type) draws each `TravelingItem` as a small floating item, spinning slowly, moving in a straight line from the face it entered through (`fromDirection`) toward the face it's headed to next (`path.firstOrNull()`, resolved back to a `Direction`) - a straight lerp through a bend's corner rather than following the bend's own curve, an accepted simplification. Reads `PipeContentsClientCache`, not `PipeBlockEntity.travelingItems` directly (server-authoritative, never `@Sync`); `PipeContentsClientCache.get` dead-reckons `progress` forward by elapsed time since the last sync packet using the same `SEGMENT_SPEED`, so motion stays smooth between syncs instead of stepping every 4 ticks.
+
+Two call sites share this, deliberately via composition rather than a common renderer base class - the shared piece (given a list of items and a position, draw them) is narrow and stateless, and the two renderers' surrounding responsibilities are otherwise unrelated (one draws nothing else at all, the other draws a pipe body and hooks):
+
+- `TravelingItemBlockEntityRenderer` — registered only for `TileRegistry.GlassPipe`, so the cost never applies to a plain (opaque) pipe.
+- `PipeHookBlockEntityRenderer` — additionally calls it (and picks the pipe-body buffer via `isTranslucent`) if the resolved `pipeBlockId` block's `showsTravelingItems`/`isTranslucent` say so, so a hook promoted from a glass pipe keeps showing its contents translucently and one promoted from an opaque pipe doesn't - the trait belongs to the pipe type, not to whether a hook happens to be attached. Hooks themselves always render solid on their own buffer regardless, being separate physical attachments rather than part of the tube.
+
 ## Deferred to playtesting / not blocking
 
 - Stall/backpressure behavior tuning beyond "retry every tick, then jam."
-- Pipe tier speed/art (brass/copper/lead, speed-per-tier) - the `pipeBlockId`/BER-driven rendering above is specifically laid out so a second pipe type (e.g. a glass tier, rendering its own contents/traveling items differently from an opaque tier) is just another `PipeBlock` with its own blockstate/models, no hook-side changes needed.
+- Further pipe tier speed/art (brass/copper/lead, speed-per-tier) beyond the opaque/glass split above.
 - Routing only excludes the immediate extraction source, not general cycles elsewhere in the network (e.g. a loop that could route an item back to its origin via a different path) — not handled yet.
 - Real hook/pipe models and textures — current geometry (a north-facing cuboid nub per hook, rotated in place; a multipart cuboid-arm pipe body) and flat-color textures are placeholders.
 - Datagen for blockstates/models (currently hand-written JSON under `common/src/main/resources`).

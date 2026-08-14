@@ -44,14 +44,17 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 	/**
 	 * Which [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] (if any) is attached to
-	 * each face, keyed by [Direction.name]. Structural changes alone (`setChanged()`, called
-	 * automatically by the underlying [net.kernelpanicsoft.archie.serialization.NBTHolder] field)
-	 * only mark the chunk dirty for saving - they never push a network resync, so attach/remove
-	 * sites ([net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.useItemOn]/[useWithoutItem])
-	 * additionally call `level.sendBlockUpdated(...)` themselves, otherwise a client's own copy of
-	 * this field (and hence [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]'s
-	 * view of it) never advances past whatever it was at the last chunk load.
+	 * each face, keyed by [Direction.name]. `@Sync`ed - not for live GUI observation (nothing
+	 * observes it that way), but because [net.kernelpanicsoft.archie.serialization.NBTHolder]'s
+	 * network update tag only ever includes `@Sync`-marked fields; without it, a client's own copy
+	 * of this field (and hence [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]'s
+	 * view of it) never receives attach/remove changes at all, no matter how they're pushed.
+	 * Structural changes alone (`setChanged()`, called automatically by the underlying field) only
+	 * mark the chunk dirty for saving - they never push a network resync, so attach/remove sites
+	 * ([net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.useItemOn]/[useWithoutItem])
+	 * additionally call `level.sendBlockUpdated(...)` themselves to actually trigger one.
 	 */
+	@Sync
 	val hooks by mapField(HookState.serializer()) { emptyMap() }
 
 	val filterNorth by itemField(9)
@@ -61,23 +64,18 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	val filterUp by itemField(9)
 	val filterDown by itemField(9)
 
-	/**
-	 * One [RoutingModule] per face (see [FaceRouting]), consulted by a sorting hook on that face
-	 * (mode/priority/color) or an extraction hook on that face (`color` only, to tag what it sends
-	 * out) - see [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter].
-	 */
-	@Sync
-	var routing by field(FaceRouting.serializer()) { FaceRouting() }
-
 	/** The face last targeted by a menu-opening interaction - not persisted, only meaningful for the duration of [createMenu]/[saveExtraData]. */
 	var pendingMenuFace: Direction = Direction.NORTH
 
 	private var ticksSinceSync = 0
 
-	fun routingFor(direction: Direction): RoutingModule = routing[direction]
+	/** [HookState.routing] for [direction]'s hook, consulted by a sorting hook (mode/priority/color) or an extraction hook (`color` only) - see [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]. Defaults for a face with no hook attached. */
+	fun routingFor(direction: Direction): RoutingModule = hooks[direction.name]?.routing ?: RoutingModule()
 
+	/** Updates [direction]'s hook's [HookState.routing] in place - only meaningful for a face that already has a hook attached. */
 	fun setRoutingFor(direction: Direction, module: RoutingModule) {
-		routing = routing.with(direction, module)
+		val state = hooks[direction.name] ?: return
+		hooks[direction.name] = state.copy(routing = module)
 	}
 
 	/** The 3x3 filter grid a sorting hook on [direction] consults - see [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]. */

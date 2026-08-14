@@ -65,8 +65,7 @@ class PipeExtractionGameTest {
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
 		val sortPipe = getBlockEntity(sortPipePos) as PipeBlockEntity
-		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID)
-		sortPipe.setRoutingFor(Direction.SOUTH, RoutingModule(mode = FilterMode.WHITELIST))
+		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 
 		succeedWhen {
@@ -93,8 +92,7 @@ class PipeExtractionGameTest {
 		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
 
 		val sortPipe = getBlockEntity(sortPipePos) as PipeBlockEntity
-		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID)
-		sortPipe.setRoutingFor(Direction.SOUTH, RoutingModule(mode = FilterMode.WHITELIST))
+		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 
 		// No route ever exists for the redstone (the only sorting-tagged path rejects it, and the

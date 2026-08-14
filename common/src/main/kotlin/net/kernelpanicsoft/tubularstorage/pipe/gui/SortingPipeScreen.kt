@@ -17,9 +17,9 @@ import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
-import net.kernelpanicsoft.tubularstorage.pipe.entity.FaceRouting
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.DyeColor
@@ -36,7 +36,7 @@ class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title
 	ComposeContainerScreen<SortingPipeMenu>(menu, playerInventory, title) {
 
 	private val contentWidth = 18 * 9
-	private val direction = menu.direction
+	private val faceKey = menu.direction.name
 
 	init {
 		start { content() }
@@ -44,12 +44,14 @@ class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title
 
 	@Composable
 	fun content() {
-		var synced by observeProperty("routing", FaceRouting())
-		val faceRouting = synced ?: FaceRouting()
-		val module = faceRouting[direction]
+		var synced by observeProperty("hooks", emptyMap<String, HookState>())
+		val hooks = synced ?: emptyMap()
+		val state = hooks[faceKey]
+		val module = state?.routing ?: RoutingModule()
 
 		fun update(next: RoutingModule) {
-			synced = faceRouting.with(direction, next)
+			val current = state ?: return
+			synced = hooks + (faceKey to current.copy(routing = next))
 		}
 
 		Theme {

@@ -15,6 +15,7 @@ import net.minecraft.world.item.Items
 import net.minecraft.world.level.GameType
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
+import net.minecraft.world.phys.Vec3
 
 /** GameTest coverage for [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem]'s bind flow. */
 @Suppress("unused")
@@ -93,6 +94,27 @@ class WarehouseGameTest {
 			}
 			assertTrue(controller.index.locations[ItemResource.of(ItemStack(Items.GOLD_INGOT))] == null) {
 				"Expected the gold ingot outside the bound volume to not be indexed"
+			}
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testGantryReachesMoveToTarget() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerOnePos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val targetPos = BlockPos(3, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(cornerOnePos), absolutePos(cornerTwoPos))
+		controller.moveGantryTo(absolutePos(targetPos))
+
+		succeedWhen {
+			assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished its move by now" }
+			val expected = Vec3.atCenterOf(absolutePos(targetPos))
+			assertTrue(controller.gantry.pos.distanceTo(expected) < 0.01) {
+				"Expected the gantry to have arrived at $expected, got ${controller.gantry.pos}"
 			}
 		}
 	}

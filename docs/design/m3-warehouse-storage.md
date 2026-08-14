@@ -14,9 +14,9 @@ Modeled as a server-authoritative moving head `(pos: Vec3, progress)` owned by t
 
 Motion model is deliberately **not** general 3D pathfinding: it's an idealized industrial gantry — move along X, then Z, then descend/ascend Y, exactly like a real overhead crane confined to its rail envelope. This is a hard constraint worth stating explicitly: **racks must leave the crane's overhead rail volume clear**. Much simpler to implement and reason about than voxel A* through a player-built warehouse, at the cost of constraining build layout.
 
-**Ghost rail rendering** ([decision #3](README.md#resolved-architectural-decisions)): no physical rail/track blocks — the crane moves within the wand-defined envelope with no collision and no construction cost. The client renders a translucent/dashed rail overlay along the crane's computed travel path purely for visual readability. This needs:
+**Ghost rail rendering** ([decision #3](README.md#resolved-architectural-decisions)): no physical rail/track blocks — the crane moves within the wand-defined envelope with no collision and no construction cost. The client renders a translucent rail *model* (a real baked model, block-textured to actually read as a rail rather than an abstract line/dash/particle effect) along the crane's computed travel path, purely for visual readability. This needs:
 - A client-only path-to-render-geometry step, recomputed when the bound volume changes or the crane's active rail segment changes (not every frame).
-- A visual-style decision at implementation time (dashed line vs. faint rail-texture overlay vs. particle trail) — cosmetic, not architectural, left open until art passes happen.
+- The rail model itself: a plain flat-color placeholder box model/texture for now, swappable for real art later without touching the render-geometry step.
 
 ## Rack scanning & index
 

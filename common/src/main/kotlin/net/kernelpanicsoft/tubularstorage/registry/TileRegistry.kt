@@ -10,10 +10,11 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.GlassPipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
 
-/** Registers Tubular Storage's block entity types. Only [Hook]/[GlassPipe] get their (heavier) renderers - a plain [Pipe] never carries hooks or renders its contents. */
+/** Registers Tubular Storage's block entity types. Only [Hook]/[GlassPipe]/[WarehouseController] get renderers - a plain [Pipe] never carries hooks or renders its contents. */
 object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage.MOD, Registries.BLOCK_ENTITY_TYPE) {
 	val Pipe: BlockEntityType<PipeBlockEntity> by register("pipe") {
 		blockEntityType(::PipeBlockEntity) {
@@ -42,5 +43,6 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 	override fun initClient() {
 		BlockEntityRendererRegistry.register(Hook, ::PipeHookBlockEntityRenderer)
 		BlockEntityRendererRegistry.register(GlassPipe, ::TravelingItemBlockEntityRenderer)
+		BlockEntityRendererRegistry.register(WarehouseController, ::WarehouseControllerBlockEntityRenderer)
 	}
 }

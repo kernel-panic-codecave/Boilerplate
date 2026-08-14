@@ -39,4 +39,15 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 	val WarehouseWand by register("warehouse_wand") {
 		WarehouseWandItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES); stacksTo(1) })
 	}
+
+	/**
+	 * Not player-obtainable (no creative tab) - exists purely as a registered [Item] so its model
+	 * bakes through the normal `ItemModelShaper` path, for
+	 * [net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer]
+	 * to look up and draw as the ghost rail overlay along the gantry's active travel path.
+	 */
+	val GantryRail by register("gantry_rail") { Item(itemProperties {}) }
+
+	/** Same deal as [GantryRail], for the gantry crane head itself. */
+	val GantryHead by register("gantry_head") { Item(itemProperties {}) }
 }

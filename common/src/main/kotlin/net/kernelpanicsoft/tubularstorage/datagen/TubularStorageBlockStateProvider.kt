@@ -15,8 +15,12 @@ import net.minecraft.resources.ResourceLocation
  * `pipe`/`glass_pipe`'s connection-driven `"multipart"` bodies, `hook`'s unused placeholder (its
  * block is [net.minecraft.world.level.block.RenderShape.INVISIBLE] - see
  * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]), the two hook item
- * models, and the plain-cube warehouse controller block plus its wand item. Replaces what was
- * previously hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
+ * models, the plain-cube warehouse controller block plus its wand item, and the placeholder
+ * `gantry_rail`/`gantry_head` models
+ * [net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer]
+ * looks up directly (registered as [net.kernelpanicsoft.tubularstorage.registry.ItemRegistry] items
+ * purely so they bake, not because they're player-obtainable). Replaces what was previously
+ * hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
  * `common/src/main/resources`.
  */
 internal fun ABlockStateProvider.tubularStorageBlockStates() {
@@ -39,6 +43,12 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 
 	simpleBlockWithItem(BlockRegistry.WarehouseController)
 	itemModels().basicItem(ItemRegistry.WarehouseWand)
+
+	val gantryRail = cuboidModel("gantry_rail", TubularStorage.MOD % "block/gantry_rail", 4f, 7f, 4f, 12f, 9f, 12f, translucent = true)
+	itemModels().getBuilder("gantry_rail").parent(gantryRail)
+
+	val gantryHead = cuboidModel("gantry_head", TubularStorage.MOD % "block/gantry_head", 3f, 3f, 3f, 13f, 13f, 13f)
+	itemModels().getBuilder("gantry_head").parent(gantryHead)
 }
 
 /** A cuboid element from ([fromX],[fromY],[fromZ]) to ([toX],[toY],[toZ]) textured [texture] on every face, UVs stretched to the full [0,16] range regardless of the cuboid's actual size. */

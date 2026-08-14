@@ -135,13 +135,12 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	private fun tickGantrySync(level: ServerLevel, pos: BlockPos) {
 		if (!gantry.isMoving) return
-		val volume = bounds ?: return
 		ticksSinceGantrySync++
 		if (ticksSinceGantrySync < GANTRY_SYNC_INTERVAL_TICKS) return
 		ticksSinceGantrySync = 0
 		TubularStorageNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, GANTRY_SYNC_RADIUS,
-			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath, volume),
+			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath),
 		)
 	}
 

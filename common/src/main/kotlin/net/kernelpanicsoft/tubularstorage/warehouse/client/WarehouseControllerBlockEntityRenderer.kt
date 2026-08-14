@@ -35,12 +35,24 @@ import kotlin.math.roundToInt
  * [WarehouseControllerBlockEntity.bounds] (ordinary chunk sync handles those), but the two
  * crossbeams that slide to track the head, the vertical drop rod connecting down to it, and the
  * head itself all change every tick and aren't practical as real blocks - so they stay a
- * client-only dynamic render instead, drawn (dead-reckoned, from [GantryClientCache]) only while
- * the gantry is actually mid-move. [shouldRenderOffScreen] always returns `true` so this still
- * renders once the crossbeams/rod are potentially many blocks from the controller itself - vanilla
- * only frustum-culls a block entity renderer by the block's own single-block space otherwise (the
- * same reason `BeaconBlockEntity`'s beam needs the equivalent), which would otherwise cut the
- * gantry off mid-render the moment the controller itself scrolls off screen.
+ * client-only dynamic render instead, drawn (dead-reckoned, from [GantryClientCache]) unconditionally
+ * rather than only while actively mid-move: the head is always sitting somewhere, so the arm/head
+ * stay visible parked there between jobs too, not just during a delivery. [GantryClientCache] has
+ * no entry at all until the very first sync (nothing has ever moved since this controller loaded),
+ * in which case [render] falls back to the controller's own position - exactly where a freshly
+ * bound, never-yet-run gantry actually sits. [WarehouseControllerBlockEntity.bounds] is read
+ * directly off [tile] rather than threaded through the sync packet, since it's already `@Sync`'d
+ * independently. Vanilla only frustum-culls a block entity renderer by the
+ * block's own single-block space otherwise (the same reason `BeaconBlockEntity`'s beam needs the
+ * equivalent), which would otherwise cut the gantry off mid-render the moment the controller itself
+ * scrolls off screen - [shouldRenderOffScreen] handles the vanilla/Fabric side of that, but NeoForge
+ * layers its own separate bounding-box check
+ * (`net.neoforged.neoforge.client.extensions.IBlockEntityRendererExtension.getRenderBoundingBox`)
+ * on top even for entries `shouldRenderOffScreen` already exempted. That interface isn't visible
+ * from common code at all (`common` compiles against a plain vanilla `BlockEntityRenderer`, not
+ * NeoForge's patched one), so it can't be overridden here directly -
+ * `net.kernelpanicsoft.tubularstorage.mixin.neoforge.client.WarehouseControllerBlockEntityRendererMixin`
+ * injects the equivalent override into this class's own bytecode, NeoForge-side only.
  *
  * The crossbeams/rod reuse [GantryRailBlock]'s own baked model rather than any placed block. Each
  * segment's connected [BlockState] is computed from where it actually sits along its own run
@@ -83,12 +95,11 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		packedOverlay: Int,
 	) {
 		val level = tile.level ?: return
-		val (gantry, bounds) = GantryClientCache.get(tile.blockPos) ?: return
-		if (!gantry.isMoving) return
+		val bounds = tile.bounds ?: return
+		val head = GantryClientCache.get(tile.blockPos)?.pos ?: Vec3.atCenterOf(tile.blockPos)
 
 		val consumer = bufferSource.getBuffer(RenderType.solid())
 		val railY = bounds.max.y
-		val head = gantry.pos
 
 		for (x in bounds.min.x..bounds.max.x) {
 			val state = connectionState(x, bounds.min.x, bounds.max.x, WEST_PROPERTY, EAST_PROPERTY)

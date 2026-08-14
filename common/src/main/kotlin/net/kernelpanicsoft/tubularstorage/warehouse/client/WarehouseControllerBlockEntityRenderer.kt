@@ -19,6 +19,7 @@ import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.util.RandomSource
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.phys.Vec3
 import kotlin.math.floor
 
@@ -31,23 +32,25 @@ import kotlin.math.floor
  * client-only dynamic render instead, drawn (dead-reckoned, from [GantryClientCache]) only while
  * the gantry is actually mid-move.
  *
- * The crossbeams reuse [GantryRailBlock]'s own baked model - looked up once, in [eastWestModel]
- * etc., against a synthetic fully-connected [BlockState] rather than any placed block - so they
- * read as an extension of the real frame rather than a different material. One beam spans the
- * bound footprint's full X extent at the head's current Z, the other spans the full Z extent at
- * the head's current X, intersecting directly above wherever the head is; the drop rod does the
- * same straight down from rail height to the head. The head itself keeps using
- * [ItemRegistry.GantryHead]'s placeholder model, a fake item that exists purely as a bake target
- * for this renderer.
+ * The crossbeams/rod reuse [GantryRailBlock]'s own baked model rather than any placed block, so
+ * they read as an extension of the real frame. Each segment's connected [BlockState] is computed
+ * from where it actually sits along its own run ([connectionState]) rather than a single blanket
+ * "fully connected" state - the two segments at a run's true ends only connect *inward*, so they
+ * cap off with a plain core face instead of an arm stub poking into nothing. [modelFor] memoizes
+ * the resulting handful of distinct baked models, since the same state recurs at every interior
+ * position. One beam spans the bound footprint's full X extent at the head's current Z, the other
+ * spans the full Z extent at the head's current X, intersecting directly above wherever the head
+ * is; the drop rod does the same straight down from rail height to the head. The head itself keeps
+ * using [ItemRegistry.GantryHead]'s placeholder model, a fake item that exists purely as a bake
+ * target for this renderer.
  */
 class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvider.Context) : BlockEntityRenderer<WarehouseControllerBlockEntity> {
 	private val blockModelShaper = context.blockRenderDispatcher.blockModelShaper
 	private val modelRenderer = context.blockRenderDispatcher.modelRenderer
-
-	private val eastWestModel = blockModelShaper.getBlockModel(EAST_WEST_STATE)
-	private val northSouthModel = blockModelShaper.getBlockModel(NORTH_SOUTH_STATE)
-	private val upDownModel = blockModelShaper.getBlockModel(UP_DOWN_STATE)
 	private val headModel = blockModelShaper.modelManager.getModel(HEAD_MODEL_ID)
+
+	private val modelCache = HashMap<BlockState, BakedModel>()
+	private fun modelFor(state: BlockState): BakedModel = modelCache.getOrPut(state) { blockModelShaper.getBlockModel(state) }
 
 	override fun render(
 		tile: WarehouseControllerBlockEntity,
@@ -66,13 +69,17 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		val head = gantry.pos
 
 		for (x in bounds.min.x..bounds.max.x) {
-			drawAt(tile.blockPos, Vec3(x + 0.5, railY + 0.5, head.z), level, poseStack, consumer, eastWestModel, EAST_WEST_STATE, packedOverlay)
+			val state = connectionState(x, bounds.min.x, bounds.max.x, WEST_PROPERTY, EAST_PROPERTY)
+			drawAt(tile.blockPos, Vec3(x + 0.5, railY + 0.5, head.z), level, poseStack, consumer, modelFor(state), state, packedOverlay)
 		}
 		for (z in bounds.min.z..bounds.max.z) {
-			drawAt(tile.blockPos, Vec3(head.x, railY + 0.5, z + 0.5), level, poseStack, consumer, northSouthModel, NORTH_SOUTH_STATE, packedOverlay)
+			val state = connectionState(z, bounds.min.z, bounds.max.z, NORTH_PROPERTY, SOUTH_PROPERTY)
+			drawAt(tile.blockPos, Vec3(head.x, railY + 0.5, z + 0.5), level, poseStack, consumer, modelFor(state), state, packedOverlay)
 		}
-		for (y in floor(head.y).toInt()..railY) {
-			drawAt(tile.blockPos, Vec3(head.x, y + 0.5, head.z), level, poseStack, consumer, upDownModel, UP_DOWN_STATE, packedOverlay)
+		val bottomY = floor(head.y).toInt()
+		for (y in bottomY..railY) {
+			val state = connectionState(y, bottomY, railY, DOWN_PROPERTY, UP_PROPERTY)
+			drawAt(tile.blockPos, Vec3(head.x, y + 0.5, head.z), level, poseStack, consumer, modelFor(state), state, packedOverlay)
 		}
 
 		drawAt(tile.blockPos, head, level, poseStack, consumer, headModel, level.getBlockState(BlockPos.containing(head)), packedOverlay)
@@ -99,18 +106,27 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 	}
 
 	companion object {
-		private val EAST_WEST_STATE: BlockState = BlockRegistry.GantryRail.defaultBlockState()
-			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.EAST), true)
-			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.WEST), true)
-
-		private val NORTH_SOUTH_STATE: BlockState = BlockRegistry.GantryRail.defaultBlockState()
-			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.NORTH), true)
-			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.SOUTH), true)
-
-		private val UP_DOWN_STATE: BlockState = BlockRegistry.GantryRail.defaultBlockState()
-			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.UP), true)
-			.setValue(GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN), true)
+		private val WEST_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.WEST)
+		private val EAST_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.EAST)
+		private val NORTH_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.NORTH)
+		private val SOUTH_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.SOUTH)
+		private val UP_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.UP)
+		private val DOWN_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN)
 
 		private val HEAD_MODEL_ID = ModelResourceLocation(BuiltInRegistries.ITEM.getKey(ItemRegistry.GantryHead), "inventory")
+
+		/**
+		 * [BlockRegistry.GantryRail]'s default state with [negativeProperty] connected iff [position]
+		 * has a segment behind it (`position > min`) and [positiveProperty] connected iff it has one
+		 * ahead (`position < max`) - so the two ends of a run only connect inward and cap off cleanly,
+		 * rather than every segment (including the true ends) rendering as fully connected regardless
+		 * of what's actually next to it.
+		 */
+		private fun connectionState(position: Int, min: Int, max: Int, negativeProperty: BooleanProperty, positiveProperty: BooleanProperty): BlockState {
+			var state = BlockRegistry.GantryRail.defaultBlockState()
+			if (position > min) state = state.setValue(negativeProperty, true)
+			if (position < max) state = state.setValue(positiveProperty, true)
+			return state
+		}
 	}
 }

@@ -6,8 +6,9 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
+import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.minecraft.core.BlockPos
@@ -42,7 +43,7 @@ class PipeExtractionGameTest {
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
 		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -66,11 +67,12 @@ class PipeExtractionGameTest {
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 4))
 		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
 
 		val sortPipe = getBlockEntity(sortPipePos) as HookBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
+		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { SortingHookType.createState() } as SortingHookState
+		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 
 		succeedWhen {
@@ -95,11 +97,12 @@ class PipeExtractionGameTest {
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.REDSTONE, 4))
 		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		extractor.hooks[Direction.NORTH.name] = HookState(type = ExtractionHookType.ID)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
 
 		val sortPipe = getBlockEntity(sortPipePos) as HookBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		sortPipe.hooks[Direction.SOUTH.name] = HookState(type = SortingHookType.ID, routing = RoutingModule(mode = FilterMode.WHITELIST))
+		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { SortingHookType.createState() } as SortingHookState
+		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
 		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 1, false)
 
 		// No route ever exists for the redstone (the only sorting-tagged path rejects it, and the

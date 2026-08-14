@@ -14,5 +14,7 @@ import net.minecraft.resources.ResourceLocation
 object SortingHookType : PipeHookType() {
 	val ID: ResourceLocation = TubularStorage.MOD % "sorting"
 
+	override fun createState(): SortingHookState = SortingHookState()
+
 	override val hasMenu: Boolean = true
 }

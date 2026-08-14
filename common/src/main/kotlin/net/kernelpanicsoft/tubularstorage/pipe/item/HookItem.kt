@@ -5,8 +5,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.Companion.propertiesByDirection
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
+import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
@@ -52,8 +52,9 @@ class HookItem(properties: Properties, val hookId: ResourceLocation) : BlockItem
 		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return result
 		val direction = context.clickedFace.opposite
 		if (tile.hooks.containsKey(direction.name)) return result
+		val hookType = HookTypeRegistry.byId(hookId) ?: return result
 
-		tile.hooks[direction.name] = HookState(type = hookId)
+		tile.hooks.getOrPut(direction.name) { hookType.createState() }
 		level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
 		return result
 	}

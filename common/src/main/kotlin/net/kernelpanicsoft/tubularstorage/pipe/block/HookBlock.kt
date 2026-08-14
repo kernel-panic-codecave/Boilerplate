@@ -3,7 +3,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.block
 import com.mojang.serialization.MapCodec
 import dev.architectury.registry.menu.MenuRegistry
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
@@ -82,26 +82,24 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 		hitResult: BlockHitResult,
 	): ItemInteractionResult {
 
-		if (level.isClientSide) return ItemInteractionResult.SUCCESS
 		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		val hookItem = stack.item as? HookItem
 		val pipeBlock = (stack.item as? BlockItem)?.block as? PipeBlock
 		if (pipeBlock != null && pipeBlock !is HookBlock)
 		{
-			if (tile.pipeBlockId != HookBlockEntity.NONE)
-			{
-				level.playSound(null, pos.relative(hitResult.direction), pipeBlock.defaultBlockState().soundType.placeSound, SoundSource.BLOCKS, 1f, 1f)
-				return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION
-			}
+			if (tile.pipeBlockId != HookBlockEntity.NONE) return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION
+			if (level.isClientSide) return ItemInteractionResult.SUCCESS
 			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(pipeBlock)
 		}
 		else if (hookItem != null)
 		{
+			if (level.isClientSide) return ItemInteractionResult.SUCCESS
 			val direction = armFor(state, pos, hitResult) ?: hitResult.direction
 			if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
-			tile.hooks[direction.name] = HookState(type = hookItem.hookId)
+			val hookType = HookTypeRegistry.byId(hookItem.hookId) ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			tile.hooks.getOrPut(direction.name) { hookType.createState() }
 		}
-		else return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		else return if (stack.item is BlockItem) ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION else ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
 		state.updateNeighbourShapes(level, pos, Block.UPDATE_ALL)
 		level.playSound(null, pos, state.soundType.placeSound, SoundSource.BLOCKS, 1f, 1f)
@@ -113,7 +111,7 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 	override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
 		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return InteractionResult.PASS
 		val direction = armFor(state, pos, hitResult) ?: hitResult.direction
-		val hookState = tile.hooks[direction.name] ?: return InteractionResult.PASS
+		val hookState = tile.hooks[direction.name] as? HookHolderState ?: return InteractionResult.PASS
 		val hookType = HookTypeRegistry.byId(hookState.type) ?: return InteractionResult.PASS
 
 		if (!level.isClientSide) {
@@ -139,7 +137,7 @@ class HookBlock(properties: Properties) : PipeBlock(properties) {
 	{
 		val shape = super.getShape(state, level, pos, context)
 		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return shape
-		val hooksShape = tile.hooks.entries.fold(Shapes.empty()) { shape, entry -> Shapes.or(shape, armShapes[Direction.valueOf(entry.key)]!!)}
+		val hooksShape = tile.hooks.fold(Shapes.empty()) { shape, entry -> Shapes.or(shape, armShapes[Direction.valueOf(entry.key)]!!)}
 		if (tile.pipeBlockId != HookBlockEntity.NONE) return Shapes.or(shape, hooksShape)
 		return hooksShape
 	}

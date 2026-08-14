@@ -1,20 +1,18 @@
 package net.kernelpanicsoft.tubularstorage.pipe.entity
 
 import dev.architectury.registry.menu.ExtendedMenuProvider
-import kotlinx.serialization.builtins.nullable
+import net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap
 import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.archie.serialization.serializers.ResourceLocationSerializer
-import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu
-import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
-import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
@@ -27,51 +25,41 @@ import net.minecraft.world.level.block.state.BlockState
 
 /**
  * A [PipeBlockEntity] that additionally carries a
- * [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] on each face: their [hooks] state,
- * their 3x3 filter grids, and the menu that edits them - see `docs/design/m1-pipe-network.md` and
- * `docs/design/m2-sorting-routing.md`.
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] on each face: their [hooks] state
+ * (each attachment its own self-contained [HookHolderState], not one shared shape) and the menu
+ * that edits them - see `docs/design/m1-pipe-network.md` and `docs/design/m2-sorting-routing.md`.
  */
 class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	PipeBlockEntity(TileRegistry.Hook, pos, state), ExtendedMenuProvider {
 
+	/**
+	 * Keyed by [Direction.name]. The factory resolves which concrete [HookHolderState] subclass to
+	 * rebuild for a saved entry from that entry's own raw `type` tag, via [HookTypeRegistry] - not
+	 * from any outside context, since the map itself has no per-entry type information beyond what
+	 * each entry's own state already carries.
+	 */
 	@Sync
-	val hooks by mapField(HookState.serializer()) { emptyMap() }
+	val hooks: NestedNBTHolderMap by nestedMapField { tag ->
+		val id = ResourceLocation.parse(tag.getString("type"))
+		HookTypeRegistry.byId(id)?.createState() ?: error("Unknown hook type $id while loading $blockPos")
+	}
 
 	/**
 	 * Which pipe type this hook block is standing in for, visually - the registry id of a
 	 * [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock] whose own baked model
 	 * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer] draws for the
-	 * pipe body. Defaults to [BlockRegistry.Pipe]; set to whatever block was actually promoted when
-	 * a hook attaches to an existing pipe (see [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.useItemOn]),
-	 * so a future second pipe type (e.g. a glass tier) keeps its own appearance after promotion
-	 * instead of all hook blocks looking alike.
+	 * pipe body. Defaults to [NONE] (no pipe placed here yet - see
+	 * [net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock]'s KDoc); set to whatever block was
+	 * actually placed/promoted, so a future second pipe type (e.g. a glass tier) keeps its own
+	 * appearance after promotion instead of all hook blocks looking alike.
 	 */
 	@Sync
 	var pipeBlockId: ResourceLocation by field(ResourceLocationSerializer) { NONE }
 
-	val filterNorth by itemField(9)
-	val filterSouth by itemField(9)
-	val filterEast by itemField(9)
-	val filterWest by itemField(9)
-	val filterUp by itemField(9)
-	val filterDown by itemField(9)
-
 	var pendingMenuFace: Direction = Direction.NORTH
 
-	fun routingFor(direction: Direction): RoutingModule = hooks[direction.name]?.routing ?: RoutingModule()
-	fun setRoutingFor(direction: Direction, module: RoutingModule) {
-		val state = hooks[direction.name] ?: return
-		hooks[direction.name] = state.copy(routing = module)
-	}
-
-	fun filterFor(direction: Direction): ArchieItemStorage = when (direction) {
-		Direction.NORTH -> filterNorth
-		Direction.SOUTH -> filterSouth
-		Direction.EAST -> filterEast
-		Direction.WEST -> filterWest
-		Direction.UP -> filterUp
-		Direction.DOWN -> filterDown
-	}
+	/** The [SortingHookState] filter grid attached to [direction] - callers must already know it carries a sorting hook. */
+	fun filterFor(direction: Direction) = (hooks[direction.name] as SortingHookState).filter
 
 	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu = SortingPipeMenu(id, inventory, this, pendingMenuFace)
 	override fun getDisplayName(): Component = blockState.block.name
@@ -84,18 +72,18 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 		super.tick(level, pos, state)
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
-		val attached = hooks
-		for (directionName in attached.keys.toList()) {
-			val hookState = attached[directionName] ?: continue
+		if (hooks.size == 0) return
+		for ((directionName, entry) in hooks) {
+			val hookState = entry as HookHolderState
 			val direction = Direction.valueOf(directionName)
 			val hookType = HookTypeRegistry.byId(hookState.type) ?: continue
-			val next = hookType.tick(serverLevel, pos, direction, this, hookState)
-			if (next != hookState) attached[directionName] = next
+			hookType.tick(serverLevel, pos, direction, this, hookState)
 		}
+		hooks.touch()
 	}
 
 	companion object {
-		val NONE = TubularStorage.MOD % "none"
+		val NONE: ResourceLocation = TubularStorage.MOD % "none"
 		fun tick(level: Level, pos: BlockPos, state: BlockState, tile: HookBlockEntity) = tile.tick(level, pos, state)
 	}
 }

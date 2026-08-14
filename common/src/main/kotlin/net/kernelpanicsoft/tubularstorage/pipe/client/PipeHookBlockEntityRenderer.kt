@@ -6,6 +6,7 @@ import net.kernelpanicsoft.archie.util.plus
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
@@ -82,7 +83,8 @@ class PipeHookBlockEntityRenderer(context: BlockEntityRendererProvider.Context) 
 			}
 		}
 		val hookConsumer = bufferSource.getBuffer(RenderType.solid())
-		for ((directionName, hookState) in tile.hooks) {
+		for ((directionName, entry) in tile.hooks) {
+			val hookState = entry as HookHolderState
 			val direction = Direction.valueOf(directionName)
 			val model = modelManager.getModel(modelIdFor(hookState.type))
 

@@ -11,11 +11,15 @@ import net.minecraft.server.level.ServerLevel
  * registry (see [net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistrar]/
  * [net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry]) rather than a hardcoded enum, so
  * a new hook kind - a future inserter, a valve, a gauge - is just another registry entry with its
- * own behavior, instead of a new standalone block.
+ * own behavior and its own self-contained [HookHolderState] subclass, instead of a new standalone
+ * block.
  */
 abstract class PipeHookType {
-	/** Advances this hook's per-tick behavior and returns its (possibly unchanged) [HookState]. */
-	open fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookState): HookState = state
+	/** Builds a fresh, default-valued state for a new attachment of this hook type. */
+	abstract fun createState(): HookHolderState
+
+	/** Advances this hook's per-tick behavior, mutating [state] (already known to be this type's own [createState] result) in place. */
+	open fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookHolderState) {}
 
 	/** Whether empty-hand right-clicking this hook's face opens [net.kernelpanicsoft.tubularstorage.pipe.gui.SortingPipeMenu]. */
 	open val hasMenu: Boolean = false

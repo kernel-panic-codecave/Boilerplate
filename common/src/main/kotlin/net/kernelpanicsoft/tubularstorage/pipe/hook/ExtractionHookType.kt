@@ -20,17 +20,20 @@ import net.minecraft.server.level.ServerLevel
 object ExtractionHookType : PipeHookType() {
 	val ID: ResourceLocation = TubularStorage.MOD % "extraction"
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookState): HookState {
-		val elapsed = state.ticksSinceExtraction + 1
-		if (elapsed < EXTRACTION_INTERVAL_TICKS) return state.copy(ticksSinceExtraction = elapsed)
+	override fun createState(): ExtractionHookState = ExtractionHookState()
+
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookHolderState) {
+		state as ExtractionHookState
+		state.ticksSinceExtraction++
+		if (state.ticksSinceExtraction < EXTRACTION_INTERVAL_TICKS) return
+		state.ticksSinceExtraction = 0
 		tryExtract(level, pos, direction, tile, state)
-		return state.copy(ticksSinceExtraction = 0)
 	}
 
-	private fun tryExtract(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: HookState) {
+	private fun tryExtract(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: ExtractionHookState) {
 		// Not a filter on what's pulled (see docs/design/m2-sorting-routing.md) - just the color
-		// tag this face's routing (if any) stamps on whatever it sends out.
-		val color = tile.routingFor(direction).color
+		// tag this hook stamps on whatever it sends out.
+		val color = state.color
 
 		val neighborPos = pos.relative(direction)
 		if (level.getBlockState(neighborPos).block is PipeBlock) return

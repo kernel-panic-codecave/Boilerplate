@@ -2,10 +2,11 @@ package net.kernelpanicsoft.tubularstorage.pipe.gui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
-import net.kernelpanicsoft.archie.gui.blockentity.observeProperty
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.Panel
 import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
@@ -17,9 +18,10 @@ import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
+import net.kernelpanicsoft.tubularstorage.network.UpdateSortingRoutingPacket
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
-import net.kernelpanicsoft.tubularstorage.pipe.hook.HookState
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.DyeColor
@@ -31,12 +33,18 @@ import kotlin.math.roundToInt
  * continuous [net.kernelpanicsoft.archie.gui.composables.input.ColorPicker]) since routing
  * compares it by exact equality against a traveling item's color - see
  * `docs/design/m2-sorting-routing.md`.
+ *
+ * Reads [SortingPipeMenu.currentRouting] once, into local Compose state, rather than observing
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity.hooks] live - a nested
+ * [net.kernelpanicsoft.archie.serialization.NBTHolder] field isn't wired into
+ * [net.kernelpanicsoft.archie.gui.blockentity.BlockEntityStateManager] for that the way a
+ * top-level `@Sync` field is. Edits update that local state immediately (optimistic UI) and push
+ * an [UpdateSortingRoutingPacket] to persist them server-side.
  */
-class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title: Component) :
+class SortingPipeScreen(private val menu: SortingPipeMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<SortingPipeMenu>(menu, playerInventory, title) {
 
 	private val contentWidth = 18 * 9
-	private val faceKey = menu.direction.name
 
 	init {
 		start { content() }
@@ -44,14 +52,11 @@ class SortingPipeScreen(menu: SortingPipeMenu, playerInventory: Inventory, title
 
 	@Composable
 	fun content() {
-		var synced by observeProperty("hooks", emptyMap<String, HookState>())
-		val hooks = synced ?: emptyMap()
-		val state = hooks[faceKey]
-		val module = state?.routing ?: RoutingModule()
+		var module by remember { mutableStateOf(menu.currentRouting()) }
 
 		fun update(next: RoutingModule) {
-			val current = state ?: return
-			synced = hooks + (faceKey to current.copy(routing = next))
+			module = next
+			TubularStorageNetworkChannel.toServer(UpdateSortingRoutingPacket(menu.pos, menu.direction, next))
 		}
 
 		Theme {

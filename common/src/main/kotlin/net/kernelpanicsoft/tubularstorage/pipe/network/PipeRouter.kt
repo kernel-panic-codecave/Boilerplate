@@ -7,7 +7,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
-import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -24,9 +25,9 @@ import java.util.UUID
  * Unlike M1, candidates aren't accepted on first hit: the whole reachable space is explored so
  * that a sorting hook's [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.priority]
  * can prefer one accepting destination over another. A candidate reached through a pipe face with
- * a [SortingHookType] hook attached is only valid if the item's [color] and that hook's
- * filter/mode accept it; a candidate reached through a hookless face always accepts, at the
- * baseline priority (0).
+ * a [net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType] hook attached is only valid if
+ * the item's [color] and that hook's filter/mode accept it; a candidate reached through a
+ * hookless face always accepts, at the baseline priority (0).
  */
 object PipeRouter {
 	private data class CacheKey(
@@ -97,9 +98,9 @@ object PipeRouter {
 			val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite) ?: continue
 			if (storage.insert(resource, 1, true) <= 0) continue
 
-			val hookState = tile?.hooks?.get(direction.name)
-			val priority = if (tile != null && hookState != null && hookState.type == SortingHookType.ID) {
-				val module = tile.routingFor(direction)
+			val hookState = tile?.hooks?.get(direction.name) as? HookHolderState
+			val priority = if (tile != null && hookState is SortingHookState) {
+				val module = hookState.routing
 				if (module.color != null && module.color != color) continue
 				if (!matchesFilter(tile, direction, module, resource)) continue
 				module.priority

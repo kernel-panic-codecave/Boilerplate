@@ -11,6 +11,7 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 		onClient {
 			clientbound(PipeContentsSyncPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
+		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

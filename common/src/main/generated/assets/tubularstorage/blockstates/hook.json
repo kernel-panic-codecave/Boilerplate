@@ -1,0 +1,9 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_core"
+      }
+    }
+  ]
+}

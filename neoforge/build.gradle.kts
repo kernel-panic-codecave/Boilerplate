@@ -41,8 +41,6 @@ loom {
 			source(sourceSets.main.get())
 			vmArgs("-XX:+AllowEnhancedClassRedefinition")
 		}
-		// "gradlew runGametest"/"runGametestClient" - see the dependency comment below for why
-		// archie-gametest is safe to have on this run's classpath despite never shipping.
 		create("gametest") {
 			server()
 			name = "Minecraft GameTest"
@@ -59,6 +57,20 @@ loom {
 			property("archie.gametest", "true")
 			property("archie.gametest.modid", "tubularstorage")
 		}
+		// "gradlew runDatagen" - see TubularStorageBlockStateProvider. Writes to common's own
+		// src/main/generated (wired in as an extra resources root there), not src/main/resources
+		// directly - Minecraft's datagen cache deletes anything in its output directory it didn't
+		// just write, which would otherwise destroy the hand-placed textures/gametest structures
+		// living alongside it.
+		create("datagen") {
+			data()
+			name = "Minecraft Datagen"
+			property("archie.datagen", "true")
+			property("archie.datagen.client", "true")
+			property("archie.datagen.server", "true")
+			programArgs("--all", "--mod", "tubularstorage")
+			programArgs("--output", file("../common/src/main/generated").absolutePath)
+		}
 	}
 }
 
@@ -68,30 +80,13 @@ dependencies {
 	implementation(libs.kotlin.neoforge)
 	modApi(libs.archie.neoforge)
 
-	// Workaround, not a real Tubular Storage dependency - see the matching comment in
-	// fabric/build.gradle.kts: Archie's own config init requires cloth-config's ModifierKeyCode
-	// class present at runtime regardless of consumer.
 	modImplementation(libs.clothConfig.neoforge)
 
-	// NeoForge's FML classloader layering means a plain implementation/modApi dependency on a
-	// Kotlin-ecosystem library isn't reliably visible at the right point in the mod-bus lifecycle
-	// (forgeRuntimeLibrary alone lands things on MC-BOOTSTRAP, invisible to KotlinLangForge's
-	// stdlib on PLUGIN). import net.kernelpanicsoft.archie.plugin.runtimeLibrary (or
-	// .bundleRuntimeLibrary if it also needs to ship in our jar) and use that instead of a plain
-	// implementation/modImplementation for any future Kotlin-ecosystem dependency added here - it
-	// routes the dependency through the archie-plugin's PatchFMLModType artifact transform.
-	// Fabric doesn't have this problem.
-
-	// Dev-only: compile-time visibility for GameTest code (gated behind
-	// AGameTestPlatform.isGameTest - see common/build.gradle.kts) plus runtime presence for the
-	// "gametest"/"gametestClient" runs above. modLocalRuntime never ships in the production jar
-	// (it isn't part of the "common"/"shadowCommon" configurations shadowJar draws from), so these
-	// two lines are exactly what keeps archie-gametest off the classpath in production while still
-	// letting it run in dev.
-	modCompileOnly(libs.archie.gametest.common)
 	modCompileOnly(libs.archie.gametest.neoforge)
-	modLocalRuntime(libs.archie.gametest.common)
 	modLocalRuntime(libs.archie.gametest.neoforge)
+
+	modCompileOnly(libs.archie.datagen.neoforge)
+	modLocalRuntime(libs.archie.datagen.neoforge)
 
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":tubularstorage-common", "transformProductionNeoForge")) { isTransitive = false }
@@ -105,6 +100,10 @@ tasks {
 	base.archivesName.set(base.archivesName.get() + "-neoforge")
 
 	processResources {
+		from(project(":tubularstorage-common").sourceSets.main.get().resources) {
+			include("assets/tubularstorage/**")
+			include("data/tubularstorage/**")
+		}
 		dependsOn(processTestResources)
 	}
 

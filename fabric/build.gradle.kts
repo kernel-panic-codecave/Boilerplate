@@ -53,8 +53,31 @@ loom {
 			property("archie.gametest.side", "client")
 			property("archie.gametest.modid", "tubularstorage")
 		}
+		// "gradlew runDatagen" - see TubularStorageBlockStateProvider. Writes to common's own
+		// src/main/generated (wired in as an extra resources root there), not src/main/resources
+		// directly - Minecraft's datagen cache deletes anything in its output directory it didn't
+		// just write, which would otherwise destroy the hand-placed textures/gametest structures
+		// living alongside it.
+		create("datagen") {
+			client()
+			name = "Minecraft Datagen"
+			property("archie.datagen", "true")
+			property("archie.datagen.client", "true")
+			property("archie.datagen.server", "true")
+			property("fabric-api.datagen")
+			property("fabric-api.datagen.modid", "tubularstorage")
+			property("fabric-api.datagen.output-dir", file("../common/src/main/generated").absolutePath)
+
+			runDir = "build/datagen"
+		}
 	}
 }
+
+// No fabricApi.configureDataGeneration{} call - unlike a typical single-module setup, it registers
+// its outputDirectory as an *extra* resources root, which here collides with the explicit
+// processResources { from(project(":tubularstorage-common")...) } merge below (the same directory
+// registered twice, tripping processResources' duplicate-entry check). The "datagen" run above
+// already sets fabric-api.datagen.output-dir directly - all FabricDataGenerator actually reads.
 
 dependencies {
 	modImplementation(libs.fabric.loader)
@@ -63,23 +86,13 @@ dependencies {
 	modImplementation(libs.kotlin.fabric)
 	modApi(libs.archie.fabric)
 
-	// Workaround, not a real Tubular Storage dependency: Archie's own Archie.init() eagerly
-	// touches cloth-config's ModifierKeyCode class while initializing its config on the client,
-	// even though Archie declares cloth-config as merely compileOnlyApi/suggested. Without this
-	// present at runtime, loading any mod that depends on Archie crashes with a
-	// NoClassDefFoundError. Remove once that's fixed upstream in Archie.
 	modImplementation(libs.clothConfig.fabric)
 
-	// Dev-only: compile-time visibility for GameTest code (gated behind
-	// AGameTestPlatform.isGameTest - see common/build.gradle.kts) plus runtime presence for the
-	// "gametest"/"gametestClient" runs above. modLocalRuntime never ships in the production jar
-	// (it isn't part of the "common"/"shadowCommon" configurations shadowJar draws from), so these
-	// two lines are exactly what keeps archie-gametest off the classpath in production while still
-	// letting it run in dev.
-	modCompileOnly(libs.archie.gametest.common)
 	modCompileOnly(libs.archie.gametest.fabric)
-	modLocalRuntime(libs.archie.gametest.common)
 	modLocalRuntime(libs.archie.gametest.fabric)
+
+	modCompileOnly(libs.archie.datagen.fabric)
+	modLocalRuntime(libs.archie.datagen.fabric)
 
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":tubularstorage-common", "transformProductionFabric")) { isTransitive = false }
@@ -93,6 +106,10 @@ tasks {
 	base.archivesName.set(base.archivesName.get() + "-fabric")
 
 	processResources {
+		from(project(":tubularstorage-common").sourceSets.main.get().resources) {
+			include("assets/tubularstorage/**")
+			include("data/tubularstorage/**")
+		}
 		dependsOn(processTestResources)
 	}
 

@@ -2,13 +2,18 @@ package net.kernelpanicsoft.tubularstorage.pipe.network
 
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
-import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.DyeColor
+import net.minecraft.world.level.LevelAccessor
 import java.util.UUID
 
 /**
@@ -18,10 +23,11 @@ import java.util.UUID
  * the network's topology or routing modules change (both bump [PipeNetwork.version]).
  *
  * Unlike M1, candidates aren't accepted on first hit: the whole reachable space is explored so
- * that a sorting pipe's [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.priority]
- * can prefer one accepting destination over another. A candidate reached through a pipe with a
- * sorting module applied is only valid if the item's [color] and the module's filter/mode accept
- * it; a candidate reached through a plain pipe always accepts, at the baseline priority (0).
+ * that a sorting hook's [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.priority]
+ * can prefer one accepting destination over another. A candidate reached through a pipe face with
+ * a [net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType] hook attached is only valid if
+ * the item's [color] and that hook's filter/mode accept it; a candidate reached through a
+ * hookless face always accepts, at the baseline priority (0).
  */
 object PipeRouter {
 	private data class CacheKey(
@@ -58,6 +64,8 @@ object PipeRouter {
 		return route
 	}
 
+	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = level.getBlockState(pos).block.let { (it !is HookBlock && it is PipeBlock) || (it is HookBlock && (level.getBlockEntity(pos) as HookBlockEntity).pipeBlockId != HookBlockEntity.NONE) }
+
 	private fun search(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor?, exclude: BlockPos?): List<BlockPos>? {
 		val visited = hashSetOf(from)
 		if (exclude != null) visited += exclude
@@ -75,14 +83,14 @@ object PipeRouter {
 		best: Candidate?,
 	): List<BlockPos>? {
 		val (current, path) = queue.removeFirstOrNull() ?: return best?.path
-		val sortingTile = (level.getBlockEntity(current) as? PipeBlockEntity)?.takeIf { it.hasSortingModule }
+		val tile = level.getBlockEntity(current) as? HookBlockEntity
 
 		var nextBest = best
 		for (direction in Direction.entries) {
 			val neighborPos = current.relative(direction)
 			if (!visited.add(neighborPos)) continue
 
-			if (level.getBlockState(neighborPos).block is PipeBlock) {
+			if (isPipe(level, neighborPos)) {
 				queue += neighborPos to (path + neighborPos)
 				continue
 			}
@@ -90,10 +98,11 @@ object PipeRouter {
 			val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite) ?: continue
 			if (storage.insert(resource, 1, true) <= 0) continue
 
-			val priority = if (sortingTile != null) {
-				val module = sortingTile.routing
+			val hookState = tile?.hooks?.get(direction.name) as? HookHolderState
+			val priority = if (tile != null && hookState is SortingHookState) {
+				val module = hookState.routing
 				if (module.color != null && module.color != color) continue
-				if (!matchesFilter(sortingTile, resource)) continue
+				if (!matchesFilter(tile, direction, module, resource)) continue
 				module.priority
 			} else {
 				0
@@ -110,12 +119,13 @@ object PipeRouter {
 	}
 
 	/** Empty filter grid: whitelist accepts nothing, blacklist accepts everything. Otherwise matches by item (ignoring data components), per [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.mode]. */
-	private fun matchesFilter(tile: PipeBlockEntity, resource: ItemResource): Boolean {
-		val entries = (0 until tile.filter.size()).map { tile.filter[it].resource }.filter { !it.isBlank }
-		if (entries.isEmpty()) return tile.routing.mode == FilterMode.BLACKLIST
+	private fun matchesFilter(tile: HookBlockEntity, direction: Direction, routing: RoutingModule, resource: ItemResource): Boolean {
+		val filter = tile.filterFor(direction)
+		val entries = (0 until filter.size()).map { filter[it].resource }.filter { !it.isBlank }
+		if (entries.isEmpty()) return routing.mode == FilterMode.BLACKLIST
 
 		val matchesAnyEntry = entries.any { it.isOf(resource.item) }
-		return when (tile.routing.mode) {
+		return when (routing.mode) {
 			FilterMode.WHITELIST -> matchesAnyEntry
 			FilterMode.BLACKLIST -> !matchesAnyEntry
 		}

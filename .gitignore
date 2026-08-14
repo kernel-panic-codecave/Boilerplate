@@ -21,6 +21,12 @@ classes/
 *.launch
 local.properties
 **/src/main/generated
+# Unlike Archie (a library, regenerated on demand by consumers), TubularStorage commits its own
+# generated blockstate/model JSON so the repo builds/runs without a runDatagen step first - only
+# datagen's own bookkeeping cache stays ignored.
+!common/src/main/generated/
+!common/src/main/generated/**
+common/src/main/generated/.cache/
 .architectury-transformer
 .kotlin
 */.kotlin

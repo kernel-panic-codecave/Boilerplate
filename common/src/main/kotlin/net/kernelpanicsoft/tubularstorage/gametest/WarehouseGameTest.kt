@@ -131,7 +131,7 @@ class WarehouseGameTest {
 	}
 
 	@GameTest(template = SMALL, timeoutTicks = 400)
-	fun GameTestHelper.testStagingBufferContentsGetPutAway() {
+	fun GameTestHelper.testInboundBufferContentsGetPutAway() {
 		val controllerPos = BlockPos(0, 2, 0)
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
@@ -140,21 +140,21 @@ class WarehouseGameTest {
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
-		controller.stagingBuffer.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 5, false)
+		controller.inboundBuffer.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 5, false)
 
 		succeedWhen {
 			val rack = getBlockEntity(rackPos) as ChestBlockEntity
 			assertTrue(rack.getItem(0).`is`(Items.DIAMOND) && rack.getItem(0).count == 5) {
 				"Expected 5 diamonds to have been stowed into the rack, got ${rack.getItem(0)}"
 			}
-			assertTrue(controller.stagingBuffer.getAmount(0) == 0L) {
-				"Expected the staging buffer to be empty after stowing, got amount ${controller.stagingBuffer.getAmount(0)}"
+			assertTrue(controller.inboundBuffer.getAmount(0) == 0L) {
+				"Expected the inbound buffer to be empty after stowing, got amount ${controller.inboundBuffer.getAmount(0)}"
 			}
 		}
 	}
 
 	@GameTest(template = SMALL, timeoutTicks = 400)
-	fun GameTestHelper.testEnqueuedRetrieveDeliversToStagingBuffer() {
+	fun GameTestHelper.testEnqueuedRetrieveDeliversToOutboundBuffer() {
 		val controllerPos = BlockPos(0, 2, 0)
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
@@ -169,11 +169,44 @@ class WarehouseGameTest {
 		controller.enqueueRetrieve(slot, resource, 5)
 
 		succeedWhen {
-			assertTrue(controller.stagingBuffer.getAmount(0) == 5L && controller.stagingBuffer.getResource(0) == resource) {
-				"Expected 5 diamonds to have been retrieved into the staging buffer, got amount ${controller.stagingBuffer.getAmount(0)} resource ${controller.stagingBuffer.getResource(0)}"
+			assertTrue(controller.outboundBuffer.getAmount(0) == 5L && controller.outboundBuffer.getResource(0) == resource) {
+				"Expected 5 diamonds to have been retrieved into the outbound buffer, got amount ${controller.outboundBuffer.getAmount(0)} resource ${controller.outboundBuffer.getResource(0)}"
 			}
 			val rack = getBlockEntity(rackPos) as ChestBlockEntity
 			assertTrue(rack.getItem(0).isEmpty) { "Expected the rack to be emptied by the retrieval, got ${rack.getItem(0)}" }
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testGantryBatchesMultiplePickupsInOneTrip() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val rackOnePos = BlockPos(4, 2, 0)
+		val rackTwoPos = BlockPos(4, 2, 4)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(rackOnePos, Blocks.CHEST.defaultBlockState())
+		setBlock(rackTwoPos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(rackOnePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
+		(getBlockEntity(rackTwoPos) as ChestBlockEntity).setItem(0, ItemStack(Items.GOLD_INGOT, 3))
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
+		val gold = ItemResource.of(ItemStack(Items.GOLD_INGOT))
+		controller.enqueueRetrieve(WarehouseIndex.RackSlotRef(absolutePos(rackOnePos), null, 5), diamond, 5)
+		controller.enqueueRetrieve(WarehouseIndex.RackSlotRef(absolutePos(rackTwoPos), null, 3), gold, 3)
+
+		succeedWhen {
+			val rackOne = getBlockEntity(rackOnePos) as ChestBlockEntity
+			val rackTwo = getBlockEntity(rackTwoPos) as ChestBlockEntity
+			assertTrue(rackOne.getItem(0).isEmpty && rackTwo.getItem(0).isEmpty) {
+				"Expected both racks to have been emptied by the batched retrieval, got ${rackOne.getItem(0)} / ${rackTwo.getItem(0)}"
+			}
+			val outboundContents = (0 until 9).map { controller.outboundBuffer.getResource(it) to controller.outboundBuffer.getAmount(it) }
+			assertTrue(outboundContents.any { it.first == diamond && it.second == 5L } && outboundContents.any { it.first == gold && it.second == 3L }) {
+				"Expected 5 diamonds and 3 gold ingots to both have landed in the outbound buffer from one batched trip, got $outboundContents"
+			}
+			assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished the batch and returned home by now" }
 		}
 	}
 
@@ -233,8 +266,8 @@ class WarehouseGameTest {
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		succeedWhen {
-			assertTrue(controller.stagingBuffer.getAmount(0) == 8L) {
-				"Expected 8 diamonds with nowhere else to go to have landed in the warehouse claiming the default route, got amount ${controller.stagingBuffer.getAmount(0)}"
+			assertTrue(controller.inboundBuffer.getAmount(0) == 8L) {
+				"Expected 8 diamonds with nowhere else to go to have landed in the warehouse claiming the default route, got amount ${controller.inboundBuffer.getAmount(0)}"
 			}
 		}
 	}
@@ -266,8 +299,8 @@ class WarehouseGameTest {
 			controller.enqueueRetrieve(indexed!!, resource, 5)
 
 			runAfterDelay(100) {
-				assertTrue(controller.stagingBuffer.getAmount(0) == 0L) {
-					"Expected nothing to have been retrieved from the now-empty rack, got amount ${controller.stagingBuffer.getAmount(0)}"
+				assertTrue(controller.outboundBuffer.getAmount(0) == 0L) {
+					"Expected nothing to have been retrieved from the now-empty rack, got amount ${controller.outboundBuffer.getAmount(0)}"
 				}
 				assertTrue(controller.index.locations[resource].isNullOrEmpty()) {
 					"Expected the stale index entry to have been dropped after the failed retrieval, got ${controller.index.locations[resource]}"

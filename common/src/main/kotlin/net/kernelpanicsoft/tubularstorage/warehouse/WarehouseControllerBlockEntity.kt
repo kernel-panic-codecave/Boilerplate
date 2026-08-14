@@ -26,16 +26,18 @@ import net.minecraft.world.phys.Vec3
  * it, and the [GantryJob] queue driving that gantry against the index (see
  * `docs/design/m3-warehouse-storage.md`).
  *
- * Also the warehouse's own pipe-network interface, deliberately not a separate block: [stagingBuffer]
+ * Also the warehouse's own pipe-network interface, deliberately not a separate block: [inboundBuffer]
  * is exposed to `ItemApi.BLOCK` (see [net.kernelpanicsoft.tubularstorage.TubularStorage.init]), so
  * *inbound* deliveries need no warehouse-specific code at all - it's just another accepting
  * destination as far as [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]/
  * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType] are concerned. New arrivals
- * there get planned into a [GantryJob.Stow] the next idle tick. *Outbound* deliveries (a
- * `RequestFulfillment`-planned [GantryJob.Retrieve] with `deliverTo` set) are [shipOut]'s job: find
- * a connected pipe and inject a `TravelingItem` into it directly, the same thing
- * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType.tryExtract] already does to its
- * own tile.
+ * there get planned into [GantryJob.Stow] jobs the next idle tick. [outboundBuffer] is the reverse -
+ * items a [GantryJob.Retrieve] job has pulled off a rack, awaiting [shipOut] - and is deliberately
+ * *not* exposed to `ItemApi.BLOCK` at all: every current `Retrieve` job already has an explicit
+ * `deliverTo` set at enqueue time (see [RequestFulfillment][net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment]),
+ * so [shipOut] disperses it the moment it lands there - nothing needs to pull from it generically.
+ * The two used to be one shared buffer; splitting them means a retrieved-but-unrouted stack can no
+ * longer get treated as freshly-arrived cargo and re-shelved by the next put-away pass.
  */
 class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(TileRegistry.WarehouseController, pos, state) {
@@ -79,18 +81,22 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	val index: WarehouseIndex = WarehouseIndex()
 	val gantry: GantryState = GantryState(Vec3.atCenterOf(pos))
-	val stagingBuffer: ArchieItemStorage by itemField(STAGING_BUFFER_SIZE)
+	val inboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
+	val outboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
 
 	private var lastScannedBounds: Bounds? = null
 	private var ticksSinceAudit: Int = 0
 	private var ticksSinceGantrySync: Int = 0
 
 	private val jobs: ArrayDeque<GantryJob> = ArrayDeque()
-	private var activeJob: GantryJob? = null
-	private var pickedUp = false
-	private var carrying: Pair<ItemResource, Long>? = null
 
-	/** Queues a job retrieving [slot]'s [resource]/[amount] into [stagingBuffer], shipping it straight on to [deliverTo] once it lands there if given - see `RequestFulfillment`. */
+	/** The current batch's not-yet-visited pickup legs, at most [GANTRY_CARRY_CAPACITY] long - see [tickJobs]. */
+	private val pickupQueue: ArrayDeque<GantryJob> = ArrayDeque()
+
+	/** What's actually in the gantry's hands right now - each entry picked up but not yet dropped off. */
+	private val deliveryQueue: ArrayDeque<CarriedStack> = ArrayDeque()
+
+	/** Queues a job retrieving [slot]'s [resource]/[amount] into [outboundBuffer], shipping it straight on to [deliverTo] once it lands there if given - see `RequestFulfillment`. */
 	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, resource: ItemResource, amount: Long, deliverTo: BlockPos? = null) {
 		jobs += GantryJob.Retrieve(slot, resource, amount, deliverTo)
 	}
@@ -145,41 +151,53 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	/**
-	 * Advances the job queue by one step - dequeuing a fresh job (or planning a put-away, if none is
-	 * queued), completing the leg the gantry just arrived at, or starting the next one. Every job
-	 * ends with the gantry heading back to [pos] (its home position) once it's done - whether that's
-	 * a genuine drop-off or an aborted pickup with nothing to carry - rather than sitting wherever it
-	 * last visited. Only called while [gantry] is idle, so each call is exactly one leg of exactly
-	 * one job (or the trip home after one).
+	 * Advances the current batch by one leg - dequeuing a fresh batch (or planning a put-away, if
+	 * [jobs] is empty too) when both queues are drained, completing whichever leg the gantry just
+	 * arrived at, or starting the next one. A batch groups up to [GANTRY_CARRY_CAPACITY] consecutive
+	 * same-kind jobs from the front of [jobs] ([startNextBatch]) so the crane visits every pickup in
+	 * [pickupQueue], then every drop-off for what it actually collected in [deliveryQueue], as one
+	 * continuous run rather than a full trip home between each individual item - the "prevent
+	 * bottlenecks" case a single-item-at-a-time crane hits once several requests/put-aways queue up
+	 * at once. A pickup a player already emptied by hand just gets skipped (no `deliveryQueue` entry
+	 * added), the same as before, but no longer aborts the rest of the batch. Every batch still ends
+	 * with the gantry heading back to [pos] (its home position) once both queues empty. Only called
+	 * while [gantry] is idle, so each call is exactly one leg.
 	 */
 	private fun tickJobs(level: ServerLevel, pos: BlockPos) {
-		val job = activeJob
-		if (job == null) {
-			val next = jobs.removeFirstOrNull() ?: run { planPutAway(level); return }
-			activeJob = next
-			pickedUp = false
-			moveGantryTo(sourcePos(next, pos))
+		if (pickupQueue.isEmpty() && deliveryQueue.isEmpty()) {
+			startNextBatch(level, pos)
 			return
 		}
 
-		if (!pickedUp) {
-			pickedUp = true
-			carrying = pickUp(level, job)
-			if (carrying == null) {
-				// Nothing there to pick up - skip straight to heading home instead of visiting the
-				// (pointless) destination first.
-				activeJob = null
-				moveGantryTo(pos)
-				return
-			}
-			moveGantryTo(destinationPos(job, pos))
+		if (pickupQueue.isNotEmpty()) {
+			val job = pickupQueue.removeFirst()
+			val picked = pickUp(level, job)
+			if (picked != null) deliveryQueue += CarriedStack(job, picked.first, picked.second)
+			advanceBatch(pos)
 			return
 		}
 
-		dropOff(level, pos, job)
-		activeJob = null
-		carrying = null
-		moveGantryTo(pos)
+		val carried = deliveryQueue.removeFirst()
+		dropOff(level, pos, carried.job, carried.resource, carried.amount)
+		advanceBatch(pos)
+	}
+
+	private fun startNextBatch(level: ServerLevel, pos: BlockPos) {
+		val first = jobs.removeFirstOrNull() ?: run { planPutAway(level); return }
+		pickupQueue += first
+		while (jobs.isNotEmpty() && jobs.first().isSameKindAs(first) && pickupQueue.size < GANTRY_CARRY_CAPACITY) {
+			pickupQueue += jobs.removeFirst()
+		}
+		moveGantryTo(sourcePos(first, pos))
+	}
+
+	/** Heads to the next still-pending leg of the current batch (another pickup, then a drop-off for whatever was actually collected), or home once both queues are drained. */
+	private fun advanceBatch(pos: BlockPos) {
+		when {
+			pickupQueue.isNotEmpty() -> moveGantryTo(sourcePos(pickupQueue.first(), pos))
+			deliveryQueue.isNotEmpty() -> moveGantryTo(destinationPos(deliveryQueue.first().job, pos))
+			else -> moveGantryTo(pos)
+		}
 	}
 
 	private fun sourcePos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
@@ -200,56 +218,55 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			if (extracted > 0) job.resource to extracted else null
 		}
 		is GantryJob.Stow -> {
-			val extracted = stagingBuffer.extract(job.resource, job.amount, false)
+			val extracted = inboundBuffer.extract(job.resource, job.amount, false)
 			if (extracted > 0) job.resource to extracted else null
 		}
 	}
 
-	private fun dropOff(level: ServerLevel, pos: BlockPos, job: GantryJob) {
-		val (resource, amount) = carrying ?: return
+	private fun dropOff(level: ServerLevel, pos: BlockPos, job: GantryJob, resource: ItemResource, amount: Long) {
 		when (job) {
 			is GantryJob.Retrieve -> {
-				val inserted = stagingBuffer.insert(resource, amount, false)
+				val inserted = outboundBuffer.insert(resource, amount, false)
 				if (inserted > 0 && job.deliverTo != null) shipOut(level, pos, resource, inserted, job.deliverTo)
 			}
 			is GantryJob.Stow -> {
 				val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
 				val inserted = storage?.insert(resource, amount, false) ?: 0
 				index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
-				if (inserted < amount) stagingBuffer.insert(resource, amount - inserted, false)
+				if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
 			}
 		}
 	}
 
 	/**
 	 * Looks for a connected pipe among [pos]'s own six neighbors and, if one can route to
-	 * [deliverTo], pulls [amount] of [resource] back out of [stagingBuffer] and injects it as a
+	 * [deliverTo], pulls [amount] of [resource] back out of [outboundBuffer] and injects it as a
 	 * `TravelingItem` directly into that pipe's own queue - the same thing
 	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType.tryExtract] does to its own
-	 * tile. Leaves it in the buffer (for the next put-away pass) if no route is found.
+	 * tile. Leaves it in the buffer (for the next `shipOut` attempt, since nothing else drains it) if
+	 * no route is found.
 	 */
 	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos) {
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
 			val pipeTile = level.getBlockEntity(neighborPos) as? PipeBlockEntity ?: continue
 			val route = PipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
-			val extracted = stagingBuffer.extract(resource, amount, false)
+			val extracted = outboundBuffer.extract(resource, amount, false)
 			if (extracted <= 0) continue
 			pipeTile.travelingItems += TravelingItem(resource.toStack(extracted.toInt()), direction.opposite, 0f, route, null)
 			return
 		}
 	}
 
-	/** Looks for anything sitting in [stagingBuffer] and, if a rack will take it, queues a [GantryJob.Stow] for it - one job per call, so a full buffer drains one item at a time across idle ticks rather than all at once. */
+	/** Looks for anything sitting in [inboundBuffer] and, for each occupied slot a rack will take, queues a [GantryJob.Stow] for it - up to [GANTRY_CARRY_CAPACITY] jobs, one per occupied slot, so a full buffer becomes a single batched trip rather than one round trip per item. */
 	private fun planPutAway(level: ServerLevel) {
-		for (i in 0 until stagingBuffer.size()) {
-			val resource = stagingBuffer.getResource(i)
+		for (i in 0 until inboundBuffer.size()) {
+			val resource = inboundBuffer.getResource(i)
 			if (resource.isBlank) continue
-			val amount = stagingBuffer.getAmount(i)
+			val amount = inboundBuffer.getAmount(i)
 			if (amount <= 0) continue
 			val (targetPos, targetDirection) = bestRackFor(level, resource) ?: continue
 			jobs += GantryJob.Stow(targetPos, targetDirection, resource, amount)
-			return
 		}
 	}
 
@@ -266,7 +283,11 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	companion object {
-		private const val STAGING_BUFFER_SIZE = 9
+		/** Size of both [inboundBuffer] and [outboundBuffer], and (see [GANTRY_CARRY_CAPACITY]) the batch cap - the gantry can carry exactly as many stacks as either buffer holds. */
+		private const val BUFFER_SIZE = 9
+
+		/** How many jobs [startNextBatch] groups into one continuous trip - tied to [BUFFER_SIZE] since that's exactly how many distinct stacks the gantry has anywhere to put down at once. */
+		private const val GANTRY_CARRY_CAPACITY = BUFFER_SIZE
 
 		/** How often the background audit rescan runs to correct drift from racks touched by hand - 5 minutes at 20 TPS. */
 		private const val AUDIT_INTERVAL_TICKS = 6000
@@ -277,6 +298,15 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		fun tick(level: Level, pos: BlockPos, state: BlockState, tile: WarehouseControllerBlockEntity) = tile.tick(level, pos, state)
 	}
 }
+
+/** Whether [this] and [other] are the same [GantryJob] variant - [WarehouseControllerBlockEntity.startNextBatch] only ever batches a run of one kind at a time, since `Stow`/`Retrieve` have different source/destination shapes (shared controller vs. per-job rack). */
+private fun GantryJob.isSameKindAs(other: GantryJob): Boolean = when (this) {
+	is GantryJob.Stow -> other is GantryJob.Stow
+	is GantryJob.Retrieve -> other is GantryJob.Retrieve
+}
+
+/** One [job]'s pickup result, waiting in [WarehouseControllerBlockEntity.deliveryQueue] for its own drop-off leg - [resource]/[amount] actually collected, which may be less than [GantryJob.amount] asked for. */
+private data class CarriedStack(val job: GantryJob, val resource: ItemResource, val amount: Long)
 
 /**
  * Wraps [Bounds] so [WarehouseControllerBlockEntity.bounds] can round-trip as `null` while unbound

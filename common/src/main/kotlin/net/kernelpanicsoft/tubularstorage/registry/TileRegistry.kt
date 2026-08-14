@@ -47,7 +47,7 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 		blockEntityType(::WarehouseControllerBlockEntity) {
 			add(BlockRegistry.WarehouseController)
 		}
-	}.apply { exposeItemStorage(WarehouseControllerBlockEntity::stagingBuffer) }
+	}.apply { exposeItemStorage(WarehouseControllerBlockEntity::inboundBuffer) }
 
 	override fun initClient() {
 		BlockEntityRendererRegistry.register(Hook, ::PipeHookBlockEntityRenderer)

@@ -76,6 +76,18 @@ Only one sorting hook per network may hold the sentinel at a time: `UpdateSortin
 
 Caught a real, previously-latent bug along the way: `FilterMode` (a plain Kotlin enum) relied on kotlinx.serialization's default `encodeEnum`, which knbt's `AbstractNbtEncoder` never overrides - it silently "worked" only because `FilterMode.WHITELIST` is the field's declared default, which kotlinx.serialization skips encoding entirely; `BLACKLIST` (or any explicit non-default enum value nested this way) crashed the instant something actually tried to persist it. Fixed with `FilterModeSerializer`, encoding by name via `encodeString`/`decodeString` - the same workaround `DirectionSerializer`/`DyeColorSerializer` already use for the same underlying knbt gap.
 
+## Future: hook-to-hook/hook-to-pipe facing as a subnet boundary (not started)
+
+Today `PipeNetworkManager` merges every reachable, matching pipe into one flat graph regardless of what's attached to it — a hook is just a per-face attachment *within* that one network, uniformly visible to `PipeRouter.search` from anywhere else in it. Idea for later: when a hook faces directly into *another* hook, or into another pipe network, rather than into a plain inventory, treat that facing as a deliberate **subnet boundary** instead of a topology merge — the two sides stay logically separate networks, and routing across the boundary is gated by whatever hook(s) sit at the junction (their type/filter), not by BFS reachability alone.
+
+The concrete example: a `ProviderHookType` hook facing into a `SortingHookType` hook (acting as a filter) at the seam between two networks would only expose items matching that filter across into the other side — the rest of the provider's network stays invisible from there. This is the same shape as AE2's Storage Bus attached to an Interface: a narrow, filtered, deliberate bridge between two otherwise-independent ME networks, rather than the two networks becoming one.
+
+Open questions to resolve whenever this gets picked up, not blocking anything current:
+
+- Does *every* hook facing another hook/pipe become a boundary, or only specific combinations (e.g. only when the facing hook is itself filtering something, like Provider→Sorting)? A hook facing another hook with no filter at all might reasonably still just merge/pass through.
+- Where does this live mechanically - does `PipeNetworkManager` need a real notion of "two adjacent but unmerged networks bridged by a filtered edge," or can `PipeRouter.search` treat a boundary hook as a special candidate that, once entered, re-launches a second BFS on the far side under the boundary hook's own filter (cheaper to reason about, no change to merge semantics)?
+- Interacts with the default-route sentinel (`RoutingModule.DEFAULT_ROUTE_PRIORITY`) and M3's request-based routing (`RequesterHookType`/`ProviderHookType`) - a request crossing a subnet boundary is presumably exactly the AE2 Storage-Bus-on-Interface case, so whatever `RequestFulfillment` does needs to understand boundaries too, not just `PipeRouter.search`'s push-model path.
+
 ## Deferred to playtesting / not blocking
 
 - Priority as a 0–10 slider vs. discrete tiers (Highest/High/Normal/Low) — UX polish, not architecture.

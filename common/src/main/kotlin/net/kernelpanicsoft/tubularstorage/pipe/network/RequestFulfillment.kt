@@ -8,6 +8,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
@@ -145,11 +146,16 @@ object RequestFulfillment {
 	/**
 	 * A [providesItems][net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType.providesItems]
 	 * hook at [hookPos] facing [direction] - [storage] is the adjacent inventory it opts into being
-	 * pullable. [hookState] is a plain [ProviderHookState] (no filter, always pullable) or a
-	 * [SortingHookState] (a `sync` hook - see [fulfillFromProvider]'s own filter check).
+	 * pullable. [hookState] is a plain [ProviderHookState] (no filter, always pullable), a
+	 * [SortingHookState] (a `sync` hook - see [fulfillFromProvider]'s own filter check), or an
+	 * [InterfaceHookState] - which, unlike the other two, isn't pointed at an external neighbor at
+	 * all; its own [InterfaceHookState.stock] *is* the inventory, so [storage] special-cases it
+	 * rather than querying whatever [direction] happens to face (typically the far side of the
+	 * subnet boundary it anchors, not this hook's own stock).
 	 */
 	data class ProviderSource(val hookPos: BlockPos, val direction: Direction, val hookState: HookHolderState) {
-		fun storage(level: ServerLevel): CommonStorage<ItemResource>? = ItemApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
+		fun storage(level: ServerLevel): CommonStorage<ItemResource>? =
+			(hookState as? InterfaceHookState)?.stock ?: ItemApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
 	}
 
 	/** A [PatternProviderHookState] at [hookPos] facing [direction] - [targetPos] is whatever it's feeding/draining patterns against. */

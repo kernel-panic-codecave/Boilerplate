@@ -15,6 +15,9 @@ import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 class InterfaceHookState : HookHolderState(InterfaceHookType.ID) {
 	val stock: ArchieItemStorage by itemField(SLOTS)
 
+	/** Ticks since this hook last attempted to push [stock] into the network; resets to 0 on every attempt, successful or not - see [InterfaceHookType.tick]. */
+	var ticksSincePush: Int = 0
+
 	companion object {
 		const val SLOTS = 9
 	}

@@ -16,6 +16,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SyncHookType
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
+import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -66,7 +67,14 @@ class SubnetBoundaryGameTest {
 		val providerPos = BlockPos(0, 2, 0)
 		val requesterPos = BlockPos(1, 2, 0)
 		val interfacePos = BlockPos(0, 2, 1)
-		val destPos = BlockPos(1, 2, 1)
+		// North of the requester, not south - south would also touch interfacePos (a diagonal
+		// corner of this compact layout), which is a legal target for the interface's own
+		// self-push (InterfaceHookType.tick) too, muddying which mechanism delivered what. Staying
+		// tight (a single hop each way) also matters on its own: RequesterHookType.tryRequest has
+		// no in-flight-request tracking, so a delivery slower than REQUEST_INTERVAL_TICKS lets a
+		// second periodic check re-request the same shortfall before the first arrives - confirmed
+		// the hard way with a wider layout (three hops) double-delivering.
+		val destPos = BlockPos(1, 2, -1)
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		val provider = hookAt(providerPos)
@@ -74,7 +82,7 @@ class SubnetBoundaryGameTest {
 		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
 
 		val requester = hookAt(requesterPos)
-		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
+		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
 		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 5, false)
 
 		val interfaceTile = hookAt(interfacePos)
@@ -89,6 +97,49 @@ class SubnetBoundaryGameTest {
 			assertTrue(interfaceState.stock.getAmount(0) == 5L) {
 				"Expected the interface's own stock to have dropped by 5, got ${interfaceState.stock.getAmount(0)}"
 			}
+		}
+	}
+
+	/** [InterfaceHookType.tick] proactively pushes whatever lands in [InterfaceHookState.stock] into the network, unprompted - a hopper (or a player) dropping items in behaves like an [ExtractionHookType] sitting on a chest, not a dead end. */
+	@GameTest(template = SMALL, timeoutTicks = 40)
+	fun GameTestHelper.testInterfaceSelfPushesStockIntoTheNetwork() {
+		val interfacePos = BlockPos(0, 2, 0)
+		val destPos = BlockPos(0, 2, 1)
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+
+		succeedWhen {
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 4 && interfaceState.stock.getAmount(0) == 0L) {
+				"Expected the interface to have self-pushed all 4 diamonds out on its own, got dest=${dest.getItem(0)} interfaceStock=${interfaceState.stock.getAmount(0)}"
+			}
+		}
+	}
+
+	/** The whole point of [InterfaceHookType.providesItems] - an interface's own stock, reachable across the very boundary it anchors, shows up as a pullable source the same way an ordinary [ProviderHookType]-tagged chest would. */
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testInterfaceStockIsAValidProviderSourceAcrossTheBoundary() {
+		val providerPos = BlockPos(0, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+
+		val provider = hookAt(providerPos)
+		provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() }
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 7, false)
+
+		runAfterDelay(2) {
+			val sources = RequestFulfillment.reachableProviders(level as ServerLevel, absolutePos(providerPos))
+			val interfaceSource = sources.firstOrNull { it.hookState === interfaceState }
+			assertTrue(interfaceSource != null) { "Expected the interface's own hook to register as a reachable provider source, got $sources" }
+			assertTrue(interfaceSource!!.storage(level as ServerLevel)?.getAmount(0) == 7L) {
+				"Expected the interface source's own storage() to read its stock directly, got ${interfaceSource.storage(level as ServerLevel)}"
+			}
+			succeed()
 		}
 	}
 

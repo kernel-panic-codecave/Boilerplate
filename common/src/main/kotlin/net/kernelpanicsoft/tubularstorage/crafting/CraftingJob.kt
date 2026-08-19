@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.tubularstorage.crafting
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.tubularstorage.network.CraftJobTreeNode
 import net.minecraft.core.BlockPos
 
 /**
@@ -27,4 +28,40 @@ class CraftingJob(val target: ItemResource, val targetAmount: Long, val steps: L
 
 	/** Whether this job is finished (delivered or gave up) and can be dropped from the queue. */
 	var done: Boolean = false
+
+	/**
+	 * [index]'s own coarse progress, derived from this job's existing bookkeeping fields (no
+	 * dedicated per-step state) - for [toTree]'s per-node status text.
+	 */
+	fun stepStatus(index: Int): String {
+		if (done) return "Delivered"
+		val step = steps[index]
+		if (tableForStep[index] == null) return "Waiting for a pattern provider"
+		val allFed = step.pattern.requiredInputs().keys.all { (index to it) in fedInputs }
+		return if (allFed) "Processing…" else "Feeding ingredients…"
+	}
+
+	/**
+	 * Builds a [CraftJobTreeNode] rooted at the step producing [target] itself, recursively
+	 * expanding into the steps producing each of its own crafted (not stock-pulled) ingredients -
+	 * see [CraftJobTreeNode]'s own KDoc for why a shared sub-resource appears once per consumer
+	 * rather than being deduplicated into a DAG. `null` if [target] is being fulfilled straight
+	 * from stock/a warehouse ([steps] empty) - nothing to show a tree for.
+	 */
+	fun toTree(): CraftJobTreeNode? {
+		val rootIndex = steps.indexOfFirst { it.resource == target }
+		if (rootIndex < 0) return null
+
+		fun build(index: Int): CraftJobTreeNode {
+			val step = steps[index]
+			val outputAmount = step.pattern.outputs.firstOrNull { it.resource == step.resource }?.amount ?: 1L
+			val children = step.pattern.requiredInputs().keys.mapNotNull { input ->
+				val childIndex = steps.indexOfFirst { it.resource == input }
+				if (childIndex < 0) null else build(childIndex)
+			}
+			return CraftJobTreeNode(step.resource, step.runs * outputAmount, stepStatus(index), done, children)
+		}
+
+		return build(rootIndex)
+	}
 }

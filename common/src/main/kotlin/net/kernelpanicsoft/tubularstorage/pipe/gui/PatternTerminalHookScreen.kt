@@ -24,10 +24,12 @@ import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.height
+import net.kernelpanicsoft.archie.gui.modifiers.size
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.Theme
 import net.kernelpanicsoft.tubularstorage.network.EncodePatternRequestPacket
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestWarehouseDefragPacket
@@ -84,6 +86,7 @@ class PatternTerminalHookScreen(private val menu: PatternTerminalHookMenu, playe
 						tab(id = "store", title = Component.literal("Store")) { storeTab() }
 						tab(id = "craft", title = Component.literal("Craft")) { craftTab() }
 						tab(id = "encode", title = Component.literal("Encode")) { encodeTab() }
+						tab(id = "tree", title = Component.literal("Tree")) { treeTab() }
 					}
 				}
 			}
@@ -192,6 +195,17 @@ class PatternTerminalHookScreen(private val menu: PatternTerminalHookMenu, playe
 				color = LocalTheme.current.darkTextColor,
 			)
 		}
+	}
+
+	@Composable
+	private fun treeTab() {
+		LaunchedEffect(Unit) {
+			while (true) {
+				TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
+				delay(STATUS_POLL_MILLIS)
+			}
+		}
+		CraftingTreeView(menu.craftTree, modifier = Modifier.size(contentWidth, 18 * VISIBLE_ROWS))
 	}
 
 	/** Shared search box + result grid, reused by [storeTab]/[craftTab]. */

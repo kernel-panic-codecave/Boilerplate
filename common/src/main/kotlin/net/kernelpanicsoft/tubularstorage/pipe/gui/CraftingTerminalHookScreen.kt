@@ -23,8 +23,10 @@ import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.height
+import net.kernelpanicsoft.archie.gui.modifiers.size
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestWarehouseDefragPacket
@@ -81,6 +83,7 @@ class CraftingTerminalHookScreen(private val menu: CraftingTerminalHookMenu, pla
 						tab(id = "store", title = Component.literal("Store")) { storeTab() }
 						tab(id = "craft", title = Component.literal("Craft")) { craftTab() }
 						tab(id = "assemble", title = Component.literal("Assemble")) { assembleTab() }
+						tab(id = "tree", title = Component.literal("Tree")) { treeTab() }
 					}
 				}
 			}
@@ -138,6 +141,17 @@ class CraftingTerminalHookScreen(private val menu: CraftingTerminalHookMenu, pla
 				Text(Component.literal("Craft"), dropShadow = false)
 			}
 		}
+	}
+
+	@Composable
+	private fun treeTab() {
+		LaunchedEffect(Unit) {
+			while (true) {
+				TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
+				delay(STATUS_POLL_MILLIS)
+			}
+		}
+		CraftingTreeView(menu.craftTree, modifier = Modifier.size(contentWidth, 18 * VISIBLE_ROWS))
 	}
 
 	/** Shared search box + result grid, reused by [storeTab]/[craftTab]. */

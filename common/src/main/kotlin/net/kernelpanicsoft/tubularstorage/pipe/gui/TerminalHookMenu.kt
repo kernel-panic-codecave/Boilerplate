@@ -9,9 +9,12 @@ import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
+import net.kernelpanicsoft.tubularstorage.network.CraftJobTreeNode
+import net.kernelpanicsoft.tubularstorage.network.CraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftingRequestPacket
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
@@ -54,7 +57,7 @@ import net.minecraft.world.item.ItemStack
  * required.
  */
 class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
-	ComposeBlockContainerMenu<HookBlockEntity, TerminalHookMenu>(GuiRegistry.TerminalHook, id, inventory, tile), CraftPreviewMenu {
+	ComposeBlockContainerMenu<HookBlockEntity, TerminalHookMenu>(GuiRegistry.TerminalHook, id, inventory, tile), CraftPreviewMenu, CraftTreeMenu {
 
 	/** The most recently received search results - Compose state, so [TerminalHookScreen] recomposes whenever [updateResults] applies a fresh [TerminalSearchResultsPacket]. */
 	var results: List<SResourceStack<SItemResource>> by mutableStateOf(emptyList())
@@ -167,6 +170,24 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		val level = level as? ServerLevel ?: return
 		val max = CraftingRequest.maxCraftable(level, tile.blockPos, resource, upperBound)
 		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftPreviewPacket(resource, max))
+	}
+
+	/** The most recently received job tree - Compose state, so [TerminalHookScreen]'s Tree tab recomposes whenever [updateCraftTree] applies a fresh [CraftJobTreePacket]. */
+	override var craftTree: CraftJobTreeNode? by mutableStateOf(null)
+		private set
+
+	override fun requestCraftTree() {
+		TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
+	}
+
+	override fun updateCraftTree(root: CraftJobTreeNode?) {
+		craftTree = root
+	}
+
+	override fun sendCraftTree() {
+		val level = level as? ServerLevel ?: return
+		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftJobTreePacket(state.jobs.firstOrNull()?.toTree()))
 	}
 
 	/** Client-side: submits an on-demand crafting request for [stack] - resolved and, if resolvable, executed server-side over subsequent ticks by [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType.tick]. */

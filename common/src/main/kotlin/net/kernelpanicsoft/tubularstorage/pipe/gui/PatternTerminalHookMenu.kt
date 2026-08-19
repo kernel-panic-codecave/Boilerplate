@@ -11,9 +11,12 @@ import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
 import net.kernelpanicsoft.tubularstorage.crafting.PatternEncoder
+import net.kernelpanicsoft.tubularstorage.network.CraftJobTreeNode
+import net.kernelpanicsoft.tubularstorage.network.CraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftingRequestPacket
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
@@ -49,7 +52,7 @@ import net.minecraft.world.item.ItemStack
  * are siblings rather than a hierarchy - see [CraftingTerminalHookMenu]'s own KDoc.
  */
 class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
-	ComposeBlockContainerMenu<HookBlockEntity, PatternTerminalHookMenu>(GuiRegistry.PatternTerminalHook, id, inventory, tile), CraftPreviewMenu {
+	ComposeBlockContainerMenu<HookBlockEntity, PatternTerminalHookMenu>(GuiRegistry.PatternTerminalHook, id, inventory, tile), CraftPreviewMenu, CraftTreeMenu {
 
 	var results: List<SResourceStack<SItemResource>> by mutableStateOf(emptyList())
 		private set
@@ -132,6 +135,23 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnti
 		val level = level as? ServerLevel ?: return
 		val max = CraftingRequest.maxCraftable(level, tile.blockPos, resource, upperBound)
 		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftPreviewPacket(resource, max))
+	}
+
+	override var craftTree: CraftJobTreeNode? by mutableStateOf(null)
+		private set
+
+	override fun requestCraftTree() {
+		TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
+	}
+
+	override fun updateCraftTree(root: CraftJobTreeNode?) {
+		craftTree = root
+	}
+
+	override fun sendCraftTree() {
+		val level = level as? ServerLevel ?: return
+		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
+		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftJobTreePacket(state.jobs.firstOrNull()?.toTree()))
 	}
 
 	fun requestCraft(stack: ResourceStack<ItemResource>) {

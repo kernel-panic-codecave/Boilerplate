@@ -23,8 +23,10 @@ import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.height
+import net.kernelpanicsoft.archie.gui.modifiers.size
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestWarehouseDefragPacket
@@ -111,6 +113,7 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 					TabContainerPanel(contentWidth = contentWidth) {
 						tab(id = "store", title = Component.literal("Store")) { storeTab() }
 						tab(id = "craft", title = Component.literal("Craft")) { craftTab() }
+						tab(id = "tree", title = Component.literal("Tree")) { treeTab() }
 					}
 				}
 			}
@@ -163,6 +166,18 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 			Slots("output", COLUMNS, 1)
 			Text(Component.literal(status.ifBlank { "No crafting job in progress" }), dropShadow = false)
 		}
+	}
+
+	/** A pannable node graph of the front-of-queue [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob]'s tree - see [CraftingTreeView]. Polls [RequestCraftJobTreePacket] while open, matching [craftTab]'s own status polling. */
+	@Composable
+	private fun treeTab() {
+		LaunchedEffect(Unit) {
+			while (true) {
+				TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
+				delay(STATUS_POLL_MILLIS)
+			}
+		}
+		CraftingTreeView(menu.craftTree, modifier = Modifier.size(contentWidth, 18 * VISIBLE_ROWS))
 	}
 
 	/** Shared search box + result grid, reused by [storeTab]/[craftTab] - see this class's own KDoc. */

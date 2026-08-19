@@ -80,6 +80,9 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	itemModels().basicItem(ItemRegistry.ColorFilterCard)
 	itemModels().basicItem(ItemRegistry.RegexFilterCard)
 	itemModels().basicItem(ItemRegistry.CombinedFilterCard)
+
+	// Same flat item/generated icon as a filter card - a Pattern is likewise a plain item, no block of its own.
+	itemModels().basicItem(ItemRegistry.Pattern)
 }
 
 /**

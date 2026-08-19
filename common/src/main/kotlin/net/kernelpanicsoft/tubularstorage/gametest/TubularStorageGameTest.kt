@@ -32,5 +32,6 @@ private fun AGametestEvents.ArchieGameTestBuilder.tubularStorageGameTests() {
 		register<AssemblyTableGameTest>()
 		register<CraftingResolverGameTest>()
 		register<TerminalCraftGameTest>()
+		register<PatternItemGameTest>()
 	}
 }

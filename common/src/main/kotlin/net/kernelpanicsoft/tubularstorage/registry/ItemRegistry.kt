@@ -4,6 +4,7 @@ import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.itemProperties
 import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.crafting.PatternItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
@@ -86,6 +87,11 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val AssemblyTable by register("assembly_table") {
 		BlockItem(BlockRegistry.AssemblyTable, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	}
+
+	/** See [PatternItem]'s own KDoc - blank until encoded, one item type for both states. */
+	val Pattern by register("pattern") {
+		PatternItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
 
 	/**

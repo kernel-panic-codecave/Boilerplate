@@ -17,6 +17,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.gui.InterfaceHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.InterfaceHookScreen
 import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternProviderHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternProviderHookScreen
+import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookMenu
+import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookScreen
 import net.kernelpanicsoft.tubularstorage.pipe.gui.RequesterHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.RequesterHookScreen
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingHookMenu
@@ -86,6 +88,14 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 		}
 	}
 
+	val PatternTerminalHook: MenuType<PatternTerminalHookMenu> by register("pattern_terminal_hook") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val direction = buf.readEnum(Direction::class.java)
+			PatternTerminalHookMenu(id, inventory, tile, direction)
+		}
+	}
+
 	val AssemblyTable: MenuType<AssemblyTableMenu> by register("assembly_table") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
 			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as AssemblyTableBlockEntity
@@ -101,6 +111,7 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 		MenuRegistry.registerScreenFactory(InterfaceHook, ::InterfaceHookScreen)
 		MenuRegistry.registerScreenFactory(PatternProviderHook, ::PatternProviderHookScreen)
 		MenuRegistry.registerScreenFactory(CraftingTerminalHook, ::CraftingTerminalHookScreen)
+		MenuRegistry.registerScreenFactory(PatternTerminalHook, ::PatternTerminalHookScreen)
 		MenuRegistry.registerScreenFactory(AssemblyTable, ::AssemblyTableScreen)
 	}
 }

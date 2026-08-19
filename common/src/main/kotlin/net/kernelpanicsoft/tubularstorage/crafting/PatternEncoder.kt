@@ -3,7 +3,10 @@ package net.kernelpanicsoft.tubularstorage.crafting
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.CraftingInput
 import net.minecraft.world.item.crafting.RecipeType
 
@@ -40,5 +43,22 @@ object PatternEncoder {
 				kind = PatternKind.PROCESSING,
 			)
 		}
+	}
+
+	/**
+	 * [encode]s [grid]/[output] and, on success, consumes one blank [PatternItem] from [player]'s own
+	 * inventory and gives the player back a stack encoded with the result - see [PatternItem]'s own
+	 * KDoc. A no-op (returns `false`) if [encode] itself has nothing to encode, or if [player] isn't
+	 * holding a blank pattern anywhere in their main inventory.
+	 */
+	fun encodeAndConsume(level: ServerLevel, player: Player, grid: ArchieItemStorage, output: ArchieItemStorage): Boolean {
+		val pattern = encode(level, grid, output) ?: return false
+		val blankSlot = player.inventory.items.indexOfFirst { it.item == ItemRegistry.Pattern && PatternItemData(it).pattern == null }
+		if (blankSlot < 0) return false
+
+		player.inventory.items[blankSlot].shrink(1)
+		val encodedStack = ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern }
+		if (!player.inventory.add(encodedStack)) player.drop(encodedStack, false)
+		return true
 	}
 }

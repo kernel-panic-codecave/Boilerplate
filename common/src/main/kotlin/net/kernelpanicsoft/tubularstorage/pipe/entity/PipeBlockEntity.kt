@@ -87,7 +87,17 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			val direction = Direction.fromDelta(nextPos.x - pos.x, nextPos.y - pos.y, nextPos.z - pos.z)
 			val boundary = direction != null && SubnetBoundary.isBoundaryEdge(serverLevel, pos, direction)
 
-			if (isPipe(serverLevel, nextPos) && !boundary) {
+			// The same carve-out, generalized: item.path always ends with the route's own actual
+			// destination (whatever findRoute/findRouteTo was asked to reach), regardless of
+			// whether that position also happens to be pipe-shaped - a TerminalHookState.output
+			// exposed directly on the requesting terminal's own block position, say. Without this,
+			// the item hops *into* that final pipe segment as if it were a mid-route waypoint, then
+			// jams on the very next tick once its own path is empty - it was never actually part of
+			// the route past this point. Every non-final hop always has more than one entry left in
+			// its own path, so this can never misfire mid-route.
+			val isFinalHop = item.path.size == 1
+
+			if (isPipe(serverLevel, nextPos) && !boundary && !isFinalHop) {
 				val nextTile = serverLevel.getBlockEntity(nextPos) as? PipeBlockEntity
 				if (nextTile == null) {
 					jam(serverLevel, pos, item)

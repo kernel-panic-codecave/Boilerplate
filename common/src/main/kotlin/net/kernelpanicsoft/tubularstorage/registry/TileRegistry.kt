@@ -14,7 +14,9 @@ import net.kernelpanicsoft.tubularstorage.pipe.client.TravelingItemBlockEntityRe
 import net.kernelpanicsoft.tubularstorage.pipe.entity.GlassPipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer
 import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerVisual
@@ -34,17 +36,28 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 	}
 
 	/**
-	 * [exposeItemStorage] here is direction-gated, unlike [WarehouseController]'s own - one
+	 * [InterfaceHookState.stock] is direction-gated, unlike [WarehouseController]'s own - one
 	 * [HookBlockEntity] can carry up to six independent hooks, and only the one specific face
 	 * actually carrying an [InterfaceHookState] should ever answer a storage query. A
 	 * direction-less query (no face to check against) resolves to `null` rather than guessing
-	 * which face was meant.
+	 * which face was meant. [TerminalHookState.output], by contrast, is *not* face-gated - a
+	 * terminal is its own self-contained delivery point (see its own KDoc), reachable regardless of
+	 * which face a pipe approaches from, the same as [WarehouseController]'s `inboundBuffer`.
 	 */
 	val Hook: BlockEntityType<HookBlockEntity> by register("hook") {
 		blockEntityType(::HookBlockEntity) {
 			add(BlockRegistry.Hook)
 		}
-	}.apply { exposeItemStorage { tile, direction -> (direction?.let { tile.hooks[it.name] } as? InterfaceHookState)?.stock } }
+	}.apply {
+		exposeItemStorage { tile, direction ->
+			(direction?.let { tile.hooks[it.name] } as? InterfaceHookState)?.stock ?: terminalOutputOf(tile)
+		}
+	}
+
+	private fun terminalOutputOf(tile: HookBlockEntity): ArchieItemStorage? {
+		for ((_, entry) in tile.hooks) (entry as? TerminalHookState)?.let { return it.output }
+		return null
+	}
 
 	val GlassPipe: BlockEntityType<GlassPipeBlockEntity> by register("glass_pipe") {
 		blockEntityType(::GlassPipeBlockEntity) {

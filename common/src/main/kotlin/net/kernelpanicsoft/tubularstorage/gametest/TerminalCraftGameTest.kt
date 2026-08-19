@@ -37,19 +37,17 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity
  */
 @Suppress("unused")
 class TerminalCraftGameTest {
-	/** A [CraftingJob] with no [CraftingResolver.CraftStep]s - the requested amount was already fully covered by stock - reduces to exactly the same [net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment.request] call an ordinary terminal withdrawal makes. */
+	/** A [CraftingJob] with no [CraftingResolver.CraftStep]s - the requested amount was already fully covered by stock - reduces to exactly the same [net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment.request] call an ordinary terminal withdrawal makes, delivering into the terminal's own [TerminalHookState.output] slots. */
 	@GameTest(template = SMALL, timeoutTicks = 200)
 	fun GameTestHelper.testTrivialCraftRequestPullsDirectlyFromStock() {
 		val rackPos = BlockPos(0, 2, 0)
 		val controllerPos = BlockPos(1, 2, 0)
 		val pipePos = BlockPos(2, 2, 0)
 		val terminalPos = BlockPos(3, 2, 0)
-		val destPos = BlockPos(3, 2, 1)
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
 		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(terminalPos, BlockRegistry.Hook.defaultBlockState())
-		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -61,9 +59,8 @@ class TerminalCraftGameTest {
 		terminalState.jobs += CraftingJob(ItemResource.of(ItemStack(Items.DIAMOND)), 4, emptyList())
 
 		succeedWhen {
-			val dest = getBlockEntity(destPos) as ChestBlockEntity
-			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 4) {
-				"Expected 4 diamonds requested with no crafting steps needed to arrive via a plain stock pull, got ${dest.getItem(0)}"
+			assertTrue(terminalState.output.getResource(0) == ItemResource.of(ItemStack(Items.DIAMOND)) && terminalState.output.getAmount(0) == 4L) {
+				"Expected 4 diamonds requested with no crafting steps needed to arrive in the terminal's own output slots, got ${terminalState.output.getResource(0)} x${terminalState.output.getAmount(0)}"
 			}
 		}
 	}
@@ -73,7 +70,7 @@ class TerminalCraftGameTest {
 	 * [PatternProviderHookType] hook facing it holding a matching encoded [Pattern] (feeding the
 	 * table's grid and exposing its output as pullable stock, both through the same hook - its
 	 * target's `ioStorage` is direction-agnostic), and a terminal pulling the finished iron block
-	 * to its own adjacent chest once the table finishes processing.
+	 * into its own [TerminalHookState.output] slots once the table finishes processing.
 	 */
 	@GameTest(template = SMALL, timeoutTicks = 500)
 	fun GameTestHelper.testSingleStepCraftFeedsTableAndDeliversResult() {
@@ -84,7 +81,6 @@ class TerminalCraftGameTest {
 		val patternHookPos = BlockPos(3, 2, 1)
 		val linkPipePos = BlockPos(2, 2, 1)
 		val terminalPos = BlockPos(2, 2, 2)
-		val destPos = BlockPos(2, 2, 3)
 
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
@@ -114,7 +110,6 @@ class TerminalCraftGameTest {
 
 		setBlock(linkPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
-		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.IRON_INGOT, 8))
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -130,10 +125,9 @@ class TerminalCraftGameTest {
 		}
 
 		succeedWhen {
-			val dest = getBlockEntity(destPos) as ChestBlockEntity
 			val table = getBlockEntity(tablePos) as AssemblyTableBlockEntity
-			assertTrue(dest.getItem(0).`is`(Items.IRON_BLOCK) && dest.getItem(0).count == 1) {
-				"Expected 1 crafted iron block to have arrived at the terminal's own chest, got ${dest.getItem(0)} (table active pattern: ${table.activePattern})"
+			assertTrue(terminalState.output.getResource(0) == target && terminalState.output.getAmount(0) == 1L) {
+				"Expected 1 crafted iron block to have arrived in the terminal's own output slots, got ${terminalState.output.getResource(0)} x${terminalState.output.getAmount(0)} (table active pattern: ${table.activePattern})"
 			}
 		}
 	}

@@ -24,11 +24,9 @@ import net.kernelpanicsoft.tubularstorage.network.TerminalItemWithdrawRequestPac
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
-import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
-import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -47,12 +45,13 @@ import net.minecraft.world.item.ItemStack
  * [net.minecraft.world.inventory.Slot]s, since warehouse contents can vastly exceed the usual
  * ~45-slot menu ceiling.
  *
- * A withdrawal always has one well-defined destination: whatever inventory is directly connected
- * to [tile]'s own other faces (see [adjacentInventory]) - the same targeted routing
- * ([RequestFulfillment.request]) a [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType]
- * standing order uses, not a dumb network push that could land anywhere, including straight back
- * into the warehouse it came from. If nothing's plugged into this terminal's own pipe, there's
- * nowhere for a withdrawal to go, so it's a no-op.
+ * A withdrawal always has one well-defined destination: [TerminalHookState.output], this hook's
+ * own real, physically-interactable slots (real vanilla [net.minecraft.world.inventory.Slot]s -
+ * see [registerSlotHandlers]) - the same targeted routing ([RequestFulfillment.request]) a
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType] standing order uses, just
+ * delivered to [tile]'s own block position directly instead of searching its other faces for
+ * something plugged in. A terminal is a self-contained delivery point; nothing external is
+ * required.
  */
 class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
 	ComposeBlockContainerMenu<HookBlockEntity, TerminalHookMenu>(GuiRegistry.TerminalHook, id, inventory, tile) {
@@ -64,7 +63,10 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 	/** [tile]'s own [HookBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
 	val craftJobStatus: String get() = tile.craftJobStatus
 
-	override fun registerSlotHandlers() {}
+	override fun registerSlotHandlers() {
+		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+		handler("output", state.output)
+	}
 
 	/**
 	 * Requests fresh results from the client side, rather than the server eagerly pushing them the
@@ -132,18 +134,17 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 	}
 
 	/**
-	 * Requests up to [amount] of [resource] be delivered to [adjacentInventory] - a reachable
-	 * provider or warehouse, whichever [RequestFulfillment.request] finds first, exactly as a
-	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType] standing order would. Re-sends
-	 * fresh results either way, reflecting whatever the withdrawal actually took - immediately
-	 * accurate for a provider (an ordinary synchronous CSL extract), but only once the gantry
-	 * physically finishes for a warehouse-sourced one, which is what [requestWithdraw]'s own
+	 * Requests up to [amount] of [resource] be delivered to [TerminalHookState.output] - a
+	 * reachable provider or warehouse, whichever [RequestFulfillment.request] finds first, exactly
+	 * as a [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType] standing order would.
+	 * Re-sends fresh results either way, reflecting whatever the withdrawal actually took -
+	 * immediately accurate for a provider (an ordinary synchronous CSL extract), but only once the
+	 * gantry physically finishes for a warehouse-sourced one, which is what [requestWithdraw]'s own
 	 * client-side optimistic update is for.
 	 */
 	fun withdraw(stack: ResourceStack<ItemResource>) {
 		val level = level as? ServerLevel ?: return
-		val destination = adjacentInventory(level) ?: return
-		RequestFulfillment.request(level, tile.blockPos, stack, destination)
+		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos)
 		sendSearchResults()
 	}
 
@@ -283,7 +284,4 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		slot.onTake(player, stackInSlot)
 		return copied
 	}
-
-	/** The well-defined destination every [withdraw] delivers to - see [TerminalHookType.adjacentInventory]. */
-	private fun adjacentInventory(level: ServerLevel): BlockPos? = TerminalHookType.adjacentInventory(level, tile.blockPos)
 }

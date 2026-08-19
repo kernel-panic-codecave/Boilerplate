@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
+import net.kernelpanicsoft.archie.gui.Slots
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
 import net.kernelpanicsoft.archie.gui.composables.containers.TabContainerPanel
@@ -50,7 +51,11 @@ import net.minecraft.world.item.ItemStack
  * instead, with a status line underneath reading
  * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity.craftJobStatus] (polled into
  * Compose state - see [craftTab] - rather than pushed, since that field is synced onto the
- * client's own [menu]`.tile` the ordinary block-entity way, not through a dedicated packet).
+ * client's own [menu]`.tile` the ordinary block-entity way, not through a dedicated packet). Both
+ * also show a real, [Slots]-backed row of nine `"output"` slots underneath - a withdrawal or
+ * finished crafting job delivers straight into this terminal's own
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState.output], not an external chest
+ * wired to some other face.
  *
  * [COLUMNS] wide, always at least [VISIBLE_ROWS] tall - the same 9x3 a chest's own grid shows -
  * padded out with empty [TerminalSlot]s when there aren't enough results to fill it, rather than
@@ -115,18 +120,21 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 	@Composable
 	private fun storeTab() {
 		val layers = LocalLayerManager.current
-		ResultsGrid(
-			results = menu.results,
-			onSelect = { s ->
-				hoveredStack = null
-				layers.requestQuantityDialog(s) { amount -> menu.requestWithdraw(s.withCount(amount)) }
-			},
-		)
+		Column(verticalArrangement = Arrangement.spacedBy(6)) {
+			ResultsGrid(
+				results = menu.results,
+				onSelect = { s ->
+					hoveredStack = null
+					layers.requestQuantityDialog(s) { amount -> menu.requestWithdraw(s.withCount(amount)) }
+				},
+			)
+			Slots("output", COLUMNS, 1)
+		}
 	}
 
 	/**
 	 * A catalog of what's craftable, not what's in stock - [menu.craftableResources][TerminalHookMenu.craftableResources]
-	 * (the distinct outputs of every reachable assembly table's own patterns), shown as `amount = 1`
+	 * (the distinct outputs of every reachable pattern provider's own held patterns), shown as `amount = 1`
 	 * placeholder stacks with the vanilla count decoration suppressed ([TerminalSlot]'s `countText`)
 	 * so an item you currently have none of still shows its icon without a misleading "1" - the
 	 * quantity dialog this opens ([requestCraftQuantityDialog]) never reads that placeholder amount
@@ -143,7 +151,7 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 			}
 		}
 
-		Column(verticalArrangement = Arrangement.spacedBy(4)) {
+		Column(verticalArrangement = Arrangement.spacedBy(6)) {
 			ResultsGrid(
 				results = menu.craftableResources.map { ResourceStack(it, 1L) },
 				countText = "",
@@ -152,6 +160,7 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 					layers.requestCraftQuantityDialog(menu, s.resource) { amount -> menu.requestCraft(ResourceStack(s.resource, amount)) }
 				},
 			)
+			Slots("output", COLUMNS, 1)
 			Text(Component.literal(status.ifBlank { "No crafting job in progress" }), dropShadow = false)
 		}
 	}

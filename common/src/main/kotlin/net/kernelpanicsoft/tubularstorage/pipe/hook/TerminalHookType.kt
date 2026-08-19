@@ -1,6 +1,5 @@
 package net.kernelpanicsoft.tubularstorage.pipe.hook
 
-import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
@@ -52,24 +51,18 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 	 * ingredients into their assigned [PatternProviderHookType] hook's own attached target (picked
 	 * once, the first reachable hook holding a step's [net.kernelpanicsoft.tubularstorage.crafting.Pattern]
 	 * whose target no other step in this job has already claimed), then - throttled to
-	 * [PULL_INTERVAL_TICKS] - retries pulling [CraftingJob.target] itself to [adjacentInventory],
-	 * exactly the same [RequestFulfillment.request] a plain withdrawal uses. A step with no
-	 * [CraftingJob.steps] at all (the target was already fully covered by stock) skips straight to
-	 * that pull. Reaching the target this way requires whatever produces it - a reachable warehouse,
-	 * or a [PatternProviderHookType] hook (`providesItems = true`) exposing its own target's output
-	 * once produced - the same requirement every other provider-style hook already has for pulling
-	 * from a non-pipe inventory; nothing here reaches into anything without one.
+	 * [PULL_INTERVAL_TICKS] - retries pulling [CraftingJob.target] itself to [TerminalHookState.output]
+	 * (this hook's own built-in delivery slots, at [pos] directly), exactly the same
+	 * [RequestFulfillment.request] a plain withdrawal uses. A step with no [CraftingJob.steps] at
+	 * all (the target was already fully covered by stock) skips straight to that pull. Reaching the
+	 * target this way requires whatever produces it - a reachable warehouse, or a
+	 * [PatternProviderHookType] hook (`providesItems = true`) exposing its own target's output once
+	 * produced - the same requirement every other provider-style hook already has for pulling from
+	 * a non-pipe inventory; nothing here reaches into anything without one.
 	 */
 	private fun advance(level: ServerLevel, pos: BlockPos, tile: HookBlockEntity, job: CraftingJob) {
-		val destination = adjacentInventory(level, pos)
-		if (destination == null) {
-			job.status = "Nothing attached to deliver to"
-			job.done = true
-			return
-		}
-
 		if (job.steps.isEmpty()) {
-			val delivered = RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount), destination)
+			val delivered = RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount), pos)
 			job.status = if (delivered) "Requested ${job.targetAmount}x ${job.target.cachedStack.hoverName.string}" else "Nothing available to fulfill the request"
 			job.done = true
 			return
@@ -102,21 +95,12 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 		}
 		job.ticksSincePull = 0
 
-		if (RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount), destination)) {
+		if (RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount), pos)) {
 			job.status = "Delivered ${job.targetAmount}x ${job.target.cachedStack.hoverName.string}"
 			job.done = true
 		} else {
 			job.status = "Waiting on ${job.steps.size} crafting step(s)…"
 		}
-	}
-
-	/** The position of the first inventory directly attached to one of [pos]'s own six faces, or `null` if nothing's plugged in - see [TerminalHookMenu]'s identical need. */
-	fun adjacentInventory(level: ServerLevel, pos: BlockPos): BlockPos? {
-		for (direction in Direction.entries) {
-			val neighborPos = pos.relative(direction)
-			if (ItemApi.BLOCK.find(level, neighborPos, direction.opposite) != null) return neighborPos
-		}
-		return null
 	}
 
 	/** Ticks between retries of the final [CraftingJob.target] pull once every step has at least been fed - matches [RequesterHookType.REQUEST_INTERVAL_TICKS]'s own polling cadence. */

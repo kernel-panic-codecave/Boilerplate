@@ -13,6 +13,12 @@
   },
   "license": "${mod_license}",
   "environment": "*",
+  "mixins": [
+    {
+      "config": "tubularstorage-common.mixins.json",
+      "environment": "*"
+    }
+  ],
   "entrypoints": {
     "main": [
       {
@@ -33,7 +39,7 @@
     "fabric-api": ">=${versions.fabric_api}",
     "fabric-language-kotlin": ">=${versions.kotlin_fabric}",
     "architectury": ">=${versions.architectury}",
-    "archie": ">=${versions.archie_mod}",
+    "archie": ">=${versions.archie}",
     "cloth-config": ">=${versions.cloth_config_range}"
   }
 }

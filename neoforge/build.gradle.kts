@@ -83,6 +83,7 @@ dependencies {
 	modApi(libs.architectury.neoforge)
 	implementation(libs.kotlin.neoforge)
 	modApi(libs.archie.neoforge)
+	modImplementation(libs.flywheel.neoforge)
 	// compose.runtime's own transitive deps, pulled in transitively via archie.neoforge - already
 	// embedded in archie-core-neoforge's own jar for a real deployed environment, but Loom's dev-run
 	// GAMELIBRARY discovery doesn't walk a dependency's transitive deps the way production JarJar
@@ -101,6 +102,8 @@ dependencies {
 	modCompileOnly(libs.archie.datagen.neoforge)
 	modLocalRuntime(libs.archie.datagen.neoforge)
 
+	modLocalRuntime("curse.maven:nbtedit-678133:6125444")
+
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":tubularstorage-common", "transformProductionNeoForge")) { isTransitive = false }
 }
@@ -117,6 +120,7 @@ tasks {
 			include("assets/tubularstorage/**")
 			include("data/tubularstorage/**")
 			include("tubularstorage.accesswidener")
+			include("tubularstorage-common.mixins.json")
 		}
 		dependsOn(processTestResources)
 	}

@@ -85,6 +85,15 @@ subprojects {
 			}
 		}
 		maven("https://maven.architectury.dev/")
+		maven("https://cursemaven.com") {
+			content {
+				includeGroup("curse.maven")
+			}
+		}
+		maven {
+			name = "createmod maven"
+			url = uri("https://maven.createmod.net/")
+		}
 	}
 
 	@Suppress("UnstableApiUsage")

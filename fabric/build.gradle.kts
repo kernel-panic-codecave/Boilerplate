@@ -87,6 +87,7 @@ dependencies {
 	modApi(libs.architectury.fabric)
 	modImplementation(libs.kotlin.fabric)
 	modApi(libs.archie.fabric)
+	modImplementation(libs.flywheel.fabric)
 
 	modImplementation(libs.clothConfig.fabric)
 
@@ -95,6 +96,8 @@ dependencies {
 
 	modCompileOnly(libs.archie.datagen.fabric)
 	modLocalRuntime(libs.archie.datagen.fabric)
+
+	modLocalRuntime("curse.maven:nbtedit-678133:6125442")
 
 	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":tubularstorage-common", "transformProductionFabric")) { isTransitive = false }
@@ -112,6 +115,7 @@ tasks {
 			include("assets/tubularstorage/**")
 			include("data/tubularstorage/**")
 			include("tubularstorage.accesswidener")
+			include("tubularstorage-common.mixins.json")
 		}
 		dependsOn(processTestResources)
 	}

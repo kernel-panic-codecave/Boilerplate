@@ -14,14 +14,16 @@ architectury-loom = { require = "1.17.491" }
 
 modfusioner = "1.0.12"
 
-archie = "1.0.4-SNAPSHOT"
-archie-mod = "1.0.0"
+archie-plugin = "1.0.4-SNAPSHOT"
+archie = "1.0.0"
 
 fabric-loader = "0.16.9"
 fabric-api = "0.116.6+1.21.1"
 
 neoforge = "21.1.80"
 neoforge-range = "21.1.80"
+
+flywheel = "1.0.6"
 
 cloth-config = "15.0.140"
 cloth-config-range = "10.0"
@@ -49,17 +51,21 @@ fabric-api = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fab
 
 neoforge = { module = "net.neoforged:neoforge", version.ref = "neoforge" }
 
-archie-common = { module = "net.kernelpanicsoft.archie:archie-core-common", version.ref = "archie-mod" }
-archie-fabric = { module = "net.kernelpanicsoft.archie:archie-core-fabric", version.ref = "archie-mod" }
-archie-neoforge = { module = "net.kernelpanicsoft.archie:archie-core-neoforge", version.ref = "archie-mod" }
+archie-common = { module = "net.kernelpanicsoft.archie:archie-core-common", version.ref = "archie" }
+archie-fabric = { module = "net.kernelpanicsoft.archie:archie-core-fabric", version.ref = "archie" }
+archie-neoforge = { module = "net.kernelpanicsoft.archie:archie-core-neoforge", version.ref = "archie" }
 
-archie-gametest-common = { module = "net.kernelpanicsoft.archie:archie-gametest-common", version.ref = "archie-mod" }
-archie-gametest-fabric = { module = "net.kernelpanicsoft.archie:archie-gametest-fabric", version.ref = "archie-mod" }
-archie-gametest-neoforge = { module = "net.kernelpanicsoft.archie:archie-gametest-neoforge", version.ref = "archie-mod" }
+archie-gametest-common = { module = "net.kernelpanicsoft.archie:archie-gametest-common", version.ref = "archie" }
+archie-gametest-fabric = { module = "net.kernelpanicsoft.archie:archie-gametest-fabric", version.ref = "archie" }
+archie-gametest-neoforge = { module = "net.kernelpanicsoft.archie:archie-gametest-neoforge", version.ref = "archie" }
 
-archie-datagen-common = { module = "net.kernelpanicsoft.archie:archie-datagen-common", version.ref = "archie-mod" }
-archie-datagen-fabric = { module = "net.kernelpanicsoft.archie:archie-datagen-fabric", version.ref = "archie-mod" }
-archie-datagen-neoforge = { module = "net.kernelpanicsoft.archie:archie-datagen-neoforge", version.ref = "archie-mod" }
+archie-datagen-common = { module = "net.kernelpanicsoft.archie:archie-datagen-common", version.ref = "archie" }
+archie-datagen-fabric = { module = "net.kernelpanicsoft.archie:archie-datagen-fabric", version.ref = "archie" }
+archie-datagen-neoforge = { module = "net.kernelpanicsoft.archie:archie-datagen-neoforge", version.ref = "archie" }
+
+flywheel-common = { module = "dev.engine-room.flywheel:flywheel-common-intermediary-api-1.21.1", version.ref = "flywheel"}
+flywheel-fabric = { module = "dev.engine-room.flywheel:flywheel-fabric-1.21.1", version.ref = "flywheel"}
+flywheel-neoforge = { module = "dev.engine-room.flywheel:flywheel-neoforge-1.21.1", version.ref = "flywheel"}
 
 clothConfig-fabric = { module = "me.shedaniel.cloth:cloth-config-fabric", version.ref = "cloth-config" }
 clothConfig-neoforge = { module = "me.shedaniel.cloth:cloth-config-neoforge", version.ref = "cloth-config" }
@@ -80,4 +86,4 @@ architectury-loom = { id = "dev.architectury.loom", version.ref = "architectury-
 shadow = { id = "com.github.johnrengelman.shadow", version.ref = "shadow" }
 modfusioner = { id = "com.hypherionmc.modutils.modfusioner", version.ref = "modfusioner" }
 
-archie = { id = "net.kernelpanicsoft.archie.archie-plugin", version.ref = "archie" }
+archie = { id = "net.kernelpanicsoft.archie.archie-plugin", version.ref = "archie-plugin" }

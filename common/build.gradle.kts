@@ -27,6 +27,7 @@ dependencies {
 
 	modApi(libs.architectury.common)
 	modApi(libs.archie.common)
+	modApi(libs.flywheel.common)
 
 	// Compile-time only - see the matching comment in fabric/build.gradle.kts. GameTest classes
 	// referencing these types must only ever run behind an AGameTestPlatform.isGameTest check, so
@@ -37,6 +38,7 @@ dependencies {
 	// Compile-time only, same reasoning as archie-gametest-common above - datagen classes must
 	// only ever run behind an ADataGeneratorPlatform.isDataGen check.
 	modCompileOnly(libs.archie.datagen.common)
+
 }
 
 tasks {

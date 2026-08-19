@@ -5,7 +5,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import earth.terrarium.common_storage_lib.resources.ResourceStack
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import net.kernelpanicsoft.archie.gui.composables.containers.Panel
 import net.kernelpanicsoft.archie.gui.composables.containers.Surface
 import net.kernelpanicsoft.archie.gui.composables.input.Button
 import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
@@ -21,6 +24,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
+import kotlin.math.min
 
 /**
  * Pushes a modal onto [this] asking how many of [stack] to request - a digit-only quantity field,
@@ -30,8 +34,8 @@ import net.minecraft.world.item.ItemStack
  * bare click-to-withdraw-a-stack choice. [onConfirm] fires once with the chosen amount; the modal
  * dismisses itself either way.
  */
-fun LayerStackManager.requestQuantityDialog(stack: ItemStack, onConfirm: (Long) -> Unit) {
-	modal(dismissOnClickOutside = false) {
+fun LayerStackManager.requestQuantityDialog(stack: ResourceStack<ItemResource>, onConfirm: (Long) -> Unit) {
+	modal {
 		RequestQuantityDialogContent(
 			stack = stack,
 			onConfirm = { amount -> onConfirm(amount); dismiss() },
@@ -41,21 +45,21 @@ fun LayerStackManager.requestQuantityDialog(stack: ItemStack, onConfirm: (Long) 
 }
 
 @Composable
-private fun RequestQuantityDialogContent(stack: ItemStack, onConfirm: (Long) -> Unit, onCancel: () -> Unit) {
-	val max = stack.count.toLong().coerceAtLeast(1)
-	var amount by remember(stack) { mutableStateOf(max) }
-	var text by remember(stack) { mutableStateOf(max.toString()) }
+private fun RequestQuantityDialogContent(stack: ResourceStack<ItemResource>, onConfirm: (Long) -> Unit, onCancel: () -> Unit) {
+	val max = stack.amount.coerceAtLeast(1)
+	var amount by remember(stack) { mutableStateOf(min(max, stack.resource.item.defaultMaxStackSize.toLong())) }
+	var text by remember(stack) { mutableStateOf(amount.toString()) }
 
 	fun setAmount(new: Long) {
 		amount = new.coerceIn(1, max)
 		text = amount.toString()
 	}
 
-	Surface(modifier = Modifier.padding(4).sizeIn(minWidth = 150)) {
+	Panel(modifier = Modifier.sizeIn(minWidth = 150), contentAlignment = Alignment.Center) {
 		Column(verticalArrangement = Arrangement.spacedBy(4), horizontalAlignment = Alignment.CenterHorizontally) {
 			Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
-				ItemStackIcon(stack)
-				Text(stack.hoverName, dropShadow = false, color = LocalTheme.current.darkTextColor)
+				TerminalSlot(stack)
+				Text(stack.resource.cachedStack.hoverName, dropShadow = false, color = LocalTheme.current.darkTextColor)
 			}
 			Text(Component.literal("Quantity (max $max):"), dropShadow = false, color = LocalTheme.current.darkTextColor)
 			Row(horizontalArrangement = Arrangement.spacedBy(2), verticalAlignment = Alignment.CenterVertically) {
@@ -72,7 +76,7 @@ private fun RequestQuantityDialogContent(stack: ItemStack, onConfirm: (Long) -> 
 				Button(onClick = { setAmount(amount + 1) }) { Text(Component.literal("+"), dropShadow = false) }
 			}
 			Row(
-				horizontalArrangement = Arrangement.SpaceEvenly,
+				horizontalArrangement = Arrangement.spacedBy(4),
 				verticalAlignment = Alignment.CenterVertically,
 				modifier = Modifier.padding(top = 4),
 			) {

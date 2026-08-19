@@ -22,9 +22,14 @@ Caught the same latent knbt bug `FilterMode`/`RoutingModule` did (see `docs/desi
 
 ## Resolution
 
-`CraftingRequest(target: ItemResource, amount)` resolves recursively into a **DAG**, not a tree — memoized per-resource within one resolution pass so, e.g., two outputs both needing iron ingots share one sub-request rather than double-counting. Cycle-guarded via an in-progress resource set to reject impossible/self-referential patterns cleanly.
+`CraftingResolver.resolve(target, amount, stockOf, patternFor)` resolves into a **DAG**, not a tree — memoized per-resource within one resolution pass so, e.g., two branches both needing iron ingots share one sub-request rather than double-counting. `stockOf`/`patternFor` are plain functions, not tied to `WarehouseIndex`/`AssemblyTableBlockEntity` directly, so the algorithm itself is a pure, directly-testable unit; `CraftingRequest.resolve(level, from, target, amount)` is the real wiring, summing stock across every `WarehouseControllerBlockEntity` reachable from `from` (the same `RequestFulfillment.reachableWarehouses` a terminal withdrawal already searches) and taking the first pattern match found across every reachable `AssemblyTableBlockEntity`'s own patterns.
 
-Walk order: for each ingredient, first check current warehouse/network stock (via `WarehouseIndex`), else recursively resolve a sub-craft from another pattern. Execution walks the DAG bottom-up (topological order); leaf ingredients are pulled through the existing warehouse gantry job queue (M3).
+Turned out to need two passes, not one interleaved recursion - a shared resource's *total* demand (needed to decide how much actually has to come from stock vs. crafting) isn't known until every consumer of it has been discovered:
+
+1. **Discover** - DFS from `target`, recording each resource touched in post-order (a resource's own pattern inputs are recorded before the resource itself); a resource reached while still in-progress further up the same branch fails fast as `Result.Cyclic`, rejecting an impossible/self-referential pattern chain cleanly instead of recursing forever.
+2. **Demand** - walk that post-order **in reverse** (target first, deepest leaf ingredients last) accumulating each resource's total demand as its consumers are visited; by the time a resource itself is reached, every consumer that could ever add to its demand already has, since a consumer always sits earlier in the reversed order than what it consumes. A resource still short after stock is checked against its own pattern - `Result.Unresolvable` if it has neither.
+
+The result (`CraftingResolver.Plan`) lists `steps` (one `CraftStep(pattern, runs)` per pattern actually needed, in bottom-up order - a leaf ingredient's own craft always precedes whatever consumes its output) and `stockPulls` (total pulled directly from stock, per resource, across the whole plan). Leaf ingredients still need to actually be pulled through the warehouse gantry job queue (M3) once execution (not just resolution) lands - see "Physical Assembly Table" below.
 
 ## Physical Assembly Table
 

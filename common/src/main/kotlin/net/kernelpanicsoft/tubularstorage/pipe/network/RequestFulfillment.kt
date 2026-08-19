@@ -4,6 +4,7 @@ import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
+import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
@@ -76,6 +77,9 @@ object RequestFulfillment {
 	/** Every [WarehouseControllerBlockEntity] reachable from [from], for a warehouse terminal's search. */
 	fun reachableWarehouses(level: ServerLevel, from: BlockPos): List<WarehouseControllerBlockEntity> = warehousesIn(level, reachablePipes(level, from))
 
+	/** Every [AssemblyTableBlockEntity] reachable from [from], for [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest]'s own pattern search. */
+	fun reachableAssemblyTables(level: ServerLevel, from: BlockPos): List<AssemblyTableBlockEntity> = assemblyTablesIn(level, reachablePipes(level, from))
+
 	private fun providerSources(level: ServerLevel, reachable: Set<BlockPos>): List<ProviderSource> {
 		val sources = mutableListOf<ProviderSource>()
 		for (candidatePos in reachable) {
@@ -100,6 +104,17 @@ object RequestFulfillment {
 			}
 		}
 		return warehouses.toList()
+	}
+
+	private fun assemblyTablesIn(level: ServerLevel, reachable: Set<BlockPos>): List<AssemblyTableBlockEntity> {
+		val tables = LinkedHashSet<AssemblyTableBlockEntity>()
+		for (candidatePos in reachable) {
+			for (direction in Direction.entries) {
+				val table = level.getBlockEntity(candidatePos.relative(direction)) as? AssemblyTableBlockEntity ?: continue
+				tables += table
+			}
+		}
+		return tables.toList()
 	}
 
 	/** Every pipe position reachable from [from], [from] itself included - the search space for both fulfillment sources. */

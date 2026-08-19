@@ -8,21 +8,12 @@ import net.kernelpanicsoft.archie.data.platform.ADataGeneratorPlatform
 import net.kernelpanicsoft.archie.events.datagen.ADatagenEvents
 import net.kernelpanicsoft.archie.events.gametest.AGametestEvents
 import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
-import net.kernelpanicsoft.archie.serialization.SerializationManager
 import net.kernelpanicsoft.tubularstorage.datagen.TubularStorageDatagen
 import net.kernelpanicsoft.tubularstorage.gametest.TubularStorageGameTest
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
-import net.kernelpanicsoft.tubularstorage.pipe.entity.DirectionSerializer
-import net.kernelpanicsoft.tubularstorage.pipe.entity.DyeColorSerializer
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
-import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
-import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
-import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistrar
-import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
-import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
-import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
-import net.minecraft.core.Direction
-import net.minecraft.world.item.DyeColor
+import net.kernelpanicsoft.tubularstorage.registry.*
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseBlockEventListener
 import org.slf4j.Logger
 
 /**
@@ -57,19 +48,17 @@ object TubularStorage {
 	@JvmStatic
 	fun init() {
 		LOGGER.info("Tubular Storage initializing")
-		SerializationManager {
-			module {
-				contextual(Direction::class, DirectionSerializer)
-				contextual(DyeColor::class, DyeColorSerializer)
-			}
-		}
 
-		HookTypeRegistrar.init()
+		Registrars.init()
 		HookTypeRegistry.init()
+		FilterConditionTypeRegistry.init()
 		BlockRegistry.init()
 		ItemRegistry.init()
 		TileRegistry.init()
 		GuiRegistry.init()
+		TagsRegistry.init()
+
+		WarehouseBlockEventListener.register()
 
 		TubularStorageNetworkChannel.init()
 

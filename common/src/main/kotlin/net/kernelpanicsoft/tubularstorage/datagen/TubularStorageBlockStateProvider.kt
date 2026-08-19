@@ -2,16 +2,18 @@ package net.kernelpanicsoft.tubularstorage.datagen
 
 import net.kernelpanicsoft.archie.data.client.model.ABlockStateProvider
 import net.kernelpanicsoft.archie.data.client.model.AModelFile
-import net.kernelpanicsoft.archie.util.rem
-import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.archie.util.plus
+import net.kernelpanicsoft.tubularstorage.pipe.block.GlassPipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
+import net.kernelpanicsoft.tubularstorage.registry.Registrars
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
 import net.minecraft.core.Direction
-import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.state.properties.BlockStateProperties
 import net.minecraft.world.level.block.state.properties.BooleanProperty
+import net.minecraft.world.level.block.state.properties.EnumProperty
 
 /**
  * Generates every blockstate/block-model/item-model JSON under `assets/tubularstorage` -
@@ -25,59 +27,54 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty
  * [net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer]
  * looks up directly (registered as an [net.kernelpanicsoft.tubularstorage.registry.ItemRegistry]
  * item purely so it bakes, not because it's player-obtainable - the gantry head is always a
- * dynamic render, never a placed block). Replaces what was previously hand-written JSON; running
- * `./gradlew runDatagen` regenerates it in place under `common/src/main/resources`.
+ * dynamic render, never a placed block), and the three plain-cube rack block types
+ * ([net.kernelpanicsoft.tubularstorage.warehouse.rack.GeneralRackBlockEntity]/[net.kernelpanicsoft.tubularstorage.warehouse.rack.BulkRackBlockEntity]/
+ * [net.kernelpanicsoft.tubularstorage.warehouse.rack.UnstackableRackBlockEntity]). Replaces what
+ * was previously hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
+ * `common/src/main/resources`.
  */
 internal fun ABlockStateProvider.tubularStorageBlockStates() {
-	val pipeCore = cuboidModel("pipe_core", blockTexture(BlockRegistry.Pipe), 6f, 6f, 6f, 10f, 10f, 10f)
-	val pipeArm = cuboidModel("pipe_arm", blockTexture(BlockRegistry.Pipe), 6f, 6f, 0f, 10f, 10f, 6f)
+	val pipeCore = blockModels().getExistingFile(modLoc("pipe_core"))
+	val pipeArm = blockModels().getExistingFile(modLoc("pipe_arm"))
 	sixWayMultipart(BlockRegistry.Pipe, PipeBlock.propertiesByDirection, pipeCore, pipeArm)
 	itemModels().getBuilder("pipe").parent(pipeCore)
 
-	val glassPipeCore = cuboidModel("glass_pipe_core", blockTexture(BlockRegistry.GlassPipe), 6f, 6f, 6f, 10f, 10f, 10f, translucent = true)
-	val glassPipeArm = cuboidModel("glass_pipe_arm", blockTexture(BlockRegistry.GlassPipe), 6f, 6f, 0f, 10f, 10f, 6f, translucent = true)
-	sixWayMultipart(BlockRegistry.GlassPipe, PipeBlock.propertiesByDirection, glassPipeCore, glassPipeArm)
+	val glassPipeCore = blockModels().getExistingFile(modLoc("pipe_core_glass"))
+	val glassPipeArm = blockModels().getExistingFile(modLoc("pipe_arm_glass"))
+	val glassPipeStraight = blockModels().getExistingFile(modLoc("pipe_straight_glass"))
+	sixWayMultipart(BlockRegistry.GlassPipe, PipeBlock.propertiesByDirection, glassPipeCore, glassPipeArm, null,
+		GlassPipeBlock.straightProperty, BlockStateProperties.AXIS, glassPipeStraight)
 	itemModels().getBuilder("glass_pipe").parent(glassPipeCore)
 
-	getMultipartBuilder(BlockRegistry.Hook) {
-		part().modelFile(pipeCore).addModel().end()
-	}
+	empty(BlockRegistry.Hook)
 
-	hookModel("extraction_hook")
-	hookModel("sorting_hook")
-	hookModel("provider_hook")
-	hookModel("requester_hook")
-	warehouseTerminalHookModel("warehouse_terminal_hook")
-
-	simpleBlockWithItem(BlockRegistry.WarehouseController)
+	val warehouseController = blockModels().getExistingFile(modLoc("warehouse_controller"))
+	simpleBlockWithItem(BlockRegistry.WarehouseController, warehouseController)
 	itemModels().basicItem(ItemRegistry.WarehouseWand)
 
-	val gantryRailCore = cuboidModel("gantry_rail_core", blockTexture(BlockRegistry.GantryRail), 5f, 5f, 5f, 11f, 11f, 11f)
-	val gantryRailArm = cuboidModel("gantry_rail_arm", blockTexture(BlockRegistry.GantryRail), 5f, 5f, 0f, 11f, 11f, 5f)
+	val gantryRailCore = blockModels().getExistingFile(modLoc("gantry_rail_core"))
+	val gantryRailArm = blockModels().getExistingFile(modLoc("gantry_rail_arm"))
 	sixWayMultipart(BlockRegistry.GantryRail, GantryRailBlock.propertiesByDirection, gantryRailCore, gantryRailArm)
 	itemModels().getBuilder("gantry_rail").parent(gantryRailCore)
-
-	val gantryHead = cuboidModel("gantry_head", TubularStorage.MOD % "block/gantry_head", 3f, 3f, 3f, 13f, 13f, 13f)
-	itemModels().getBuilder("gantry_head").parent(gantryHead)
-}
-
-/** A cuboid element from ([fromX],[fromY],[fromZ]) to ([toX],[toY],[toZ]) textured [texture] on every face, UVs stretched to the full [0,16] range regardless of the cuboid's actual size. */
-private fun ABlockStateProvider.cuboidModel(
-	name: String,
-	texture: ResourceLocation,
-	fromX: Float, fromY: Float, fromZ: Float,
-	toX: Float, toY: Float, toZ: Float,
-	translucent: Boolean = false,
-): AModelFile = blockModels().getBuilder(name) {
-	parent(AModelFile("minecraft:block/block"))
-	texture("particle", texture)
-	texture("all", texture)
-	if (translucent) renderType("minecraft:translucent")
-	element {
-		from(fromX, fromY, fromZ)
-		to(toX, toY, toZ)
-		allFaces { _, face -> face.texture("#all").uvs(0f, 0f, 16f, 16f) }
+	Registrars.HOOK_TYPE.ids.filter { it.namespace == mod.modId }.forEach { hookType ->
+		itemModels().getBuilder(hookType.path + "_hook").parent(blockModels().getExistingFile(hookType + "_hook"))
 	}
+
+	// The three rack block types are plain cubes - a single flat `textures/block/*.png` per type
+	// via `cubeAll`/`simpleBlockWithItem`'s defaults, unlike the warehouse controller's own
+	// hand-modeled Blockbench shape above.
+	simpleBlockWithItem(BlockRegistry.GeneralRack)
+	simpleBlockWithItem(BlockRegistry.BulkRack)
+	simpleBlockWithItem(BlockRegistry.UnstackableRack)
+
+	// Filter cards are plain items (no block of their own), unlike a hook's block-model-backed
+	// icon above - a flat `item/generated` icon over each one's own `textures/item/*.png` instead.
+	itemModels().basicItem(ItemRegistry.ItemFilterCard)
+	itemModels().basicItem(ItemRegistry.ModFilterCard)
+	itemModels().basicItem(ItemRegistry.TagFilterCard)
+	itemModels().basicItem(ItemRegistry.ColorFilterCard)
+	itemModels().basicItem(ItemRegistry.RegexFilterCard)
+	itemModels().basicItem(ItemRegistry.CombinedFilterCard)
 }
 
 /**
@@ -87,17 +84,66 @@ private fun ABlockStateProvider.cuboidModel(
  * hand-written `blockstates/pipe.json` shape, now generated identically, and
  * [net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock] reusing the same pattern).
  */
-private fun ABlockStateProvider.sixWayMultipart(block: Block, propertiesByDirection: Map<Direction, BooleanProperty>, core: AModelFile, arm: AModelFile) {
+private fun ABlockStateProvider.sixWayMultipart(block: Block, propertiesByDirection: Map<Direction, BooleanProperty>, core: AModelFile, arm: AModelFile, cap: AModelFile? = null, straightProperty: BooleanProperty? = null, axisProperty: EnumProperty<Direction.Axis>? = null, straight: AModelFile? = null) {
 	getMultipartBuilder(block) {
-		part().modelFile(core).addModel().end()
-		for ((direction, property) in propertiesByDirection) {
-			part()
-				.modelFile(arm)
-				.rotationX(rotationXFor(direction))
-				.rotationY(rotationYFor(direction))
-				.addModel()
-				.condition(property, true)
-				.end()
+		if (straightProperty != null && axisProperty != null && straight != null)
+		{
+			for (axis in Direction.Axis.entries) {
+				configure {
+					condition(straightProperty, true)
+					condition(axisProperty, axis)
+				}
+				part {
+					modelFile(straight)
+					val direction = when (axis) {
+						Direction.Axis.X -> Direction.WEST
+						Direction.Axis.Y -> Direction.DOWN
+						Direction.Axis.Z -> Direction.NORTH
+					}
+					rotationX(rotationXFor(direction))
+					rotationY(rotationYFor(direction))
+				}
+				configure {
+					condition(straightProperty, false)
+				}
+				part { modelFile(core) }
+			}
+		}
+		else
+		{
+			part { modelFile(core) }
+		}
+
+		for ((direction, property) in propertiesByDirection)
+		{
+			configure {
+				if (straightProperty != null ) condition(straightProperty, false)
+				condition(property, true)
+			}
+			part {
+				modelFile(arm)
+				rotationX(rotationXFor(direction))
+				rotationY(rotationYFor(direction))
+			}
+			if (cap == null) continue
+			configure {
+				if (straightProperty != null ) condition(straightProperty, false)
+				condition(property, false)
+			}
+			part {
+				modelFile(cap)
+				rotationX(rotationXFor(direction))
+				rotationY(rotationYFor(direction))
+			}
+		}
+
+	}
+}
+
+private fun ABlockStateProvider.empty(block: Block) {
+	getMultipartBuilder(block) {
+		part {
+			modelFile(blockModels().getExistingFile(mcLoc("air")))
 		}
 	}
 }
@@ -113,37 +159,4 @@ private fun rotationYFor(direction: Direction): Int = when (direction) {
 	Direction.EAST -> 90
 	Direction.WEST -> 270
 	else -> 0
-}
-
-/** A hook's placeholder block model (see `docs/design/m1-pipe-network.md`) at `block/[name]`, and its item model inheriting it. */
-private fun ABlockStateProvider.hookModel(name: String) {
-	val model = cuboidModel(name, TubularStorage.MOD % "block/$name", 6f, 6f, 0f, 10f, 10f, 6f)
-	itemModels().getBuilder(name).parent(model)
-}
-
-/**
- * The warehouse terminal hook's own model - unlike [hookModel]'s small centered box, a full 16x16
- * face plate (a terminal panel bolted onto the pipe, not a plain fitting) at the outward end,
- * facing away from the pipe core the same way every other hook's visible/interactable face does,
- * with a short connecting strut bridging it back to the core. Same total depth as [hookModel]'s box
- * so it doesn't clip through or float clear of the pipe body it's attached to.
- */
-private fun ABlockStateProvider.warehouseTerminalHookModel(name: String) {
-	val texture = TubularStorage.MOD % "block/$name"
-	val model = blockModels().getBuilder(name) {
-		parent(AModelFile("minecraft:block/block"))
-		texture("particle", texture)
-		texture("all", texture)
-		element {
-			from(6f, 6f, 2f)
-			to(10f, 10f, 6f)
-			allFaces { _, face -> face.texture("#all").uvs(0f, 0f, 16f, 16f) }
-		}
-		element {
-			from(0f, 0f, 0f)
-			to(16f, 16f, 2f)
-			allFaces { _, face -> face.texture("#all").uvs(0f, 0f, 16f, 16f) }
-		}
-	}
-	itemModels().getBuilder(name).parent(model)
 }

@@ -123,4 +123,24 @@ class CraftingResolverGameTest {
 		}
 		succeed()
 	}
+
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testMaxCraftableFindsTheLargestResolvableAmount() {
+		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
+		val emerald = ItemResource.of(ItemStack(Items.EMERALD))
+		val recipe = pattern(ItemStack(Items.DIAMOND), ItemStack(Items.EMERALD), ItemStack(Items.EMERALD))
+		val stockOf = { resource: ItemResource -> if (resource == emerald) 5L else 0L }
+		val patternFor = { resource: ItemResource -> if (resource == diamond) recipe else null }
+
+		// 5 emeralds, 2 per diamond - 3 diamonds would need 6, one more than the emerald stock has.
+		val max = CraftingResolver.maxCraftable(diamond, upperBound = 100, stockOf = stockOf, patternFor = patternFor)
+		assertTrue(max == 2L) { "Expected exactly 2 diamonds to be craftable from 5 emeralds at 2 each, got $max" }
+
+		val capped = CraftingResolver.maxCraftable(diamond, upperBound = 1, stockOf = stockOf, patternFor = patternFor)
+		assertTrue(capped == 1L) { "Expected maxCraftable to never exceed its own upperBound even when more is resolvable, got $capped" }
+
+		val none = CraftingResolver.maxCraftable(ItemResource.of(ItemStack(Items.NETHER_STAR)), upperBound = 10, stockOf = { 0 }, patternFor = { null })
+		assertTrue(none == 0L) { "Expected an entirely unresolvable resource to report 0 craftable, got $none" }
+		succeed()
+	}
 }

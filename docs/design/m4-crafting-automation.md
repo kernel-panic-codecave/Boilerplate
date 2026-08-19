@@ -60,3 +60,5 @@ Covered end-to-end by `TerminalCraftGameTest`: a stock-only request (no steps) a
 ## Deferred to playtesting / not blocking
 
 - Exact pattern-editing UX (drag-from-search-results vs. requiring physical items in hand for encoding).
+- The Craft tab's browsable list is `TerminalHookMenu.results` - the same reachable-stock aggregate the Store tab shows - so a resource with a known pattern but zero current stock anywhere isn't listed yet, only requestable by first finding it via the Store tab once any stock of it exists. A dedicated "known craftable outputs" search (distinct from stock) is a real gap, not implemented this milestone.
+- A `CraftingJob`'s per-step assembly table is picked once, greedily, and never reassigned - a table going offline (broken, or its patterns edited) mid-job stalls that job rather than re-resolving onto a different table.

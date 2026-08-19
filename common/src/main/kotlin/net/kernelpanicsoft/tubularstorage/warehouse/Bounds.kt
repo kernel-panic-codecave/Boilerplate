@@ -1,5 +1,8 @@
 package net.kernelpanicsoft.tubularstorage.warehouse
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
+import it.unimi.dsi.fastutil.longs.LongSet
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.minecraft.core.BlockPos
@@ -16,13 +19,40 @@ data class Bounds(val min: SBlockPos, val max: SBlockPos) {
 	operator fun contains(pos: BlockPos): Boolean =
 		pos.x in min.x..max.x && pos.y in min.y..max.y && pos.z in min.z..max.z
 
+	/** Volume in total blocks inside this box. */
+	val volume: Long
+		get() = (max.x.toLong() - min.x + 1) *
+				(max.y.toLong() - min.y + 1) *
+				(max.z.toLong() - min.z + 1)
+
 	/**
-	 * Every position inside this volume, inclusive of both corners, as distinct immutable
-	 * [BlockPos]s - [BlockPos.betweenClosed] hands back the same mutable cursor object on every
-	 * step, so callers that store/collect the result (rather than consume each position immediately
-	 * inside the loop) need copies, not the raw cursor.
+	 * Lazily iterates over every packed `Long` coordinate in this volume without pre-allocating memory.
 	 */
-	fun positions(): List<BlockPos> = BlockPos.betweenClosed(min, max).map { it.immutable() }
+	fun primitivePositions(): Iterable<Long> = Iterable {
+		object : LongIterator() {
+			private var currentX = min.x
+			private var currentY = min.y
+			private var currentZ = min.z
+
+			override fun hasNext(): Boolean = currentY <= max.y
+
+			override fun nextLong(): Long {
+				if (!hasNext()) throw NoSuchElementException()
+				val packed = BlockPos.asLong(currentX, currentY, currentZ)
+
+				currentX++
+				if (currentX > max.x) {
+					currentX = min.x
+					currentZ++
+					if (currentZ > max.z) {
+						currentZ = min.z
+						currentY++
+					}
+				}
+				return packed
+			}
+		}
+	}
 
 	/** [min]/[max] as a vanilla [BoundingBox], for APIs that expect one. */
 	fun toBoundingBox(): BoundingBox = BoundingBox(min.x, min.y, min.z, max.x, max.y, max.z)
@@ -35,7 +65,7 @@ data class Bounds(val min: SBlockPos, val max: SBlockPos) {
 	 * y (rail height) - every position with `x`/`z` on the min/max edge, inclusive of corners, each
 	 * listed once.
 	 */
-	fun railPerimeter(): List<BlockPos> {
+	fun railPerimeter(): Set<BlockPos> {
 		val y = max.y
 		val positions = mutableListOf<BlockPos>()
 		for (x in min.x..max.x) {
@@ -46,8 +76,25 @@ data class Bounds(val min: SBlockPos, val max: SBlockPos) {
 			positions += BlockPos(min.x, y, z)
 			if (max.x != min.x) positions += BlockPos(max.x, y, z)
 		}
-		return positions
+		return positions.map { it.immutable() }.toSortedSet()
 	}
+
+	fun railSupports(): Set<BlockPos> {
+		val positions = mutableListOf<BlockPos>()
+		for ((x, z) in listOf(
+			min.x to min.z,
+			max.x to min.z,
+			min.x to max.z,
+			max.x to max.z
+		)) {
+			for (y in min.y until max.y) {
+				positions += BlockPos(x, y, z)
+			}
+		}
+		return positions.map { it.immutable() }.toSortedSet()
+	}
+
+	fun railStructure(): Set<BlockPos> = (railPerimeter() + railSupports()).toSortedSet()
 
 	companion object {
 		/** Builds a [Bounds] from two arbitrary corners, normalizing them into (min, max) order regardless of which one the player clicked first. */

@@ -1,58 +1,64 @@
 package net.kernelpanicsoft.tubularstorage.warehouse
 
 import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.archie.serialization.Sync
+import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.network.GantrySyncPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
+import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.HolderLookup
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.TicketType
+import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Block.UPDATE_ALL
 import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.level.chunk.status.ChunkStatus
 import net.minecraft.world.phys.Vec3
+import kotlin.math.ceil
 
-/**
- * A warehouse's single binding point - holds the [Bounds] volume a [WarehouseWandItem] defines for
- * it, the [WarehouseIndex] built over that volume, the [GantryState] crane head that moves within
- * it, and the [GantryJob] queue driving that gantry against the index (see
- * `docs/design/m3-warehouse-storage.md`).
- *
- * Also the warehouse's own pipe-network interface, deliberately not a separate block: [inboundBuffer]
- * is exposed to `ItemApi.BLOCK` (see [net.kernelpanicsoft.tubularstorage.TubularStorage.init]), so
- * *inbound* deliveries need no warehouse-specific code at all - it's just another accepting
- * destination as far as [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter]/
- * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType] are concerned. New arrivals
- * there get planned into [GantryJob.Stow] jobs the next idle tick. [outboundBuffer] is the reverse -
- * items a [GantryJob.Retrieve] job has pulled off a rack, awaiting [shipOut] - and is deliberately
- * *not* exposed to `ItemApi.BLOCK` at all: every current `Retrieve` job already has an explicit
- * `deliverTo` set at enqueue time (see [RequestFulfillment][net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment]),
- * so [shipOut] disperses it the moment it lands there - nothing needs to pull from it generically.
- * The two used to be one shared buffer; splitting them means a retrieved-but-unrouted stack can no
- * longer get treated as freshly-arrived cargo and re-shelved by the next put-away pass.
- */
 class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
-	NBTBlockEntity(TileRegistry.WarehouseController, pos, state) {
+	NBTBlockEntity(TileRegistry.WarehouseController, pos, state), PressureConsumer {
 
 	@Sync
 	private var boundsSlot: BoundsSlot by field(BoundsSlot.serializer()) { BoundsSlot() }
 
+	@Sync
+	private var visualStateSlot: GantryVisualState by field(GantryVisualStateSerializer) { GantryVisualState.IDLE }
+
 	/**
-	 * The bound warehouse volume, or `null` until a [WarehouseWandItem] binds one. Setting it also
-	 * traces [GantryRailBlock]'s static perimeter frame at rail height - removing the old volume's
-	 * frame (if any) and placing the new one's, real solid blocks rather than anything synced, so
-	 * ordinary chunk updates carry them to clients for free. A no-op on the client, since the wand
-	 * only ever calls this server-side and the block changes it makes arrive there through normal
-	 * world sync instead.
+	 * See [GantryVisualState] - kept up to date by [updateVisualState], called once per [tick].
+	 * `@Sync`'s own push, same as [boundsSlot]'s, only actually reaches an already-tracking client
+	 * through [net.minecraft.world.level.block.entity.BlockEntity.setChanged] (disk-save-dirty, not
+	 * network sync) unless something also calls [net.minecraft.world.level.Level.sendBlockUpdated] -
+	 * [bounds]'s own setter already needs that for the same reason (see its own history), so this one
+	 * does too, or the client's copy just freezes at whatever it last was and the outline never
+	 * updates again after that.
 	 */
+	var visualState: GantryVisualState
+		get() = visualStateSlot
+		set(value) {
+			if (visualStateSlot == value) return
+			visualStateSlot = value
+			val level = level
+			if (level != null && !level.isClientSide) {
+				level.sendBlockUpdated(blockPos, blockState, blockState, UPDATE_ALL)
+			}
+		}
+
 	var bounds: Bounds?
 		get() = boundsSlot.bounds
 		set(value) {
@@ -60,31 +66,197 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			boundsSlot = BoundsSlot(value)
 			val level = level
 			if (level != null && !level.isClientSide) {
-				old?.let { removeFrame(level, it) }
-				value?.let { placeFrame(level, it) }
+				level as ServerLevel
+				level.sendBlockUpdated(blockPos, blockState, blockState, UPDATE_ALL)
+				old?.let { teardownWarehouse(level, it) }
+				value?.let { setupWarehouse(level, it) }
 			}
 		}
 
-	override fun setRemoved()
-	{
-		super.setRemoved()
-		val level = level
-		if (level != null && !level.isClientSide) {
-			bounds?.let { removeFrame(level, it) }
+	private var scaleClass: WarehouseScale = WarehouseScale.COMPACT
+	private val pendingFrameQueue = ArrayDeque<FrameTask>()
+
+	data class FrameTask(val pos: BlockPos, val isRemoval: Boolean)
+
+	// ==========================================
+	// Chunkloading Ticket Management
+	// ==========================================
+
+	private var activeGantryChunk: ChunkPos? = null
+
+	private fun registerWarehouseTickets(level: ServerLevel, bounds: Bounds) {
+		// 1. Always ticket the Controller chunk itself
+		val controllerChunk = ChunkPos(blockPos)
+		level.chunkSource.addRegionTicket(
+			CONTROLLER_TICKET,
+			controllerChunk,
+			2,
+			blockPos
+		)
+	}
+
+	private fun releaseWarehouseTickets(level: ServerLevel, bounds: Bounds) {
+		val controllerChunk = ChunkPos(blockPos)
+		level.chunkSource.removeRegionTicket(
+			CONTROLLER_TICKET,
+			controllerChunk,
+			2,
+			blockPos
+		)
+
+		releaseGantryTicket(level)
+	}
+
+	private fun updateGantryTicket(level: ServerLevel, targetPos: BlockPos) {
+		val targetChunk = ChunkPos(targetPos)
+		if (activeGantryChunk == targetChunk) return
+
+		releaseGantryTicket(level)
+		level.chunkSource.addRegionTicket(
+			GANTRY_TICKET,
+			targetChunk,
+			2,
+			targetPos
+		)
+		activeGantryChunk = targetChunk
+	}
+
+	private fun releaseGantryTicket(level: ServerLevel) {
+		val current = activeGantryChunk ?: return
+		level.chunkSource.removeRegionTicket(
+			GANTRY_TICKET,
+			current,
+			2,
+			BlockPos(current.middleBlockX, blockPos.y, current.middleBlockZ)
+		)
+		activeGantryChunk = null
+	}
+
+	// ==========================================
+	// Setup & Teardown
+	// ==========================================
+
+	fun setupWarehouse(level: ServerLevel, newBounds: Bounds) {
+		registerWarehouseTickets(level, newBounds)
+		this.scaleClass = WarehouseScale.fromBounds(newBounds)
+		scaleClass.placeFrame(this, level, newBounds)
+		index.scheduleRescan(level, newBounds, scaleClass, blockPos)
+	}
+
+	fun teardownWarehouse(level: ServerLevel, oldBounds: Bounds) {
+		releaseWarehouseTickets(level, oldBounds)
+		scaleClass.removeFrame(this, level, oldBounds)
+		pendingFrameQueue.clear()
+	}
+
+	fun onBlockInsertedAtIndex(pos: BlockPos) {
+		if (bounds?.contains(pos) == true) {
+			index.updateSinglePosition(level as ServerLevel, pos)
 		}
 	}
 
-	private fun placeFrame(level: Level, bounds: Bounds) {
-		for (framePos in bounds.railPerimeter()) {
-			if (framePos == blockPos) continue
-			if (level.getBlockState(framePos).isAir) level.setBlockAndUpdate(framePos, BlockRegistry.GantryRail.defaultBlockState())
+	fun onBlockRemovedFromIndex(pos: BlockPos) {
+		if (bounds?.contains(pos) == true) {
+			index.evictSinglePosition(level as ServerLevel, pos)
 		}
 	}
 
-	private fun removeFrame(level: Level, bounds: Bounds) {
-		for (framePos in bounds.railPerimeter()) {
-			if (framePos == blockPos) continue
-			if (level.getBlockState(framePos).block is GantryRailBlock) level.removeBlock(framePos, false)
+	// ==========================================
+	// Frame Placement Implementations
+	// ==========================================
+
+	fun placeFrameSync(level: ServerLevel, bounds: Bounds) {
+		for (pos in bounds.railStructure()) {
+			if (pos == blockPos) continue
+
+			val chunkX = pos.x shr 4
+			val chunkZ = pos.z shr 4
+
+			if (level.hasChunk(chunkX, chunkZ) && level.getBlockState(pos).isAir) {
+				level.setBlockAndUpdate(pos, BlockRegistry.GantryRail.defaultBlockState())
+			}
+		}
+	}
+
+	fun removeFrameSync(level: ServerLevel, bounds: Bounds) {
+		for (pos in bounds.railStructure()) {
+			if (pos == blockPos) continue
+
+			val chunkX = pos.x shr 4
+			val chunkZ = pos.z shr 4
+
+			if (level.hasChunk(chunkX, chunkZ) && level.getBlockState(pos).`is`(BlockRegistry.GantryRail)) {
+				level.removeBlock(pos, false)
+			}
+		}
+	}
+
+	fun placeFrameAsync(level: ServerLevel, bounds: Bounds) {
+		executeFrameAsync(level, bounds, isRemoval = false)
+	}
+
+	fun removeFrameAsync(level: ServerLevel, bounds: Bounds) {
+		executeFrameAsync(level, bounds, isRemoval = true)
+	}
+
+	private fun executeFrameAsync(level: ServerLevel, bounds: Bounds, isRemoval: Boolean) {
+		val groupedByChunk = bounds.railStructure().filter { it != blockPos }.groupBy { ChunkPos(it) }
+
+		for ((chunkPos, positions) in groupedByChunk) {
+			if (level.hasChunk(chunkPos.x, chunkPos.z)) {
+				applyFrameBatch(level, positions, isRemoval)
+			} else {
+				level.chunkSource.getChunkFuture(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true)
+					.thenAcceptAsync({ chunkResult ->
+						if (chunkResult.isSuccess) {
+							applyFrameBatch(level, positions, isRemoval)
+						}
+					}, level.server)
+			}
+		}
+	}
+
+	private fun applyFrameBatch(level: ServerLevel, positions: List<BlockPos>, isRemoval: Boolean) {
+		for (pos in positions) {
+			if (isRemoval) {
+				if (level.getBlockState(pos).`is`(BlockRegistry.GantryRail)) {
+					level.removeBlock(pos, false)
+				}
+			} else {
+				if (level.getBlockState(pos).isAir) {
+					level.setBlockAndUpdate(pos, BlockRegistry.GantryRail.defaultBlockState())
+				}
+			}
+		}
+	}
+
+	fun queueFrameOperation(bounds: Bounds, isRemoval: Boolean) {
+		bounds.railStructure().filter { it != blockPos }.forEach { pos ->
+			pendingFrameQueue.add(FrameTask(pos, isRemoval))
+		}
+		setChanged()
+	}
+
+	fun tickFrameQueue(level: ServerLevel, startTime: Long, maxBudgetNs: Long) {
+		val iterator = pendingFrameQueue.iterator()
+
+		while (iterator.hasNext()) {
+			val (pos, isRemoval) = iterator.next()
+
+			if (level.hasChunk(pos.x shr 4, pos.z shr 4)) {
+				if (isRemoval) {
+					if (level.getBlockState(pos).`is`(BlockRegistry.GantryRail)) {
+						level.removeBlock(pos, false)
+					}
+				} else {
+					if (level.getBlockState(pos).isAir) {
+						level.setBlockAndUpdate(pos, BlockRegistry.GantryRail.defaultBlockState())
+					}
+				}
+				iterator.remove()
+			}
+
+			if (System.nanoTime() - startTime > maxBudgetNs) break
 		}
 	}
 
@@ -93,41 +265,130 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	val inboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
 	val outboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
 
+	/**
+	 * [index]'s own persisted cache, refreshed from the live index on every [saveAdditional] and
+	 * restored (via [pendingIndexRestore]) on load, so a bound warehouse doesn't pay for a full
+	 * rescan of possibly millions of blocks on every single world load - only ever on a genuine
+	 * rebind, or the low-frequency background audit that already tolerates some drift.
+	 */
+	private var indexSnapshot: IndexSnapshot by field(IndexSnapshot.serializer()) { IndexSnapshot() }
+
+	/** Set once on load if [indexSnapshot] had anything worth restoring - [WarehouseIndex.availableSlots] still needs a real [ServerLevel] to rebuild, which [loadAdditional] doesn't reliably have; [tickIndex] does the actual [WarehouseIndex.updateIndex] call the very first tick it runs, then clears this. */
+	private var pendingIndexRestore = false
+
 	private var lastScannedBounds: Bounds? = null
 	private var ticksSinceAudit: Int = 0
 	private var ticksSinceGantrySync: Int = 0
 
 	private val jobs: ArrayDeque<GantryJob> = ArrayDeque()
-
-	/** The current batch's not-yet-visited pickup legs, at most [GANTRY_CARRY_CAPACITY] long - see [tickJobs]. */
 	private val pickupQueue: ArrayDeque<GantryJob> = ArrayDeque()
-
-	/** What's actually in the gantry's hands right now - each entry picked up but not yet dropped off. */
 	private val deliveryQueue: ArrayDeque<CarriedStack> = ArrayDeque()
 
-	/** Queues a job retrieving [slot]'s [resource]/[amount] into [outboundBuffer], dispersing it via [deliverTo] once it lands there if given - see `RequestFulfillment`. */
-	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, resource: ItemResource, amount: Long, deliverTo: DeliveryTarget? = null) {
-		jobs += GantryJob.Retrieve(slot, resource, amount, deliverTo)
+	/**
+	 * [WarehouseDefragPlanner]'s own output, kept separate from [jobs] so a freshly requested
+	 * retrieve/stow never has to wait behind a whole warehouse's worth of housekeeping moves -
+	 * [startNextBatch] only ever promotes from here into [jobs] one batch at a time, and only once
+	 * [jobs] and a fresh [planPutAway] pass both come up empty. See [enqueueDefrag].
+	 */
+	private val defragQueue: ArrayDeque<GantryJob.Move> = ArrayDeque()
+
+	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, stack: ResourceStack<ItemResource>, deliverTo: DeliveryTarget? = null) {
+		jobs += GantryJob.Retrieve(slot, stack, deliverTo)
 	}
 
-	/** Queues [gantry] motion to [target] via the current [bounds]' rail height - a no-op while unbound. */
+	/** Plans and queues a consolidation pass via [WarehouseDefragPlanner] - see [defragQueue]. Safe to call repeatedly; a resource with nothing left to consolidate just contributes no jobs. */
+	fun enqueueDefrag(level: ServerLevel) {
+		defragQueue += WarehouseDefragPlanner.plan(level, this)
+	}
+
 	fun moveGantryTo(target: BlockPos) {
-		val railY = bounds?.max?.y ?: return
-		gantry.moveTo(target, railY)
+		val level = level as? ServerLevel
+		if (level != null) {
+			updateGantryTicket(level, target)
+		}
+		val bounds = bounds ?: return
+		gantry.moveTo(target, clearanceYFor(target, bounds))
+	}
+
+	/**
+	 * The height [gantry] actually needs to ascend to before crossing horizontally to reach
+	 * [target] - just high enough to clear every rack [index] currently knows about (a block placed
+	 * at Y occupies world space up to `Y + 1`), never above [bounds]'s own rail height, and never
+	 * below wherever the gantry already is or [target] itself (going *below* either would be a
+	 * descent, not the ascent [GantryState.moveTo]'s own waypoints assume). A warehouse bound with
+	 * far more headroom than its racks actually use (space reserved for future expansion, say) no
+	 * longer pays for a trip all the way to the literal top and back on every single job -
+	 * [index] not yet knowing about any rack at all (nothing scanned yet) falls back to [bounds]'s
+	 * own floor, since there's nothing yet to clear.
+	 */
+	private fun clearanceYFor(target: BlockPos, bounds: Bounds): Int {
+		val tallestKnownRackTop = (index.knownContainers.maxOfOrNull { it.y } ?: bounds.min.y) + 1
+		val currentY = ceil(gantry.pos.y).toInt()
+		return tallestKnownRackTop.coerceAtLeast(maxOf(currentY, target.y)).coerceAtMost(bounds.max.y)
+	}
+
+	/**
+	 * `1.0` (unaffected) until M5 gives this hook a real [ArchieEnergyStorage] to draw from - see
+	 * `docs/design/m5-pressure-power.md`. [NO_PRESSURE_LINE] is a throwaway, always-empty stand-in
+	 * only good enough to satisfy [onPressureTick]'s signature until then; the default
+	 * implementation never actually reads it.
+	 */
+	private fun pressureSpeedMultiplier(): Double = onPressureTick(NO_PRESSURE_LINE)
+
+	/** [scaleClass]'s own [WarehouseScale.baseSpeedPerTick], scaled by [pressureSpeedMultiplier] - the rate [tick] actually advances [gantry] by while it's moving. */
+	private fun effectiveGantrySpeed(): Double = scaleClass.baseSpeedPerTick * pressureSpeedMultiplier()
+
+	override val basePressureCost: Long get() = scaleClass.basePressureCost
+	override val maxPressureDraw: Long get() = scaleClass.maxPressureDraw
+
+	override fun setLevel(level: Level) {
+		super.setLevel(level)
+		if (level is ServerLevel) {
+			WarehouseBlockEventListener.activeControllers.add(blockPos)
+			bounds?.let { registerWarehouseTickets(level, it) }
+		}
+	}
+
+	override fun setRemoved() {
+		if (level is ServerLevel) {
+			val sLevel = level as ServerLevel
+			WarehouseBlockEventListener.activeControllers.remove(blockPos)
+			bounds?.let { releaseWarehouseTickets(sLevel, it) }
+		}
+		super.setRemoved()
 	}
 
 	fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
+		if (pendingFrameQueue.isNotEmpty()) {
+			tickFrameQueue(serverLevel, System.nanoTime(), MAX_FRAME_TIME_NS)
+		}
 
 		tickIndex(serverLevel)
 		val wasMoving = gantry.isMoving
-		if (wasMoving) gantry.tick()
+		if (wasMoving) gantry.tick(effectiveGantrySpeed())
 		tickGantrySync(serverLevel, pos)
 		if (!gantry.isMoving) tickJobs(serverLevel, pos)
+		updateVisualState()
+	}
+
+	/** Recomputes [visualState] from this tick's own now-current [index]/[gantry] state - guarded so an unchanged state doesn't reassign (and re-push a sync packet over) every single tick. */
+	private fun updateVisualState() {
+		val newState = when {
+			index.isRescanning -> GantryVisualState.INDEXING
+			gantry.isMoving -> GantryVisualState.MOVING
+			else -> GantryVisualState.IDLE
+		}
+		if (newState != visualState) visualState = newState
 	}
 
 	private fun tickIndex(level: ServerLevel) {
+		if (pendingIndexRestore) {
+			pendingIndexRestore = false
+			index.updateIndex(level, blockPos)
+		}
+
 		if (index.isRescanning) {
 			index.tick(level)
 			return
@@ -137,7 +398,10 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		if (currentBounds != lastScannedBounds) {
 			lastScannedBounds = currentBounds
 			ticksSinceAudit = 0
-			if (currentBounds != null) index.scheduleRescan(currentBounds) else index.clear()
+			if (currentBounds != null) {
+				val scale = WarehouseScale.fromBounds(currentBounds)
+				index.scheduleRescan(level, currentBounds, scale, blockPos)
+			} else index.clear()
 			return
 		}
 
@@ -145,7 +409,8 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		ticksSinceAudit++
 		if (ticksSinceAudit < AUDIT_INTERVAL_TICKS) return
 		ticksSinceAudit = 0
-		index.scheduleRescan(currentBounds)
+		val scale = WarehouseScale.fromBounds(currentBounds)
+		index.scheduleRescan(level, currentBounds, scale, blockPos)
 	}
 
 	private fun tickGantrySync(level: ServerLevel, pos: BlockPos) {
@@ -155,23 +420,28 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		ticksSinceGantrySync = 0
 		TubularStorageNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, GANTRY_SYNC_RADIUS,
-			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath),
+			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath, deliveryQueue.map { ResourceStack(it.resource, it.amount) }),
 		)
 	}
 
-	/**
-	 * Advances the current batch by one leg - dequeuing a fresh batch (or planning a put-away, if
-	 * [jobs] is empty too) when both queues are drained, completing whichever leg the gantry just
-	 * arrived at, or starting the next one. A batch groups up to [GANTRY_CARRY_CAPACITY] consecutive
-	 * same-kind jobs from the front of [jobs] ([startNextBatch]) so the crane visits every pickup in
-	 * [pickupQueue], then every drop-off for what it actually collected in [deliveryQueue], as one
-	 * continuous run rather than a full trip home between each individual item - the "prevent
-	 * bottlenecks" case a single-item-at-a-time crane hits once several requests/put-aways queue up
-	 * at once. A pickup a player already emptied by hand just gets skipped (no `deliveryQueue` entry
-	 * added), the same as before, but no longer aborts the rest of the batch. Every batch still ends
-	 * with the gantry heading back to [pos] (its home position) once both queues empty. Only called
-	 * while [gantry] is idle, so each call is exactly one leg.
-	 */
+	override fun loadAdditional(compoundTag: CompoundTag, provider: HolderLookup.Provider) {
+		super.loadAdditional(compoundTag, provider)
+		bounds?.let {
+			this.scaleClass = WarehouseScale.fromBounds(it)
+			if (indexSnapshot.entries.isNotEmpty()) {
+				index.restoreFrom(indexSnapshot, blockPos)
+				lastScannedBounds = it
+				pendingIndexRestore = true
+			}
+		}
+	}
+
+	/** Refreshes [indexSnapshot] from [index]'s current (possibly still-scanning) state right before it's actually written out, so whatever's cached reflects the index as of the last real save rather than whatever it looked like when this controller first loaded. */
+	override fun saveAdditional(compoundTag: CompoundTag, provider: HolderLookup.Provider) {
+		indexSnapshot = index.toSnapshot()
+		super.saveAdditional(compoundTag, provider)
+	}
+
 	private fun tickJobs(level: ServerLevel, pos: BlockPos) {
 		if (pickupQueue.isEmpty() && deliveryQueue.isEmpty()) {
 			startNextBatch(level, pos)
@@ -181,7 +451,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		if (pickupQueue.isNotEmpty()) {
 			val job = pickupQueue.removeFirst()
 			val picked = pickUp(level, job)
-			if (picked != null) deliveryQueue += CarriedStack(job, picked.first, picked.second)
+			if (picked != null) deliveryQueue += CarriedStack(job, picked.resource, picked.amount)
 			advanceBatch(pos)
 			return
 		}
@@ -192,7 +462,13 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	private fun startNextBatch(level: ServerLevel, pos: BlockPos) {
-		val first = jobs.removeFirstOrNull() ?: run { planPutAway(level); return }
+		if (jobs.isEmpty()) {
+			planPutAway(level)
+			if (jobs.isEmpty()) fillFromDefragQueue()
+			if (jobs.isEmpty()) return
+		}
+
+		val first = jobs.removeFirst()
 		pickupQueue += first
 		while (jobs.isNotEmpty() && jobs.first().isSameKindAs(first) && pickupQueue.size < GANTRY_CARRY_CAPACITY) {
 			pickupQueue += jobs.removeFirst()
@@ -200,7 +476,13 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		moveGantryTo(sourcePos(first, pos))
 	}
 
-	/** Heads to the next still-pending leg of the current batch (another pickup, then a drop-off for whatever was actually collected), or home once both queues are drained. */
+	/** Promotes up to one batch's worth of [defragQueue] into [jobs] - only ever reached once there's genuinely nothing else to do this tick, so a housekeeping pass can't grow the wait for a real request past one batch (see [defragQueue]'s own KDoc). */
+	private fun fillFromDefragQueue() {
+		while (defragQueue.isNotEmpty() && jobs.size < GANTRY_CARRY_CAPACITY) {
+			jobs += defragQueue.removeFirst()
+		}
+	}
+
 	private fun advanceBatch(pos: BlockPos) {
 		when {
 			pickupQueue.isNotEmpty() -> moveGantryTo(sourcePos(pickupQueue.first(), pos))
@@ -212,23 +494,37 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	private fun sourcePos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
 		is GantryJob.Retrieve -> job.slot.pos
 		is GantryJob.Stow -> controllerPos
+		is GantryJob.Move -> job.slot.pos
 	}
 
 	private fun destinationPos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
 		is GantryJob.Retrieve -> controllerPos
 		is GantryJob.Stow -> job.targetPos
+		is GantryJob.Move -> job.targetPos
 	}
 
-	private fun pickUp(level: ServerLevel, job: GantryJob): Pair<ItemResource, Long>? = when (job) {
+	private fun pickUp(level: ServerLevel, job: GantryJob): ResourceStack<ItemResource>? = when (job) {
 		is GantryJob.Retrieve -> {
-			val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)
-			val extracted = storage?.extract(job.resource, job.amount, false) ?: 0
-			index.recordExtraction(job.resource, job.slot.pos, job.slot.direction, job.amount, extracted)
-			if (extracted > 0) job.resource to extracted else null
+			if (!level.hasChunk(job.slot.pos.x shr 4, job.slot.pos.z shr 4)) null
+			else {
+				val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)
+				val extracted = storage?.extract(job.stack.resource, job.stack.amount, false) ?: 0
+				index.recordExtraction(job.stack.resource, job.slot.pos, job.slot.direction, job.stack.amount, extracted)
+				if (extracted > 0) job.stack.withCount(extracted) else null
+			}
 		}
 		is GantryJob.Stow -> {
-			val extracted = inboundBuffer.extract(job.resource, job.amount, false)
-			if (extracted > 0) job.resource to extracted else null
+			val extracted = inboundBuffer.extract(job.stack.resource, job.stack.amount, false)
+			if (extracted > 0) job.stack.withCount(extracted) else null
+		}
+		is GantryJob.Move -> {
+			if (!level.hasChunk(job.slot.pos.x shr 4, job.slot.pos.z shr 4)) null
+			else {
+				val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)
+				val extracted = storage?.extract(job.stack.resource, job.stack.amount, false) ?: 0
+				index.recordExtraction(job.stack.resource, job.slot.pos, job.slot.direction, job.stack.amount, extracted)
+				if (extracted > 0) job.stack.withCount(extracted) else null
+			}
 		}
 	}
 
@@ -241,105 +537,136 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos)
 			}
 			is GantryJob.Stow -> {
-				val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
-				val inserted = storage?.insert(resource, amount, false) ?: 0
-				index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
-				if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
+				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
+					val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
+					val inserted = storage?.insert(resource, amount, false) ?: 0
+					index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
+					if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
+				} else {
+					inboundBuffer.insert(resource, amount, false)
+				}
+			}
+			is GantryJob.Move -> {
+				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
+					val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
+					val inserted = storage?.insert(resource, amount, false) ?: 0
+					index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
+					if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
+				} else {
+					inboundBuffer.insert(resource, amount, false)
+				}
 			}
 		}
 	}
 
-	/**
-	 * Looks for a connected pipe among [pos]'s own six neighbors and, if one can route to
-	 * [deliverTo], pulls [amount] of [resource] back out of [outboundBuffer] and injects it as a
-	 * `TravelingItem` directly into that pipe's own queue - the same thing
-	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType.tryExtract] does to its own
-	 * tile. Leaves it in the buffer (for the next `shipOut` attempt, since nothing else drains it) if
-	 * no route is found.
-	 */
 	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos) {
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
+			if (!level.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) continue
 			val pipeTile = level.getBlockEntity(neighborPos) as? PipeBlockEntity ?: continue
 			val route = PipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
 			val extracted = outboundBuffer.extract(resource, amount, false)
 			if (extracted <= 0) continue
-			pipeTile.travelingItems += TravelingItem(resource.toStack(extracted.toInt()), direction.opposite, 0f, route, null)
+			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null)
 			return
 		}
 	}
 
-	/** Looks for anything sitting in [inboundBuffer] and, for each occupied slot a rack will take, queues a [GantryJob.Stow] for it - up to [GANTRY_CARRY_CAPACITY] jobs, one per occupied slot, so a full buffer becomes a single batched trip rather than one round trip per item. */
 	private fun planPutAway(level: ServerLevel) {
+		val queuedSlots = jobs.filterIsInstance<GantryJob.Stow>()
+			.mapTo(mutableSetOf()) { it.sourceSlot }
+
 		for (i in 0 until inboundBuffer.size()) {
+			if (i in queuedSlots) continue
+
 			val resource = inboundBuffer.getResource(i)
 			if (resource.isBlank) continue
+
 			val amount = inboundBuffer.getAmount(i)
 			if (amount <= 0) continue
+
 			val (targetPos, targetDirection) = bestRackFor(level, resource) ?: continue
-			jobs += GantryJob.Stow(targetPos, targetDirection, resource, amount)
+
+			jobs += GantryJob.Stow(
+				sourceSlot = i,
+				targetPos = targetPos,
+				targetDirection = targetDirection,
+				stack = ResourceStack(resource, amount)
+			)
 		}
 	}
 
 	/**
-	 * An existing rack already holding [resource] that still has room (stack-with-existing
-	 * preference), else the nearest bound position to [blockPos] that will accept it - so an empty
-	 * warehouse fills outward from the controller rather than in whatever raw scan order
-	 * [Bounds.positions] happens to return, shortening the average trip. Actually re-checks room via
-	 * a simulated insert rather than trusting [WarehouseIndex.locations] blindly - an indexed entry
-	 * only records the last-known amount, not remaining capacity, so a rack that's since filled up
-	 * would otherwise keep getting chosen forever: the resulting `Stow` fails, the leftover goes
-	 * straight back into [inboundBuffer], and the next [planPutAway] pass picks the very same full
-	 * rack again, cycling the gantry in and out of the buffer indefinitely instead of ever reaching a
-	 * rack with space.
+	 * Finds a rack to put [resource] away in - an already-stocked one first (so a resource stays
+	 * consolidated rather than scattering across every rack with room), falling back to the nearest
+	 * empty/available one ([WarehouseIndex.availableSlots] is proximity-sorted already). Each probe
+	 * is a real capability lookup plus a simulated insert, not a free index read, so both searches
+	 * are capped at [RACK_SEARCH_LIMIT] candidates rather than exhausting the whole index - a
+	 * warehouse with thousands of racks that happen to all be full would otherwise make every single
+	 * put-away decision scan the entire thing synchronously, in one go, with no time-budgeting at all
+	 * (unlike [WarehouseIndex]'s own scan tasks). Giving up early here just means this item waits for
+	 * [planPutAway]'s next pass instead of the server visibly stalling on one job's search.
 	 */
 	private fun bestRackFor(level: ServerLevel, resource: ItemResource): Pair<BlockPos, Direction?>? {
-		for (entry in index.locations[resource].orEmpty()) {
-			val storage = ItemApi.BLOCK.find(level, entry.pos, entry.direction) ?: continue
-			if (storage.insert(resource, 1, true) > 0) return entry.pos to entry.direction
+		// 1. Try racks that already contain matching items
+		for ((pos, direction) in index.locations[resource].orEmpty().asSequence().take(RACK_SEARCH_LIMIT)) {
+			if (!level.hasChunk(pos.x shr 4, pos.z shr 4)) continue
+			val storage = ItemApi.BLOCK.find(level, pos, direction) ?: continue
+			if (storage.insert(resource, 1, true) > 0) return pos to direction
 		}
-		val volume = bounds ?: return null
-		val candidates = volume.positions().filter { it != blockPos }.sortedBy { it.distSqr(blockPos) }
-		for (candidate in candidates) {
-			val storage = ItemApi.BLOCK.find(level, candidate, null) ?: continue
-			if (storage.insert(resource, 1, true) > 0) return candidate to null
+
+		// 2. Fallback: Search ONLY indexed container positions (ordered by proximity)
+		for ((pos, direction) in index.availableSlots.asSequence().take(RACK_SEARCH_LIMIT)) {
+			if (!level.hasChunk(pos.x shr 4, pos.z shr 4)) continue
+			val storage = ItemApi.BLOCK.find(level, pos, direction) ?: continue
+			if (storage.insert(resource, 1, true) > 0) return pos to direction
 		}
+
 		return null
 	}
 
 	companion object {
-		/** Size of both [inboundBuffer] and [outboundBuffer], and (see [GANTRY_CARRY_CAPACITY]) the batch cap - the gantry can carry exactly as many stacks as either buffer holds. */
+		private val CONTROLLER_TICKET = TicketType.create(
+			"tubularstorage:controller",
+			Comparator.comparingLong(BlockPos::asLong)
+		)
+
+		private val GANTRY_TICKET = TicketType.create(
+			"tubularstorage:gantry",
+			Comparator.comparingLong(BlockPos::asLong)
+		)
+
 		private const val BUFFER_SIZE = 9
-
-		/** How many jobs [startNextBatch] groups into one continuous trip - tied to [BUFFER_SIZE] since that's exactly how many distinct stacks the gantry has anywhere to put down at once. */
 		private const val GANTRY_CARRY_CAPACITY = BUFFER_SIZE
-
-		/** How often the background audit rescan runs to correct drift from racks touched by hand - 5 minutes at 20 TPS. */
-		private const val AUDIT_INTERVAL_TICKS = 6000
-
+		/**
+		 * 20 minutes, not 5 - [WarehouseBlockEventListener]'s place/break hooks plus the persisted
+		 * [indexSnapshot] now cover the common case (a player building/rearranging racks, a world
+		 * reload) without a rescan at all, so this audit only exists to catch drift *those* can't see:
+		 * explosions, pistons, fire, other mods/commands rewriting blocks directly - none of which
+		 * fire a player-driven place/break event. Not worth eliminating outright even so; genuinely
+		 * relying on events alone would leave exactly that drift permanent, with nothing left to
+		 * correct it.
+		 */
+		private const val AUDIT_INTERVAL_TICKS = 24000
 		private const val GANTRY_SYNC_INTERVAL_TICKS = 4
 		private const val GANTRY_SYNC_RADIUS = 64.0
+		private const val MAX_FRAME_TIME_NS = 1_000_000L
+		private const val RACK_SEARCH_LIMIT = 256
+
+		/** Stand-in [ArchieEnergyStorage] for [onPressureTick] calls until M5 gives this hook a real one - see [pressureSpeedMultiplier]. */
+		private val NO_PRESSURE_LINE = ArchieEnergyStorage(0)
 
 		fun tick(level: Level, pos: BlockPos, state: BlockState, tile: WarehouseControllerBlockEntity) = tile.tick(level, pos, state)
 	}
 }
 
-/** Whether [this] and [other] are the same [GantryJob] variant - [WarehouseControllerBlockEntity.startNextBatch] only ever batches a run of one kind at a time, since `Stow`/`Retrieve` have different source/destination shapes (shared controller vs. per-job rack). */
 private fun GantryJob.isSameKindAs(other: GantryJob): Boolean = when (this) {
 	is GantryJob.Stow -> other is GantryJob.Stow
 	is GantryJob.Retrieve -> other is GantryJob.Retrieve
+	is GantryJob.Move -> other is GantryJob.Move
 }
 
-/** One [job]'s pickup result, waiting in [WarehouseControllerBlockEntity.deliveryQueue] for its own drop-off leg - [resource]/[amount] actually collected, which may be less than [GantryJob.amount] asked for. */
 private data class CarriedStack(val job: GantryJob, val resource: ItemResource, val amount: Long)
 
-/**
- * Wraps [Bounds] so [WarehouseControllerBlockEntity.bounds] can round-trip as `null` while unbound
- * - a bare nullable [net.kernelpanicsoft.archie.serialization.NBTHolder.field] encodes rootless
- * (outside any structure), and knbt can't represent a bare `null` there; see
- * [net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookState]'s `ColorSlot` for the same
- * workaround - and, like that one, this must stay a plain data class, not a `@JvmInline value
- * class`, or the same encoding failure comes back.
- */
 @Serializable
 private data class BoundsSlot(val bounds: Bounds? = null)

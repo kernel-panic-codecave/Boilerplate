@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.tubularstorage.warehouse
 
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -10,8 +11,7 @@ import net.minecraft.core.Direction
  * physical travel time is the point (see `docs/design/m3-warehouse-storage.md`).
  */
 sealed interface GantryJob {
-	val resource: ItemResource
-	val amount: Long
+	val stack: ResourceStack<ItemResource>
 
 	/**
 	 * Move [resource]/[amount] from [slot]'s rack into the controller's own outbound buffer. If
@@ -22,16 +22,30 @@ sealed interface GantryJob {
 	 */
 	data class Retrieve(
 		val slot: WarehouseIndex.RackSlotRef,
-		override val resource: ItemResource,
-		override val amount: Long,
+		override val stack: ResourceStack<ItemResource>,
 		val deliverTo: DeliveryTarget? = null,
 	) : GantryJob
 
 	/** Move [resource]/[amount] from the controller's own staging buffer into the rack at [targetPos]/[targetDirection], resolved once up front rather than re-planned on arrival. */
 	data class Stow(
+		val sourceSlot: Int,
 		val targetPos: BlockPos,
 		val targetDirection: Direction?,
-		override val resource: ItemResource,
-		override val amount: Long,
+		override val stack: ResourceStack<ItemResource>
+	) : GantryJob
+
+	/**
+	 * Move [resource]/[amount] directly from [slot]'s rack into the rack at [targetPos]/[targetDirection]
+	 * - no buffer bounce, unlike [Retrieve]+[Stow] - see [WarehouseDefragPlanner], the only planner
+	 * that currently emits this job kind. A destination that's lost its room by the time this
+	 * actually executes (queued well ahead of when the gantry gets to it) falls back to landing in
+	 * the controller's own `inboundBuffer` the same way a stale [Stow] target already does, rather
+	 * than the item vanishing.
+	 */
+	data class Move(
+		val slot: WarehouseIndex.RackSlotRef,
+		val targetPos: BlockPos,
+		val targetDirection: Direction?,
+		override val stack: ResourceStack<ItemResource>,
 	) : GantryJob
 }

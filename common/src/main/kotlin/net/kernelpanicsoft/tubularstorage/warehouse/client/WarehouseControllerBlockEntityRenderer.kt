@@ -2,11 +2,15 @@ package net.kernelpanicsoft.tubularstorage.warehouse.client
 
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
+import net.kernelpanicsoft.archie.util.rem
+import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
-import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.GantryClientCache
 import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
+import net.kernelpanicsoft.tubularstorage.warehouse.GantryVisualState
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseScale
+import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.block.ModelBlockRenderer
@@ -20,13 +24,18 @@ import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.util.FastColor
 import net.minecraft.util.RandomSource
+import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.properties.BooleanProperty
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
+import net.kernelpanicsoft.tubularstorage.util.itemStack
 import org.joml.Vector3f
 import java.util.BitSet
+import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.sin
 import kotlin.math.roundToInt
 
 /**
@@ -73,13 +82,16 @@ import kotlin.math.roundToInt
  * already do. [modelFor] memoizes the resulting handful of distinct baked models, since the same
  * state recurs at every interior position. One beam spans the bound footprint's full X extent at
  * the head's current Z, the other spans the full Z extent at the head's current X, intersecting
- * directly above wherever the head is. The head itself keeps using [ItemRegistry.GantryHead]'s
- * placeholder model, a fake item that exists purely as a bake target for this renderer.
+ * directly above wherever the head is. The head itself keeps using [HEAD_MODEL_ID], a standalone
+ * `block/gantry_head` model tied to no real block or item - registered directly as an "additional
+ * model" via each platform's own model-loading hooks (`TubularStorageFabric`/`TubularStorageNeoForge`),
+ * baked purely as a target for this renderer to look up.
  */
 class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvider.Context) : BlockEntityRenderer<WarehouseControllerBlockEntity> {
 	private val blockModelShaper = context.blockRenderDispatcher.blockModelShaper
 	private val modelRenderer = context.blockRenderDispatcher.modelRenderer
 	private val headModel = blockModelShaper.modelManager.getModel(HEAD_MODEL_ID)
+	private val itemRenderer = context.itemRenderer
 
 	private val modelCache = HashMap<BlockState, BakedModel>()
 	private fun modelFor(state: BlockState): BakedModel = modelCache.getOrPut(state) { blockModelShaper.getBlockModel(state) }
@@ -96,9 +108,10 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 	) {
 		val level = tile.level ?: return
 		val bounds = tile.bounds ?: return
-		val head = GantryClientCache.get(tile.blockPos)?.pos ?: Vec3.atCenterOf(tile.blockPos)
+		val head = GantryClientCache.get(tile.blockPos, WarehouseScale.fromBounds(bounds).baseSpeedPerTick)?.pos
+			?: Vec3.atCenterOf(tile.blockPos)
 
-		val consumer = bufferSource.getBuffer(RenderType.solid())
+		val consumer = bufferSource.getBuffer(RenderType.cutout())
 		val railY = bounds.max.y
 
 		for (x in bounds.min.x..bounds.max.x) {
@@ -122,6 +135,63 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		}
 
 		drawAt(tile.blockPos, head, level, poseStack, consumer, headModel, level.getBlockState(BlockPos.containing(head)), packedOverlay)
+
+		colorFor(tile.visualState)?.let { (r, g, b) ->
+			val lineConsumer = bufferSource.getBuffer(RenderType.lines())
+			poseStack.pushPose()
+			poseStack.translate(head.x - tile.blockPos.x, head.y - tile.blockPos.y, head.z - tile.blockPos.z)
+			LevelRenderer.renderLineBox(poseStack, lineConsumer, OUTLINE_BOX, r, g, b, 1f)
+			poseStack.popPose()
+		}
+
+		renderCarriedItems(tile, head, level, poseStack, bufferSource, packedLight, packedOverlay, partialTick)
+	}
+
+	/**
+	 * The gantry's own currently-in-transit items ([GantryClientCache.carriedItems] - a real batch,
+	 * up to [WarehouseControllerBlockEntity]'s own carry capacity, not just one), orbiting a little
+	 * ring above the head rather than stacked on it, so more than one is actually distinguishable at
+	 * once.
+	 */
+	private fun renderCarriedItems(
+		tile: WarehouseControllerBlockEntity,
+		head: Vec3,
+		level: Level,
+		poseStack: PoseStack,
+		bufferSource: MultiBufferSource,
+		packedLight: Int,
+		packedOverlay: Int,
+		partialTick: Float,
+	) {
+		val carried = GantryClientCache.carriedItems(tile.blockPos)
+		if (carried.isEmpty()) return
+
+		val spinDegrees = (level.gameTime + partialTick) * CARRIED_ITEM_SPIN_DEGREES_PER_TICK
+		val seed = tile.blockPos.asLong().toInt()
+		val originX = head.x - tile.blockPos.x
+		val originY = head.y - tile.blockPos.y + CARRIED_ITEM_Y_OFFSET
+		val originZ = head.z - tile.blockPos.z
+
+		for ((index, stack) in carried.withIndex()) {
+			val angle = Math.toRadians(spinDegrees + index * (360.0 / carried.size)).toFloat()
+
+			poseStack.pushPose()
+			poseStack.translate(
+				originX + cos(angle) * CARRIED_ITEM_RADIUS,
+				originY,
+				originZ + sin(angle) * CARRIED_ITEM_RADIUS,
+			)
+			poseStack.scale(CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE)
+			itemRenderer.renderStatic(stack.itemStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
+			poseStack.popPose()
+		}
+	}
+
+	/** [GantryVisualState] -> outline tint (`0f..1f` each), or `null` for [GantryVisualState.IDLE] (no outline at all) - see [WarehouseControllerVisual]'s own copy of this mapping. */
+	private fun colorFor(state: GantryVisualState): Triple<Float, Float, Float>? = when (state) {
+		GantryVisualState.INDEXING -> Triple(1f, 0.8f, 0f)
+		GantryVisualState.MOVING -> Triple(0.2f, 0.8f, 1f)
+		GantryVisualState.IDLE -> null
 	}
 
 	private fun drawAt(
@@ -218,7 +288,15 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		private val UP_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.UP)
 		private val DOWN_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN)
 
-		private val HEAD_MODEL_ID = ModelResourceLocation(BuiltInRegistries.ITEM.getKey(ItemRegistry.GantryHead), "inventory")
+		val HEAD_MODEL_ID = ModelResourceLocation(TubularStorage.MOD % "gantry_head", "standalone")
+
+		/** [GantryVisualState]'s outline box - slightly larger than a full block, centered on the head. */
+		private val OUTLINE_BOX = AABB(-0.6, -0.6, -0.6, 0.6, 0.6, 0.6)
+
+		private const val CARRIED_ITEM_Y_OFFSET = 0.65
+		private const val CARRIED_ITEM_RADIUS = 0.3f
+		private const val CARRIED_ITEM_SCALE = 0.4f
+		private const val CARRIED_ITEM_SPIN_DEGREES_PER_TICK = 3.0
 
 		private const val VERTEX_STRIDE_INTS = 8
 		private const val AO_EPSILON = 1.0E-4F
@@ -231,10 +309,22 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		 * rather than every segment (including the true ends) rendering as fully connected regardless
 		 * of what's actually next to it.
 		 */
-		private fun connectionState(position: Int, min: Int, max: Int, negativeProperty: BooleanProperty, positiveProperty: BooleanProperty): BlockState {
+		fun connectionState(
+			current: Int,
+			min: Int,
+			max: Int,
+			negativeProperty: BooleanProperty?,
+			positiveProperty: BooleanProperty?
+		): BlockState {
 			var state = BlockRegistry.GantryRail.defaultBlockState()
-			if (position > min) state = state.setValue(negativeProperty, true)
-			if (position < max) state = state.setValue(positiveProperty, true)
+
+			if (negativeProperty != null) {
+				state = state.setValue(negativeProperty, current > min)
+			}
+			if (positiveProperty != null) {
+				state = state.setValue(positiveProperty, current < max)
+			}
+
 			return state
 		}
 

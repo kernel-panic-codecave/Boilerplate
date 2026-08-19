@@ -6,6 +6,7 @@ import net.minecraft.core.Direction
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.LevelAccessor
+import net.minecraft.world.level.block.AirBlock
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.StateDefinition
@@ -50,9 +51,9 @@ class GantryRailBlock(properties: Properties) : Block(properties) {
 		neighborPos: BlockPos,
 	): BlockState = state.setValue(propertiesByDirection.getValue(direction), neighborState.block is GantryRailBlock)
 
-	private fun computeConnections(state: BlockState, level: LevelAccessor, pos: BlockPos): BlockState =
+	fun computeConnections(state: BlockState, level: LevelAccessor, pos: BlockPos): BlockState =
 		Direction.entries.fold(state) { result, direction ->
-			result.setValue(propertiesByDirection.getValue(direction), level.getBlockState(pos.relative(direction)).block.let { it is GantryRailBlock || it is WarehouseControllerBlock })
+			result.setValue(propertiesByDirection.getValue(direction), level.getBlockState(pos.relative(direction)).block.let { it is GantryRailBlock || (direction == Direction.DOWN && it !is AirBlock) })
 		}
 
 	override fun getShape(state: BlockState, level: BlockGetter, pos: BlockPos, context: CollisionContext): VoxelShape {

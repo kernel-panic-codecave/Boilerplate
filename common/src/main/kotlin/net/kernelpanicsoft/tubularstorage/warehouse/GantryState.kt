@@ -10,10 +10,14 @@ import net.minecraft.world.phys.Vec3
  * approach [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem] uses for in-pipe motion.
  *
  * Motion is deliberately not general 3D pathfinding: [moveTo] always resolves to a single ascent
- * to [railY] (if not already there), then horizontal motion along X, then along Z, then a final
- * vertical descent/ascent onto the target - an idealized industrial gantry confined to its rail
- * envelope, not a voxel path through the player's build. Racks must leave that overhead rail
- * volume clear. See `docs/design/m3-warehouse-storage.md`.
+ * to [clearanceY] (if not already there), then horizontal motion along X, then along Z, then a
+ * final vertical descent/ascent onto the target - an idealized industrial gantry confined to its
+ * rail envelope, not a voxel path through the player's build. [clearanceY] is the caller's own
+ * responsibility to pick high enough to clear whatever's actually between the two points -
+ * [WarehouseControllerBlockEntity] picks the lowest height that clears every rack it currently
+ * knows about rather than always the bound volume's own top, since those can differ enormously (a
+ * warehouse bound with headroom for future expansion pays for a trip to the literal top and back on
+ * every job otherwise). See `docs/design/m3-warehouse-storage.md`.
  */
 class GantryState(startPos: Vec3) {
 	var pos: Vec3 = startPos
@@ -26,10 +30,10 @@ class GantryState(startPos: Vec3) {
 
 	val isMoving: Boolean get() = waypoints.isNotEmpty()
 
-	/** Queues motion to the center of [target] via the rail-then-descend path through [railY]. Replaces any motion already in progress. */
-	fun moveTo(target: BlockPos, railY: Int) {
+	/** Queues motion to the center of [target] via the rail-then-descend path through [clearanceY]. Replaces any motion already in progress. */
+	fun moveTo(target: BlockPos, clearanceY: Int) {
 		val destination = Vec3.atCenterOf(target)
-		val rail = Vec3(pos.x, railY.toDouble(), pos.z)
+		val rail = Vec3(pos.x, clearanceY.toDouble(), pos.z)
 		val overDestination = Vec3(destination.x, rail.y, destination.z)
 		waypoints = ArrayDeque(
 			listOf(
@@ -41,10 +45,15 @@ class GantryState(startPos: Vec3) {
 		)
 	}
 
-	/** Advances motion by up to [SPEED_PER_TICK] blocks, across as many waypoints as that budget covers. */
-	fun tick() = advance(SPEED_PER_TICK)
+	/**
+	 * Advances motion by up to [speedPerTick] blocks - the caller's own current effective speed
+	 * (a [WarehouseScale] tier's [WarehouseScale.baseSpeedPerTick], scaled by
+	 * [net.kernelpanicsoft.tubularstorage.power.PressureConsumer.onPressureTick]'s multiplier),
+	 * across as many waypoints as that budget covers.
+	 */
+	fun tick(speedPerTick: Double) = advance(speedPerTick)
 
-	/** Advances motion by up to [distance] blocks, across as many waypoints as it covers - [tick]'s single-step budget, or (for the client's dead-reckoning cache) a whole elapsed-time span consumed in one call instead of one [SPEED_PER_TICK] step per tick that actually passed. */
+	/** Advances motion by up to [distance] blocks, across as many waypoints as it covers - [tick]'s single-step budget, or (for the client's dead-reckoning cache) a whole elapsed-time span consumed in one call instead of one per-tick step per tick that actually passed. */
 	fun advance(distance: Double) {
 		var remaining = distance
 		while (remaining > 0.0) {
@@ -63,9 +72,6 @@ class GantryState(startPos: Vec3) {
 	}
 
 	companion object {
-		/** Blocks of travel per tick - 4 blocks/second at 20 TPS. */
-		const val SPEED_PER_TICK = 0.2
-
 		/**
 		 * Reconstructs a [GantryState] resuming an in-flight motion, from a synced snapshot of
 		 * [pos]/[remainingPath] - for the client's dead-reckoning cache, which replays [tick] against

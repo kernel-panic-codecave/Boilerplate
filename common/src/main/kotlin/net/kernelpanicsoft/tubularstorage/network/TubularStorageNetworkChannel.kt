@@ -40,6 +40,7 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 			clientbound(GantrySyncPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(TerminalSearchResultsPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(CraftableListPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestTerminalSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }
@@ -53,6 +54,7 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 		serverbound(EncodeAssemblyPatternPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CraftingRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(RequestCraftableListPacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

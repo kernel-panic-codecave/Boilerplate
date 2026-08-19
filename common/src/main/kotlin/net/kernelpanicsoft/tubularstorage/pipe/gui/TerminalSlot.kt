@@ -31,12 +31,16 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
  * @param onHovered Told whenever this cell's own hovered state changes, so the caller (see
  *   [TerminalHookScreen.hoveredStack]/[TerminalHookScreen.renderTooltip]) can track which single stack (if
  *   any) across the whole grid should get a tooltip.
+ * @param countText Overrides the vanilla count-label decoration (e.g. `""` to hide it entirely) -
+ *   for a cell whose [stack]'s own `amount` is a display placeholder rather than a real count, like
+ *   [TerminalHookScreen]'s Craft-tab catalog entries (a known-craftable resource at whatever stock
+ *   it currently has, possibly none).
  */
 @Composable
-fun TerminalSlot(stack: ResourceStack<ItemResource>?, onClick: () -> Unit = {}, onHovered: (Boolean) -> Unit = {}, modifier: Modifier = Modifier) {
+fun TerminalSlot(stack: ResourceStack<ItemResource>?, onClick: () -> Unit = {}, onHovered: (Boolean) -> Unit = {}, modifier: Modifier = Modifier, countText: String? = null) {
 	Clickable(showHandCursor = stack != null, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
 		LaunchedEffect(isHovered) { onHovered(isHovered) }
-		FakeSlot(stack, isHovered)
+		FakeSlot(stack, isHovered, countText)
 	}
 }
 

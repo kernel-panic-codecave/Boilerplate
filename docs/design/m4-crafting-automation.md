@@ -41,7 +41,7 @@ Every tick, `AssemblyTableBlockEntity.tick` picks the first of its own `patterns
 
 ## Terminal
 
-`TerminalHookScreen` gained a second tab (Archie's `TabContainer` DSL) alongside the original one, renamed "Store" - both share the same search box + result grid over `TerminalHookMenu.results`; "Store" opens `requestQuantityDialog` and withdraws on confirm, "Craft" opens `requestCraftQuantityDialog` and submits a crafting request instead.
+`TerminalHookScreen` gained a second tab (Archie's `TabContainerPanel`) alongside the original one, renamed "Store" - both share the same search-box-plus-grid `ResultsGrid`, but over different lists: "Store" browses `TerminalHookMenu.results` (current reachable stock) and opens `requestQuantityDialog` to withdraw; "Craft" browses `TerminalHookMenu.craftableResources` - the *catalog* of resources any reachable `AssemblyTableBlockEntity`'s own patterns can produce, independent of current stock (`RequestCraftableListPacket`/`CraftableListPacket`, refreshed alongside search results on menu-open and the refresh button) - and opens `requestCraftQuantityDialog` to submit a crafting request instead. Catalog entries are placeholder `amount = 1` stacks with `TerminalSlot`'s vanilla count decoration suppressed (`countText = ""`), so an item currently at zero stock still shows its icon rather than looking like an empty cell.
 
 - **Preview** - `requestCraftQuantityDialog`'s own quantity field re-sends `RequestCraftPreviewPacket(resource, amount)` on every change (a `LaunchedEffect`), and the server replies with `CraftPreviewPacket(resource, maxCraftable)` via `CraftingResolver.maxCraftable`. The dialog's "Craft" button stays disabled until `maxCraftable > 0`.
 - **Request** - a bespoke client→server `CraftingRequestPacket(resource, amount)` - an *action*, not state, the one place this milestone needed a packet rather than reusing the search/preview round-trip shape.
@@ -60,5 +60,4 @@ Covered end-to-end by `TerminalCraftGameTest`: a stock-only request (no steps) a
 ## Deferred to playtesting / not blocking
 
 - Exact pattern-editing UX (drag-from-search-results vs. requiring physical items in hand for encoding).
-- The Craft tab's browsable list is `TerminalHookMenu.results` - the same reachable-stock aggregate the Store tab shows - so a resource with a known pattern but zero current stock anywhere isn't listed yet, only requestable by first finding it via the Store tab once any stock of it exists. A dedicated "known craftable outputs" search (distinct from stock) is a real gap, not implemented this milestone.
 - A `CraftingJob`'s per-step assembly table is picked once, greedily, and never reassigned - a table going offline (broken, or its patterns edited) mid-job stalls that job rather than re-resolving onto a different table.

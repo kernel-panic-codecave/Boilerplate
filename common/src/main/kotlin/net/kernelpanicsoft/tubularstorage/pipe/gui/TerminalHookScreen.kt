@@ -24,6 +24,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.height
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestWarehouseDefragPacket
 import net.kernelpanicsoft.tubularstorage.network.SItemResource
@@ -86,7 +87,10 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 					verticalAlignment = Alignment.Top
 				) {
 					Column {
-						Button(onClick = { TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket) }) {
+						Button(onClick = {
+							TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
+							TubularStorageNetworkChannel.toServer(RequestCraftableListPacket)
+						}) {
 							Text(
 								Component.literal("↻"),
 								dropShadow = false
@@ -112,6 +116,7 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 	private fun storeTab() {
 		val layers = LocalLayerManager.current
 		ResultsGrid(
+			results = menu.results,
 			onSelect = { s ->
 				hoveredStack = null
 				layers.requestQuantityDialog(s) { amount -> menu.requestWithdraw(s.withCount(amount)) }
@@ -119,6 +124,14 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 		)
 	}
 
+	/**
+	 * A catalog of what's craftable, not what's in stock - [menu.craftableResources][TerminalHookMenu.craftableResources]
+	 * (the distinct outputs of every reachable assembly table's own patterns), shown as `amount = 1`
+	 * placeholder stacks with the vanilla count decoration suppressed ([TerminalSlot]'s `countText`)
+	 * so an item you currently have none of still shows its icon without a misleading "1" - the
+	 * quantity dialog this opens ([requestCraftQuantityDialog]) never reads that placeholder amount
+	 * anyway, only the resource itself.
+	 */
 	@Composable
 	private fun craftTab() {
 		val layers = LocalLayerManager.current
@@ -132,6 +145,8 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 
 		Column(verticalArrangement = Arrangement.spacedBy(4)) {
 			ResultsGrid(
+				results = menu.craftableResources.map { ResourceStack(it, 1L) },
+				countText = "",
 				onSelect = { s ->
 					hoveredStack = null
 					layers.requestCraftQuantityDialog(menu, s.resource) { amount -> menu.requestCraft(ResourceStack(s.resource, amount)) }
@@ -143,9 +158,9 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 
 	/** Shared search box + result grid, reused by [storeTab]/[craftTab] - see this class's own KDoc. */
 	@Composable
-	private fun ResultsGrid(onSelect: (SResourceStack<SItemResource>) -> Unit) {
+	private fun ResultsGrid(results: List<SResourceStack<SItemResource>>, onSelect: (SResourceStack<SItemResource>) -> Unit, countText: String? = null) {
 		var query by remember { mutableStateOf("") }
-		val filtered = menu.results.filter { query.isBlank() || it.resource.cachedStack.hoverName.string.contains(query, ignoreCase = true) }
+		val filtered = results.filter { query.isBlank() || it.resource.cachedStack.hoverName.string.contains(query, ignoreCase = true) }
 		val rows = maxOf(VISIBLE_ROWS, (filtered.size + COLUMNS - 1) / COLUMNS)
 
 		Column(verticalArrangement = Arrangement.spacedBy(6)) {
@@ -165,6 +180,7 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 								val stack = filtered.getOrNull(row * COLUMNS + column)
 								TerminalSlot(
 									stack = stack,
+									countText = countText,
 									onClick = {
 										if (menu.carried == ItemStack.EMPTY)
 										{

@@ -10,8 +10,10 @@ import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
 import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
+import net.kernelpanicsoft.tubularstorage.network.CraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftingRequestPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftPreviewPacket
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.SItemResource
 import net.kernelpanicsoft.tubularstorage.network.SResourceStack
@@ -76,12 +78,35 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 	 */
 	override fun onMenuOpened() {
 		super.onMenuOpened()
-		if (level.isClientSide) TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
+		if (level.isClientSide) {
+			TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
+			TubularStorageNetworkChannel.toServer(RequestCraftableListPacket)
+		}
 	}
 
 	/** Client-side: applies a freshly received [TerminalSearchResultsPacket]. */
 	fun updateResults(results: List<SResourceStack<SItemResource>>) {
 		this.results = results
+	}
+
+	/** The distinct resources currently craftable somewhere reachable, independent of current stock - Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftableList] applies a fresh [CraftableListPacket]. */
+	var craftableResources: List<SItemResource> by mutableStateOf(emptyList())
+		private set
+
+	/** Client-side: applies a freshly received [CraftableListPacket]. */
+	fun updateCraftableList(resources: List<SItemResource>) {
+		craftableResources = resources
+	}
+
+	/** Server-side: computes and replies with the distinct resources every reachable [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]'s own patterns can produce. */
+	fun sendCraftableList() {
+		val level = level as? ServerLevel ?: return
+		val resources = RequestFulfillment.reachableAssemblyTables(level, tile.blockPos)
+			.flatMap { it.patterns }
+			.flatMap { it.outputs }
+			.map { it.resource }
+			.distinct()
+		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftableListPacket(resources))
 	}
 
 	/** Recomputes the aggregated contents of every source reachable from [tile]'s own position and sends it to this menu's own player. */

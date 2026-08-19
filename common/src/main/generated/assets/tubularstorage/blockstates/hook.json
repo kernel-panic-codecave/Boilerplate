@@ -2,7 +2,7 @@
   "multipart": [
     {
       "apply": {
-        "model": "tubularstorage:block/pipe_core"
+        "model": "minecraft:block/air"
       }
     }
   ]

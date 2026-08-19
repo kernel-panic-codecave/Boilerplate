@@ -61,17 +61,73 @@
       "from": [
         6,
         6,
-        0
+        2
       ],
       "to": [
         10,
         10,
         6
       ]
+    },
+    {
+      "faces": {
+        "down": {
+          "texture": "#all",
+          "uv": [
+            0.0,
+            0.0,
+            16.0,
+            16.0
+          ]
+        },
+        "east": {
+          "texture": "#all",
+          "uv": [
+            0.0,
+            0.0,
+            16.0,
+            16.0
+          ]
+        },
+        "north": {
+          "texture": "#all"
+        },
+        "south": {
+          "texture": "#all"
+        },
+        "up": {
+          "texture": "#all",
+          "uv": [
+            0.0,
+            0.0,
+            16.0,
+            16.0
+          ]
+        },
+        "west": {
+          "texture": "#all",
+          "uv": [
+            0.0,
+            0.0,
+            16.0,
+            16.0
+          ]
+        }
+      },
+      "from": [
+        0,
+        0,
+        0
+      ],
+      "to": [
+        16,
+        16,
+        2
+      ]
     }
   ],
   "textures": {
-    "all": "tubularstorage:block/sorting_hook",
-    "particle": "tubularstorage:block/sorting_hook"
+    "all": "tubularstorage:block/terminal_hook",
+    "particle": "tubularstorage:block/terminal_hook"
   }
 }

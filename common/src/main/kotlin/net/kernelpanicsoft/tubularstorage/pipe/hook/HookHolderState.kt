@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook
 
 import net.kernelpanicsoft.archie.serialization.NBTHolder
 import net.kernelpanicsoft.archie.serialization.serializers.ResourceLocationSerializer
+import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -16,4 +17,5 @@ import net.minecraft.resources.ResourceLocation
  */
 abstract class HookHolderState(defaultType: ResourceLocation) : NBTHolder by NBTHolder.create() {
 	val type: ResourceLocation by field(ResourceLocationSerializer) { defaultType }
+	val fromRegistry get() = HookTypeRegistry.byId(type)
 }

@@ -7,6 +7,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
+import net.minecraft.Util
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
@@ -60,4 +61,6 @@ class HookItem(properties: Properties, val hookId: ResourceLocation) : BlockItem
 		level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
 		return result
 	}
+
+	override fun getDescriptionId(): String? = Util.makeDescriptionId("hook", hookId)
 }

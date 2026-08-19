@@ -4,31 +4,37 @@ import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
-import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookState
-import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SyncHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.SyncHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType
 import net.minecraft.core.Registry
 import net.minecraft.resources.ResourceKey
 import net.minecraft.resources.ResourceLocation
 
-/** Registers Tubular Storage's [PipeHookType]s into the custom registry [HookTypeRegistrar] declares. */
+/** Registers Tubular Storage's [PipeHookType]s into the custom registry [Registrars] declares. */
 @Suppress("UNCHECKED_CAST")
 object HookTypeRegistry : ADeferredRegistryHolder<PipeHookType<out HookHolderState>>(
 	TubularStorage.MOD,
-	HookTypeRegistrar.HOOK_TYPE.key() as ResourceKey<Registry<PipeHookType<out HookHolderState>>>,
+	Registrars.HOOK_TYPE.key() as ResourceKey<Registry<PipeHookType<out HookHolderState>>>,
 ) {
 	val Extraction: PipeHookType<ExtractionHookState> by register(ExtractionHookType.ID) { ExtractionHookType }
-	val Sorting: PipeHookType<SortingHookState> by register(SortingHookType.ID) { SortingHookType }
+	val Filter: PipeHookType<FilterHookState> by register(FilterHookType.ID) { FilterHookType }
 	val Provider: PipeHookType<ProviderHookState> by register(ProviderHookType.ID) { ProviderHookType }
+	val Sync: PipeHookType<SyncHookState> by register(SyncHookType.ID) { SyncHookType }
 	val Requester: PipeHookType<RequesterHookState> by register(RequesterHookType.ID) { RequesterHookType }
-	val WarehouseTerminal: PipeHookType<WarehouseTerminalHookState> by register(WarehouseTerminalHookType.ID) { WarehouseTerminalHookType }
+	val Terminal: PipeHookType<TerminalHookState> by register(TerminalHookType.ID) { TerminalHookType }
+	val Interface: PipeHookType<InterfaceHookState> by register(InterfaceHookType.ID) { InterfaceHookType }
 
 	/**
 	 * Looks up a registered [PipeHookType] by its full id (e.g.
@@ -40,5 +46,5 @@ object HookTypeRegistry : ADeferredRegistryHolder<PipeHookType<out HookHolderSta
 	 * the underlying custom registry has actually processed that registration yet, so it isn't a
 	 * reliable source for a runtime, id-keyed lookup.
 	 */
-	fun byId(id: ResourceLocation): PipeHookType<HookHolderState>? = HookTypeRegistrar.HOOK_TYPE.get(id) as? PipeHookType<HookHolderState>
+	fun byId(id: ResourceLocation): PipeHookType<HookHolderState>? = Registrars.HOOK_TYPE.get(id) as? PipeHookType<HookHolderState>
 }

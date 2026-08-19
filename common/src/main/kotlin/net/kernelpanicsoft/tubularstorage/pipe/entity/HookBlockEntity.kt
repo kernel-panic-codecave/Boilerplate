@@ -10,6 +10,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
+import net.minecraft.Util
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
@@ -65,7 +66,7 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 		val hookType = HookTypeRegistry.byId(hookState.type) ?: error("Unknown hook type ${hookState.type} at $blockPos/$pendingMenuFace")
 		return hookType.createMenu(id, inventory, this, pendingMenuFace)
 	}
-	override fun getDisplayName(): Component = blockState.block.name
+	override fun getDisplayName(): Component = (hooks[pendingMenuFace.name] as? HookHolderState)?.type?.let { Component.translatable(Util.makeDescriptionId("hook", it)) } ?: blockState.block.name
 	override fun saveExtraData(buf: FriendlyByteBuf) {
 		buf.writeBlockPos(blockPos)
 		buf.writeEnum(pendingMenuFace)

@@ -10,6 +10,7 @@ import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
 import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
+import net.kernelpanicsoft.tubularstorage.network.CraftGridRequestPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftingRequestPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftPreviewPacket
@@ -18,12 +19,12 @@ import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPa
 import net.kernelpanicsoft.tubularstorage.network.SItemResource
 import net.kernelpanicsoft.tubularstorage.network.SResourceStack
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemDepositRequestPacket
-import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
-import net.kernelpanicsoft.tubularstorage.network.TerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemWithdrawRequestPacket
+import net.kernelpanicsoft.tubularstorage.network.TerminalSearchResultsPacket
+import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
-import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
@@ -33,51 +34,34 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.crafting.CraftingInput
+import net.minecraft.world.item.crafting.RecipeType
 
 /**
- * Menu for the warehouse terminal hook attached to [tile]: search/withdraw across *every* source
- * reachable from [tile]'s own pipe position, not just bound warehouses - a
- * [net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType]-tagged inventory is just as
- * searchable, the same two sources [RequestFulfillment.request] already draws a standing order
- * from (and, once M4 exists, on-demand crafts would be a third) - see
- * `docs/design/m3-warehouse-storage.md`. No block-owned slots of its own; the result list is a
- * virtual, non-slot-backed view (see `TerminalScreen`), not real vanilla
- * [net.minecraft.world.inventory.Slot]s, since warehouse contents can vastly exceed the usual
- * ~45-slot menu ceiling.
- *
- * A withdrawal always has one well-defined destination: [TerminalHookState.output], this hook's
- * own real, physically-interactable slots (real vanilla [net.minecraft.world.inventory.Slot]s -
- * see [registerSlotHandlers]) - the same targeted routing ([RequestFulfillment.request]) a
- * [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType] standing order uses, just
- * delivered to [tile]'s own block position directly instead of searching its other faces for
- * something plugged in. A terminal is a self-contained delivery point; nothing external is
- * required.
+ * Menu for the crafting terminal hook attached to [tile] - everything [TerminalHookMenu] does
+ * (Store/Craft tabs, on-demand job requests, its own built-in output slots), plus a real 3x3
+ * [CraftingTerminalHookState.grid]/[CraftingTerminalHookState.result] pair for instant, manual
+ * network-backed crafting ([craft]). A near-duplicate of [TerminalHookMenu] rather than a
+ * subclass of it - [ComposeBlockContainerMenu]'s own self-referencing `SELF` type parameter
+ * (already fixed to `TerminalHookMenu` there) makes real inheritance awkward, and every other
+ * hook type in this mod already accepts the same non-inheriting-sibling-classes tradeoff over
+ * fighting that. See `docs/design/m4-crafting-automation.md`.
  */
-class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
-	ComposeBlockContainerMenu<HookBlockEntity, TerminalHookMenu>(GuiRegistry.TerminalHook, id, inventory, tile), CraftPreviewMenu {
+class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
+	ComposeBlockContainerMenu<HookBlockEntity, CraftingTerminalHookMenu>(GuiRegistry.CraftingTerminalHook, id, inventory, tile), CraftPreviewMenu {
 
-	/** The most recently received search results - Compose state, so [TerminalHookScreen] recomposes whenever [updateResults] applies a fresh [TerminalSearchResultsPacket]. */
 	var results: List<SResourceStack<SItemResource>> by mutableStateOf(emptyList())
 		private set
 
-	/** [tile]'s own [HookBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
 	val craftJobStatus: String get() = tile.craftJobStatus
 
 	override fun registerSlotHandlers() {
-		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
 		handler("output", state.output)
+		handler("grid", state.grid)
+		handler("result", state.result)
 	}
 
-	/**
-	 * Requests fresh results from the client side, rather than the server eagerly pushing them the
-	 * moment its own menu instance is constructed - the server's own construction (and so this
-	 * `onMenuOpened` firing there) happens *before* the client has necessarily finished opening the
-	 * screen and become the active `containerMenu`, so an eager server push routinely lost the race
-	 * and got silently dropped by [TerminalSearchResultsPacket.handleOnClient]'s own `containerMenu`
-	 * cast, requiring a manual refresh click to ever populate anything. The client's own
-	 * `onMenuOpened` only fires once its menu construction is what NeoForge/Fabric already resolved
-	 * as the active menu, so a request sent from there can't lose that race.
-	 */
 	override fun onMenuOpened() {
 		super.onMenuOpened()
 		if (level.isClientSide) {
@@ -86,21 +70,17 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		}
 	}
 
-	/** Client-side: applies a freshly received [TerminalSearchResultsPacket]. */
 	fun updateResults(results: List<SResourceStack<SItemResource>>) {
 		this.results = results
 	}
 
-	/** The distinct resources currently craftable somewhere reachable, independent of current stock - Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftableList] applies a fresh [CraftableListPacket]. */
 	var craftableResources: List<SItemResource> by mutableStateOf(emptyList())
 		private set
 
-	/** Client-side: applies a freshly received [CraftableListPacket]. */
 	fun updateCraftableList(resources: List<SItemResource>) {
 		craftableResources = resources
 	}
 
-	/** Server-side: computes and replies with the distinct resources every reachable [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState]'s own held patterns can produce. */
 	fun sendCraftableList() {
 		val level = level as? ServerLevel ?: return
 		val resources = RequestFulfillment.reachablePatternProviders(level, tile.blockPos)
@@ -111,7 +91,6 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftableListPacket(resources))
 	}
 
-	/** Recomputes the aggregated contents of every source reachable from [tile]'s own position and sends it to this menu's own player. */
 	fun sendSearchResults() {
 		val level = level as? ServerLevel ?: return
 		if (tile.pipeBlockId == HookBlockEntity.NONE) return
@@ -133,53 +112,38 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, TerminalSearchResultsPacket(stacks))
 	}
 
-	/**
-	 * Requests up to [amount] of [resource] be delivered to [TerminalHookState.output] - a
-	 * reachable provider or warehouse, whichever [RequestFulfillment.request] finds first, exactly
-	 * as a [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType] standing order would.
-	 * Re-sends fresh results either way, reflecting whatever the withdrawal actually took -
-	 * immediately accurate for a provider (an ordinary synchronous CSL extract), but only once the
-	 * gantry physically finishes for a warehouse-sourced one, which is what [requestWithdraw]'s own
-	 * client-side optimistic update is for.
-	 */
 	fun withdraw(stack: ResourceStack<ItemResource>) {
 		val level = level as? ServerLevel ?: return
 		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos)
 		sendSearchResults()
 	}
 
-	/** The most recently received craft-preview result - `resource to maxCraftable` - or `null` before any preview's been requested. Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftPreview] applies a fresh [CraftPreviewPacket]. */
 	override var craftPreview: Pair<SItemResource, Long>? by mutableStateOf(null)
 		private set
 
-	/** Client-side: asks how much of [resource] is currently craftable, up to [upperBound] - a dry run, nothing is requested. */
 	override fun requestCraftPreview(resource: ItemResource, upperBound: Long) {
 		TubularStorageNetworkChannel.toServer(RequestCraftPreviewPacket(resource, upperBound))
 	}
 
-	/** Client-side: applies a freshly received [CraftPreviewPacket]. */
 	fun updateCraftPreview(resource: ItemResource, maxCraftable: Long) {
 		craftPreview = resource to maxCraftable
 	}
 
-	/** Server-side: computes and replies with how much of [resource] is currently craftable, up to [upperBound] - see [CraftingRequest.maxCraftable]. */
 	fun sendCraftPreview(resource: ItemResource, upperBound: Long) {
 		val level = level as? ServerLevel ?: return
 		val max = CraftingRequest.maxCraftable(level, tile.blockPos, resource, upperBound)
 		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftPreviewPacket(resource, max))
 	}
 
-	/** Client-side: submits an on-demand crafting request for [stack] - resolved and, if resolvable, executed server-side over subsequent ticks by [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType.tick]. */
 	fun requestCraft(stack: ResourceStack<ItemResource>) {
 		TubularStorageNetworkChannel.toServer(CraftingRequestPacket(stack.resource, stack.amount))
 	}
 
-	/** Server-side: resolves [resource]/[amount] and, on success, enqueues a [CraftingJob] on [direction]'s [TerminalHookState]; on failure, reports why directly via [HookBlockEntity.craftJobStatus] without ever queuing anything. */
 	fun submitCraft(resource: ItemResource, amount: Long) {
 		val level = level as? ServerLevel ?: return
 		when (val result = CraftingRequest.resolve(level, tile.blockPos, resource, amount)) {
 			is CraftingResolver.Result.Success -> {
-				val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+				val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
 				state.jobs += CraftingJob(resource, amount, result.plan.steps)
 			}
 			is CraftingResolver.Result.Unresolvable -> tile.craftJobStatus = "Cannot craft: missing ${result.resource.cachedStack.hoverName.string}"
@@ -187,7 +151,6 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		}
 	}
 
-	/** Server-side: queues a consolidation pass ([net.kernelpanicsoft.tubularstorage.warehouse.WarehouseDefragPlanner]) on every warehouse reachable from [tile]'s own position - see [net.kernelpanicsoft.tubularstorage.network.RequestWarehouseDefragPacket]. */
 	fun requestDefrag() {
 		val level = level as? ServerLevel ?: return
 		for (warehouse in RequestFulfillment.reachableWarehouses(level, tile.blockPos)) {
@@ -202,14 +165,6 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		if (clearCarried) carried = ItemStack.EMPTY
 	}
 
-	/**
-	 * Client-side: sends a withdrawal request for [amount] of [resource] and immediately reflects it
-	 * in [results] itself, rather than waiting on a round trip back from the server - which, for a
-	 * warehouse-sourced withdrawal, only arrives once the gantry physically finishes the retrieval
-	 * (see [withdraw]'s KDoc), not the instant the request is made. Whatever the server's own next
-	 * [TerminalSearchResultsPacket] says (that eventual completion, a manual refresh, or simply the
-	 * post-[withdraw] resync) still overwrites this guess with the authoritative total.
-	 */
 	fun requestWithdraw(resourceStack: ResourceStack<ItemResource>) {
 		results = results.mapNotNull { stack ->
 			if (stack.resource != resourceStack.resource) return@mapNotNull stack
@@ -222,13 +177,47 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 	fun requestDeposit(resourceStack: ResourceStack<ItemResource>, clearCarried: Boolean = false) {
 		TubularStorageNetworkChannel.toServer(
 			TerminalItemDepositRequestPacket(
-				stack = resourceStack.withCount(
-					resourceStack.amount.coerceAtMost(Int.MAX_VALUE.toLong())
-				),
+				stack = resourceStack.withCount(resourceStack.amount.coerceAtMost(Int.MAX_VALUE.toLong())),
 				clearCarried = clearCarried
 			)
 		)
 		if (clearCarried) carried = ItemStack.EMPTY
+	}
+
+	/**
+	 * Client-side: asks the server to try assembling [grid][CraftingTerminalHookState.grid]'s
+	 * current contents into [result][CraftingTerminalHookState.result].
+	 */
+	fun requestCraftGrid() {
+		TubularStorageNetworkChannel.toServer(CraftGridRequestPacket)
+	}
+
+	/**
+	 * Server-side: matches [CraftingTerminalHookState.grid] against a real vanilla
+	 * [net.minecraft.world.item.crafting.CraftingRecipe] and, if one matches and
+	 * [CraftingTerminalHookState.result] has room, consumes one of each occupied grid slot and
+	 * inserts the assembled result - the same "count via slot occupancy" shape
+	 * [net.kernelpanicsoft.tubularstorage.crafting.Pattern.requiredInputs] uses, just executed
+	 * instantly instead of going through a [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType]
+	 * hook. Ingredient remainders (an emptied bucket, say) aren't handled yet - a deferred gap, see
+	 * `docs/design/m4-crafting-automation.md`.
+	 */
+	fun craftGrid() {
+		val level = level as? ServerLevel ?: return
+		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
+		val gridItems = (0 until state.grid.size()).map { state.grid.get(it).getItem() }
+		val craftingInput = CraftingInput.of(3, 3, gridItems)
+		val recipe = level.recipeManager.getRecipeFor(RecipeType.CRAFTING, craftingInput, level).orElse(null) ?: return
+		val assembled = recipe.value().assemble(craftingInput, level.registryAccess())
+		if (assembled.isEmpty) return
+		val resultResource = ItemResource.of(assembled)
+		if (state.result.insert(resultResource, assembled.count.toLong(), true) < assembled.count.toLong()) return
+
+		for (i in 0 until state.grid.size()) {
+			val stack = state.grid.get(i).getItem()
+			if (!stack.isEmpty) state.grid.extract(ItemResource.of(stack), 1, false)
+		}
+		state.result.insert(resultResource, assembled.count.toLong(), false)
 	}
 
 	override fun quickMoveStack(

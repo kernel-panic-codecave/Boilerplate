@@ -5,6 +5,7 @@ import net.kernelpanicsoft.archie.util.itemProperties
 import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItem
+import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType
@@ -64,6 +65,10 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val InterfaceHook by register("interface_hook") {
 		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = InterfaceHookType.ID)
+	}
+
+	val CraftingTerminalHook by register("crafting_terminal_hook") {
+		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = CraftingTerminalHookType.ID)
 	}
 
 	val PatternProviderHook by register("pattern_provider_hook") {

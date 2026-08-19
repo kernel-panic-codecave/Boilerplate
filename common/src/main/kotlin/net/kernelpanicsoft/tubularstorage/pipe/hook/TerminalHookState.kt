@@ -2,9 +2,16 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook
 
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
+import net.minecraft.resources.ResourceLocation
 
-/** State for one [TerminalHookType] attachment - search results live in the menu/network, not persisted here; [jobs] is likewise runtime-only, not NBT-persisted - see [CraftingJob]'s own KDoc. */
-class TerminalHookState : HookHolderState(TerminalHookType.ID) {
+/**
+ * State for one [TerminalHookType] attachment - search results live in the menu/network, not
+ * persisted here; [jobs] is likewise runtime-only, not NBT-persisted - see [CraftingJob]'s own
+ * KDoc. [type] is overridable (not hardcoded to [TerminalHookType.ID]) so
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookState] can extend this class
+ * and inherit [jobs]/[output] wholesale rather than duplicating them.
+ */
+open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : HookHolderState(type) {
 	/** Crafting requests submitted through this face, oldest first - only [jobs]'s head is ever advanced per tick, see [TerminalHookType.tick]. */
 	val jobs: MutableList<CraftingJob> = mutableListOf()
 

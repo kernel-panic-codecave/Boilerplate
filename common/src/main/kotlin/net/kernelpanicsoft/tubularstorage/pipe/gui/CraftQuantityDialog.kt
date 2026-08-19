@@ -26,13 +26,13 @@ import net.minecraft.network.chat.Component
 
 /**
  * Pushes a modal asking how much of [resource] to craft - unlike [requestQuantityDialog], not
- * clamped to current stock: [menu]'s [TerminalHookMenu.craftPreview] instead shows how much of the
+ * clamped to current stock: [menu]'s [CraftPreviewMenu.craftPreview] instead shows how much of the
  * typed amount is *actually* resolvable right now, re-requested via
- * [TerminalHookMenu.requestCraftPreview] on every amount change (a live dry run, `simulate = true`
+ * [CraftPreviewMenu.requestCraftPreview] on every amount change (a live dry run, `simulate = true`
  * in effect - see `docs/design/m4-crafting-automation.md`). [onConfirm] fires once with the chosen
  * amount; the modal dismisses itself either way.
  */
-fun LayerStackManager.requestCraftQuantityDialog(menu: TerminalHookMenu, resource: ItemResource, onConfirm: (Long) -> Unit) {
+fun LayerStackManager.requestCraftQuantityDialog(menu: CraftPreviewMenu, resource: ItemResource, onConfirm: (Long) -> Unit) {
 	modal {
 		CraftQuantityDialogContent(
 			menu = menu,
@@ -44,7 +44,7 @@ fun LayerStackManager.requestCraftQuantityDialog(menu: TerminalHookMenu, resourc
 }
 
 @Composable
-private fun CraftQuantityDialogContent(menu: TerminalHookMenu, resource: ItemResource, onConfirm: (Long) -> Unit, onCancel: () -> Unit) {
+private fun CraftQuantityDialogContent(menu: CraftPreviewMenu, resource: ItemResource, onConfirm: (Long) -> Unit, onCancel: () -> Unit) {
 	var amount by remember(resource) { mutableStateOf(resource.item.defaultMaxStackSize.toLong()) }
 	var text by remember(resource) { mutableStateOf(amount.toString()) }
 

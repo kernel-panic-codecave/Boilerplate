@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.network
 
 import com.mojang.serialization.Codec
 import earth.terrarium.common_storage_lib.resources.Resource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
@@ -25,7 +26,7 @@ typealias SResourceStack<T> = @Serializable(with = ResourceStackSerializer::clas
 object ItemResourceSerializer : CodecSerializer<ItemResource>(ItemResource.CODEC)
 object FluidResourceSerializer : CodecSerializer<FluidResource>(FluidResource.CODEC)
 
-class ResourceStackSerializer<T : Resource>(resource: KSerializer<T>) : CodecSerializer<ResourceStack<T>>((when (resource)
+class ResourceStackSerializer<T : ResourceComponent>(resource: KSerializer<T>) : CodecSerializer<ResourceStack<T>>((when (resource)
 {
 	ItemResourceSerializer -> ResourceStack.ITEM_CODEC
 	FluidResourceSerializer -> ResourceStack.FLUID_CODEC
@@ -54,6 +55,7 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 		serverbound(RequestCraftPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CraftingRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftableListPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(CraftGridRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

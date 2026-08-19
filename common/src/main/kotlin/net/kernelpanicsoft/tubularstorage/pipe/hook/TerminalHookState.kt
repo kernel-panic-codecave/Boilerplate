@@ -1,4 +1,9 @@
 package net.kernelpanicsoft.tubularstorage.pipe.hook
 
-/** Self-contained state for one [TerminalHookType] attachment - none needed beyond the [type] tag every [HookHolderState] already carries; search results live in the menu/network, not persisted here. */
-class TerminalHookState : HookHolderState(TerminalHookType.ID)
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
+
+/** State for one [TerminalHookType] attachment - search results live in the menu/network, not persisted here; [jobs] is likewise runtime-only, not NBT-persisted - see [CraftingJob]'s own KDoc. */
+class TerminalHookState : HookHolderState(TerminalHookType.ID) {
+	/** Crafting requests submitted through this face, oldest first - only [jobs]'s head is ever advanced per tick, see [TerminalHookType.tick]. */
+	val jobs: MutableList<CraftingJob> = mutableListOf()
+}

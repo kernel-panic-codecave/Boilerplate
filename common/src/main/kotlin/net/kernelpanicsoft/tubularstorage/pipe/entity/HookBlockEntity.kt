@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.tubularstorage.pipe.entity
 
 import dev.architectury.registry.menu.ExtendedMenuProvider
+import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap
 import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.archie.serialization.serializers.ResourceLocationSerializer
@@ -57,6 +58,19 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	var pipeBlockId: ResourceLocation by field(ResourceLocationSerializer) { NONE }
 
 	var pendingMenuFace: Direction = Direction.NORTH
+
+	/**
+	 * Human-readable progress of the most recently submitted
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob] on any face - read by
+	 * [net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookScreen]'s Craft tab via
+	 * [net.kernelpanicsoft.archie.gui.blockentity.observeProperty]. Deliberately one flat field
+	 * rather than per-face, matching how a player only ever has one terminal screen open at a
+	 * time - a second face's own job would overwrite this while the first is still mid-flight, an
+	 * accepted simplification for the rare case of two [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType]
+	 * faces on the same block.
+	 */
+	@Sync
+	var craftJobStatus: String by field(String.serializer()) { "" }
 
 	/** The [SortingHookState] filter grid attached to [direction] - callers must already know it carries a sorting hook. */
 	fun filterFor(direction: Direction) = (hooks[direction.name] as SortingHookState).filter

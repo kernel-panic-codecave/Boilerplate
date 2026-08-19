@@ -27,4 +27,17 @@ object CraftingRequest {
 			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.outputs.any { it.resource == resource } } },
 		)
 	}
+
+	/** [CraftingResolver.maxCraftable] wired the same way [resolve] is - see its own KDoc. */
+	fun maxCraftable(level: ServerLevel, from: BlockPos, target: ItemResource, upperBound: Long): Long {
+		val warehouses = RequestFulfillment.reachableWarehouses(level, from)
+		val patterns = RequestFulfillment.reachableAssemblyTables(level, from).flatMap { it.patterns }
+
+		return CraftingResolver.maxCraftable(
+			target = target,
+			upperBound = upperBound,
+			stockOf = { resource -> warehouses.sumOf { warehouse -> warehouse.index.locations[resource]?.sumOf { it.amount } ?: 0L } },
+			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.outputs.any { it.resource == resource } } },
+		)
+	}
 }

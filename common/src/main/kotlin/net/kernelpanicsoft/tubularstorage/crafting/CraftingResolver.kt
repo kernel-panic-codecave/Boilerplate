@@ -2,8 +2,8 @@ package net.kernelpanicsoft.tubularstorage.crafting
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 
-/** One pattern run planned as part of a [CraftingResolver.Plan], in bottom-up execution order - see [CraftingResolver.Plan.steps]. */
-data class CraftStep(val pattern: Pattern, val runs: Long)
+/** One pattern run planned as part of a [CraftingResolver.Plan], in bottom-up execution order - see [CraftingResolver.Plan.steps]. [resource] is the resource whose demand [runs] was sized against - see [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob], which reports it in job-status text. */
+data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ItemResource)
 
 /**
  * Resolves a crafting request into a **DAG**, not a tree, memoized per-resource within one
@@ -93,12 +93,39 @@ object CraftingResolver {
 			if (outputAmount == null || outputAmount <= 0L) return Result.Unresolvable(resource)
 
 			val neededRuns = (shortfall + outputAmount - 1) / outputAmount
-			steps += CraftStep(pattern, neededRuns)
+			steps += CraftStep(pattern, neededRuns, resource)
 			for ((inputResource, perRun) in pattern.requiredInputs()) {
 				demand[inputResource] = (demand[inputResource] ?: 0L) + perRun * neededRuns
 			}
 		}
 
 		return Result.Success(Plan(target, amount, steps.asReversed(), stockPulls))
+	}
+
+	/**
+	 * The largest amount of [target] resolvable right now, up to [upperBound] - a binary search
+	 * over [resolve] rather than its own algorithm, since feasibility is monotonic in the
+	 * requested amount: [resolve]ing for less demand can only ever *shrink* every shortfall
+	 * downstream (never grow one), so if `amount` resolves, every smaller amount does too.
+	 * [stockOf]/[patternFor] must be pure/deterministic across the repeated [resolve] calls this
+	 * makes for the search to be valid - see [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest.maxCraftable]'s
+	 * read-only wiring.
+	 */
+	fun maxCraftable(
+		target: ItemResource,
+		upperBound: Long,
+		stockOf: (ItemResource) -> Long,
+		patternFor: (ItemResource) -> Pattern?,
+	): Long {
+		if (upperBound <= 0) return 0
+		if (resolve(target, upperBound, stockOf, patternFor) is Result.Success) return upperBound
+
+		var low = 0L
+		var high = upperBound
+		while (low < high) {
+			val mid = low + (high - low + 1) / 2
+			if (resolve(target, mid, stockOf, patternFor) is Result.Success) low = mid else high = mid - 1
+		}
+		return low
 	}
 }

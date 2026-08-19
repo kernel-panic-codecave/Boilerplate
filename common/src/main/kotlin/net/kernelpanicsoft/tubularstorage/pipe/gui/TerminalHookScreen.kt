@@ -1,14 +1,18 @@
 package net.kernelpanicsoft.tubularstorage.pipe.gui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import earth.terrarium.common_storage_lib.resources.ResourceStack
+import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
+import net.kernelpanicsoft.archie.gui.composables.containers.TabContainer
 import net.kernelpanicsoft.archie.gui.composables.input.Button
 import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
 import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
@@ -33,12 +37,15 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.ItemStack
 
 /**
- * Search box + scrollable, non-slot-backed result grid over everything [menu] can currently reach
- * (see [TerminalHookMenu]) - see `docs/design/m3-warehouse-storage.md`. Filters
- * [TerminalHookMenu.results] locally by the search text (matched against each result's own
- * display name) rather than round-tripping a query to the server; the server only ever pushes the
- * *full* unfiltered aggregate, on open, after a withdrawal, or in response to the refresh button
- * ([RequestTerminalSearchResultsPacket]).
+ * Two tabs over everything [menu] can currently reach (see [TerminalHookMenu]) - see
+ * `docs/design/m3-warehouse-storage.md`/`docs/design/m4-crafting-automation.md`. Both share
+ * [ResultsGrid] (search box + scrollable, non-slot-backed result grid over [TerminalHookMenu.results],
+ * filtered locally by display name) - "Store" clicking a cell opens [requestQuantityDialog] and
+ * withdraws, "Craft" clicking a cell opens [requestCraftQuantityDialog] and submits a
+ * [TerminalHookMenu.requestCraft] instead, with a status line underneath reading
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity.craftJobStatus] (polled into
+ * Compose state - see [craftTab] - rather than pushed, since that field is synced onto the
+ * client's own [menu]`.tile` the ordinary block-entity way, not through a dedicated packet).
  *
  * [COLUMNS] wide, always at least [VISIBLE_ROWS] tall - the same 9x3 a chest's own grid shows -
  * padded out with empty [TerminalSlot]s when there aren't enough results to fill it, rather than
@@ -46,14 +53,13 @@ import net.minecraft.world.item.ItemStack
  * below rather than a fourth visible row, scrolled into view the same way a real inventory with
  * more slots than fit on screen would be.
  *
- * Clicking an occupied cell opens a [requestQuantityDialog] asking how many to request rather than
- * instantly withdrawing a full stack - see [TerminalHookMenu.requestWithdraw]. Hovering one tracks
- * [hoveredStack], read back by the overridden [renderTooltip] - the same hook
- * `ComposeContainerScreen.render` already calls vanilla's own `AbstractContainerScreen.renderTooltip`
- * through, genuinely *after* the whole Compose tree finishes rendering rather than nested inside
- * it. A tooltip composed inline as just another node in that tree has no reliable way to guarantee
- * it paints above everything else in it (a hovered [TerminalSlot]'s own [SlotHighlight] included) -
- * this hook is the same one vanilla's own tooltip relies on for exactly that guarantee.
+ * Hovering a cell tracks [hoveredStack], read back by the overridden [renderTooltip] - the same
+ * hook `ComposeContainerScreen.render` already calls vanilla's own
+ * `AbstractContainerScreen.renderTooltip` through, genuinely *after* the whole Compose tree
+ * finishes rendering rather than nested inside it. A tooltip composed inline as just another node
+ * in that tree has no reliable way to guarantee it paints above everything else in it (a hovered
+ * [TerminalSlot]'s own `SlotHighlight` included) - this hook is the same one vanilla's own tooltip
+ * relies on for exactly that guarantee.
  */
 class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<TerminalHookMenu>(menu, playerInventory, title) {
@@ -69,11 +75,6 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 
 	@Composable
 	fun content() {
-		val layers = LocalLayerManager.current
-		var query by remember { mutableStateOf("") }
-		val filtered = menu.results.filter { query.isBlank() || it.resource.cachedStack.hoverName.string.contains(query, ignoreCase = true) }
-		val rows = maxOf(VISIBLE_ROWS, (filtered.size + COLUMNS - 1) / COLUMNS)
-
 		Theme {
 			Row(
 				horizontalArrangement = Arrangement.spacedBy(2),
@@ -93,45 +94,86 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 						)
 					}
 				}
-				ContainerPanel(contentWidth) {
-					Column(verticalArrangement = Arrangement.spacedBy(6)) {
-						BasicTextField(
-							value = query,
-							onValueChange = { query = it },
-							modifier = Modifier.width(contentWidth),
-						)
+				TabContainer {
+					tab(id = "store", title = Component.literal("Store")) { storeTab() }
+					tab(id = "craft", title = Component.literal("Craft")) { craftTab() }
+				}
+			}
+		}
+	}
 
-						Scrollable(modifier = Modifier.width(contentWidth).height(18 * VISIBLE_ROWS)) {
-							Column {
-								for (row in 0 until rows)
+	@Composable
+	private fun storeTab() {
+		val layers = LocalLayerManager.current
+		ResultsGrid(
+			onSelect = { s ->
+				hoveredStack = null
+				layers.requestQuantityDialog(s) { amount -> menu.requestWithdraw(s.withCount(amount)) }
+			},
+		)
+	}
+
+	@Composable
+	private fun craftTab() {
+		val layers = LocalLayerManager.current
+		var status by remember { mutableStateOf(menu.craftJobStatus) }
+		LaunchedEffect(Unit) {
+			while (true) {
+				status = menu.craftJobStatus
+				delay(STATUS_POLL_MILLIS)
+			}
+		}
+
+		Column(verticalArrangement = Arrangement.spacedBy(4)) {
+			ResultsGrid(
+				onSelect = { s ->
+					hoveredStack = null
+					layers.requestCraftQuantityDialog(menu, s.resource) { amount -> menu.requestCraft(ResourceStack(s.resource, amount)) }
+				},
+			)
+			Text(Component.literal(status.ifBlank { "No crafting job in progress" }), dropShadow = false)
+		}
+	}
+
+	/** Shared search box + result grid, reused by [storeTab]/[craftTab] - see this class's own KDoc. */
+	@Composable
+	private fun ResultsGrid(onSelect: (SResourceStack<SItemResource>) -> Unit) {
+		var query by remember { mutableStateOf("") }
+		val filtered = menu.results.filter { query.isBlank() || it.resource.cachedStack.hoverName.string.contains(query, ignoreCase = true) }
+		val rows = maxOf(VISIBLE_ROWS, (filtered.size + COLUMNS - 1) / COLUMNS)
+
+		ContainerPanel(contentWidth) {
+			Column(verticalArrangement = Arrangement.spacedBy(6)) {
+				BasicTextField(
+					value = query,
+					onValueChange = { query = it },
+					modifier = Modifier.width(contentWidth),
+				)
+
+				Scrollable(modifier = Modifier.width(contentWidth).height(18 * VISIBLE_ROWS)) {
+					Column {
+						for (row in 0 until rows)
+						{
+							Row {
+								for (column in 0 until COLUMNS)
 								{
-									Row {
-										for (column in 0 until COLUMNS)
-										{
-											val stack = filtered.getOrNull(row * COLUMNS + column)
-											TerminalSlot(
-												stack = stack,
-												onClick = {
-													if (menu.carried == ItemStack.EMPTY)
-													{
-														stack?.let { s ->
-															hoveredStack = null
-															layers.requestQuantityDialog(s) { amount ->
-																menu.requestWithdraw(s.withCount(amount))
-															}
-														}
-													} else
-													{
-														menu.requestDeposit(menu.carried.resourceStack, true)
-													}
-												},
-												onHovered = { hovered ->
-													hoveredStack =
-														if (hovered) stack else if (hoveredStack === stack) null else hoveredStack
-												},
-											)
-										}
-									}
+									val stack = filtered.getOrNull(row * COLUMNS + column)
+									TerminalSlot(
+										stack = stack,
+										onClick = {
+											if (menu.carried == ItemStack.EMPTY)
+											{
+												stack?.let(onSelect)
+											} else
+											{
+												menu.requestDeposit(menu.carried.resourceStack, true)
+											}
+										},
+										onHovered = { hovered ->
+											hoveredStack =
+												if (hovered) stack else if (hoveredStack === stack) null else hoveredStack
+										},
+									)
 								}
 							}
 						}
@@ -149,5 +191,6 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 	companion object {
 		private const val COLUMNS = 9
 		private const val VISIBLE_ROWS = 3
+		private const val STATUS_POLL_MILLIS = 250L
 	}
 }

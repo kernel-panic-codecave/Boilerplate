@@ -3,10 +3,15 @@ package net.kernelpanicsoft.tubularstorage.pipe.gui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
+import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
+import net.kernelpanicsoft.tubularstorage.network.CraftingRequestPacket
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.SItemResource
 import net.kernelpanicsoft.tubularstorage.network.SResourceStack
@@ -16,6 +21,8 @@ import net.kernelpanicsoft.tubularstorage.network.TerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemWithdrawRequestPacket
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
+import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
@@ -51,6 +58,9 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 	/** The most recently received search results - Compose state, so [TerminalHookScreen] recomposes whenever [updateResults] applies a fresh [TerminalSearchResultsPacket]. */
 	var results: List<SResourceStack<SItemResource>> by mutableStateOf(emptyList())
 		private set
+
+	/** [tile]'s own [HookBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
+	val craftJobStatus: String get() = tile.craftJobStatus
 
 	override fun registerSlotHandlers() {}
 
@@ -110,6 +120,45 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		val destination = adjacentInventory(level) ?: return
 		RequestFulfillment.request(level, tile.blockPos, stack, destination)
 		sendSearchResults()
+	}
+
+	/** The most recently received craft-preview result - `resource to maxCraftable` - or `null` before any preview's been requested. Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftPreview] applies a fresh [CraftPreviewPacket]. */
+	var craftPreview: Pair<SItemResource, Long>? by mutableStateOf(null)
+		private set
+
+	/** Client-side: asks how much of [resource] is currently craftable, up to [upperBound] - a dry run, nothing is requested. */
+	fun requestCraftPreview(resource: ItemResource, upperBound: Long) {
+		TubularStorageNetworkChannel.toServer(RequestCraftPreviewPacket(resource, upperBound))
+	}
+
+	/** Client-side: applies a freshly received [CraftPreviewPacket]. */
+	fun updateCraftPreview(resource: ItemResource, maxCraftable: Long) {
+		craftPreview = resource to maxCraftable
+	}
+
+	/** Server-side: computes and replies with how much of [resource] is currently craftable, up to [upperBound] - see [CraftingRequest.maxCraftable]. */
+	fun sendCraftPreview(resource: ItemResource, upperBound: Long) {
+		val level = level as? ServerLevel ?: return
+		val max = CraftingRequest.maxCraftable(level, tile.blockPos, resource, upperBound)
+		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftPreviewPacket(resource, max))
+	}
+
+	/** Client-side: submits an on-demand crafting request for [stack] - resolved and, if resolvable, executed server-side over subsequent ticks by [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType.tick]. */
+	fun requestCraft(stack: ResourceStack<ItemResource>) {
+		TubularStorageNetworkChannel.toServer(CraftingRequestPacket(stack.resource, stack.amount))
+	}
+
+	/** Server-side: resolves [resource]/[amount] and, on success, enqueues a [CraftingJob] on [direction]'s [TerminalHookState]; on failure, reports why directly via [HookBlockEntity.craftJobStatus] without ever queuing anything. */
+	fun submitCraft(resource: ItemResource, amount: Long) {
+		val level = level as? ServerLevel ?: return
+		when (val result = CraftingRequest.resolve(level, tile.blockPos, resource, amount)) {
+			is CraftingResolver.Result.Success -> {
+				val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+				state.jobs += CraftingJob(resource, amount, result.plan.steps)
+			}
+			is CraftingResolver.Result.Unresolvable -> tile.craftJobStatus = "Cannot craft: missing ${result.resource.cachedStack.hoverName.string}"
+			is CraftingResolver.Result.Cyclic -> tile.craftJobStatus = "Cannot craft: cyclic pattern for ${result.resource.cachedStack.hoverName.string}"
+		}
 	}
 
 	/** Server-side: queues a consolidation pass ([net.kernelpanicsoft.tubularstorage.warehouse.WarehouseDefragPlanner]) on every warehouse reachable from [tile]'s own position - see [net.kernelpanicsoft.tubularstorage.network.RequestWarehouseDefragPacket]. */
@@ -210,12 +259,6 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		return copied
 	}
 
-	/** The position of the first inventory directly attached to one of [tile]'s own six faces, or `null` if nothing's plugged in - the well-defined destination every [withdraw] delivers to. */
-	private fun adjacentInventory(level: ServerLevel): BlockPos? {
-		for (direction in Direction.entries) {
-			val neighborPos = tile.blockPos.relative(direction)
-			if (ItemApi.BLOCK.find(level, neighborPos, direction.opposite) != null) return neighborPos
-		}
-		return null
-	}
+	/** The well-defined destination every [withdraw] delivers to - see [TerminalHookType.adjacentInventory]. */
+	private fun adjacentInventory(level: ServerLevel): BlockPos? = TerminalHookType.adjacentInventory(level, tile.blockPos)
 }

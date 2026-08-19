@@ -29,7 +29,7 @@ Turned out to need two passes, not one interleaved recursion - a shared resource
 1. **Discover** - DFS from `target`, recording each resource touched in post-order (a resource's own pattern inputs are recorded before the resource itself); a resource reached while still in-progress further up the same branch fails fast as `Result.Cyclic`, rejecting an impossible/self-referential pattern chain cleanly instead of recursing forever.
 2. **Demand** - walk that post-order **in reverse** (target first, deepest leaf ingredients last) accumulating each resource's total demand as its consumers are visited; by the time a resource itself is reached, every consumer that could ever add to its demand already has, since a consumer always sits earlier in the reversed order than what it consumes. A resource still short after stock is checked against its own pattern - `Result.Unresolvable` if it has neither.
 
-The result (`CraftingResolver.Plan`) lists `steps` (one `CraftStep(pattern, runs)` per pattern actually needed, in bottom-up order - a leaf ingredient's own craft always precedes whatever consumes its output) and `stockPulls` (total pulled directly from stock, per resource, across the whole plan). Leaf ingredients still need to actually be pulled through the warehouse gantry job queue (M3) once execution (not just resolution) lands - see "Physical Assembly Table" below.
+The result (`CraftingResolver.Plan`) lists `steps` (one `CraftStep(pattern, runs, resource)` per pattern actually needed, in bottom-up order - a leaf ingredient's own craft always precedes whatever consumes its output; `resource` is the demand that sized `runs`, used by `CraftingJob` to assign each step its own assembly table) and `stockPulls` (total pulled directly from stock, per resource, across the whole plan). `CraftingResolver.maxCraftable(target, upperBound, stockOf, patternFor)` binary-searches over `resolve` itself for the largest amount still resolvable - see "Terminal" below.
 
 ## Physical Assembly Table
 
@@ -41,12 +41,21 @@ Every tick, `AssemblyTableBlockEntity.tick` picks the first of its own `patterns
 
 ## Terminal
 
-Reuses `WarehouseTerminalBlock`'s menu with a "Craft" tab (`TabContainerPanel`):
-- Searchable list with a craftable-amount preview (a `simulate = true` dry-run of the DAG).
-- A request button.
-- A job-status panel — status is a `@Sync`'d field on the terminal's block entity (reused sync infra, not a new packet).
+`TerminalHookScreen` gained a second tab (Archie's `TabContainer` DSL) alongside the original one, renamed "Store" - both share the same search box + result grid over `TerminalHookMenu.results`; "Store" opens `requestQuantityDialog` and withdraws on confirm, "Craft" opens `requestCraftQuantityDialog` and submits a crafting request instead.
 
-Request submission itself is a small client→server `CraftingRequestPacket(resource, amount)` — an *action*, not state, so it's the one place in this milestone that needs a bespoke packet rather than `@Sync`/`observeProperty`.
+- **Preview** - `requestCraftQuantityDialog`'s own quantity field re-sends `RequestCraftPreviewPacket(resource, amount)` on every change (a `LaunchedEffect`), and the server replies with `CraftPreviewPacket(resource, maxCraftable)` via `CraftingResolver.maxCraftable`. The dialog's "Craft" button stays disabled until `maxCraftable > 0`.
+- **Request** - a bespoke client→server `CraftingRequestPacket(resource, amount)` - an *action*, not state, the one place this milestone needed a packet rather than reusing the search/preview round-trip shape.
+- **Job status** - a plain `String` (`HookBlockEntity.craftJobStatus`), `@Sync`'d the ordinary NBT block-entity way rather than through `observeProperty`/`ComposeBlockEntityState` (untried elsewhere in this codebase) - the Craft tab polls it into local Compose state every quarter-second via a `LaunchedEffect` loop, since the client's own synced copy of the field changes outside Compose's snapshot system and needs an explicit bridge to trigger recomposition.
+
+### Execution
+
+Resolving a request (`CraftingRequest.resolve`) only produces a `CraftingResolver.Plan` - actually running it is `CraftingJob`, a purely in-memory (not NBT-persisted, like `TravelingItem`) object living on `TerminalHookState.jobs`, advanced one tick at a time by `TerminalHookType.tick`:
+
+- A target fully covered by existing stock (`plan.steps` empty) reduces to exactly the same `RequestFulfillment.request` call an ordinary withdrawal makes.
+- Otherwise, each `CraftStep` is assigned the first reachable `AssemblyTableBlockEntity` carrying a matching `Pattern` that no earlier step in the same job has already claimed, and its ingredients are requested (once each, tracked per `(step, resource)` pair) via `RequestFulfillment.request` targeting the table's own position directly - `AssemblyTableBlockEntity.ioStorage` is reachable that way with no hook needed on the *receiving* end, the same generic exposure the pipe-feeding gametest already covers.
+- Once fed, the table's own `tick` (see "Physical Assembly Table" above) processes the pattern on its own schedule. The job doesn't watch for that directly - it just retries pulling the *final* target to the terminal's own adjacent inventory every `PULL_INTERVAL_TICKS`, the same `RequestFulfillment.request` a plain withdrawal uses. That pull only succeeds once something makes the finished result actually reachable - a `ProviderHookType`/`ExtractionHookType`/`sync` hook physically wired to the last assembly table's output, exactly the same requirement every other hook already has for pulling from a non-pipe inventory. Nothing here reaches into a table without one; a multi-table chain (one table's output feeding another's input) works the same way, through the player's own pipe wiring, with no special-casing.
+
+Covered end-to-end by `TerminalCraftGameTest`: a stock-only request (no steps) and a full single-step craft (warehouse stock → fed into an assembly table → pulled from its provider-hooked output → delivered to the terminal's chest).
 
 ## Deferred to playtesting / not blocking
 

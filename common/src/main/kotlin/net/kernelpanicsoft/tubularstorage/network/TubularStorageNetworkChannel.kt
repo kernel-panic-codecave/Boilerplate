@@ -43,6 +43,7 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 			clientbound(CraftPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftableListPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftJobTreePacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(CraftGridPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestTerminalSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }
@@ -61,6 +62,8 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 		serverbound(SetPatternGhostOutputPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(EncodePatternRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftJobTreePacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(RequestCraftGridPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(SetPatternKindPacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

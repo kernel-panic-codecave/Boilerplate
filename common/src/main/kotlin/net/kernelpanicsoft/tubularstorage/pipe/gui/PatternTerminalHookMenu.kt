@@ -11,6 +11,7 @@ import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
 import net.kernelpanicsoft.tubularstorage.crafting.PatternEncoder
+import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
 import net.kernelpanicsoft.tubularstorage.network.CraftJobTreeNode
 import net.kernelpanicsoft.tubularstorage.network.CraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
@@ -24,6 +25,7 @@ import net.kernelpanicsoft.tubularstorage.network.SItemResource
 import net.kernelpanicsoft.tubularstorage.network.SResourceStack
 import net.kernelpanicsoft.tubularstorage.network.SetPatternGhostInputPacket
 import net.kernelpanicsoft.tubularstorage.network.SetPatternGhostOutputPacket
+import net.kernelpanicsoft.tubularstorage.network.SetPatternKindPacket
 import net.kernelpanicsoft.tubularstorage.network.EncodePatternRequestPacket
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemDepositRequestPacket
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemWithdrawRequestPacket
@@ -45,11 +47,14 @@ import net.minecraft.world.item.ItemStack
 /**
  * Menu for the pattern terminal hook attached to [tile] - everything [TerminalHookMenu] does, plus
  * [PatternTerminalHookState]'s own ghost grid for authoring a [net.kernelpanicsoft.tubularstorage.crafting.Pattern]
- * without needing the real items in hand ([setGhostInput]/[setGhostOutput]), and [encode] to
- * actually produce one - consumes a blank [net.kernelpanicsoft.tubularstorage.crafting.PatternItem]
- * from the requesting player's own inventory and writes the result onto a fresh stack. A
- * near-duplicate of [TerminalHookMenu]/[CraftingTerminalHookMenu] for the same reason those two
- * are siblings rather than a hierarchy - see [CraftingTerminalHookMenu]'s own KDoc.
+ * without needing the real items in hand ([setGhostInput]/[setGhostOutput], toggled between
+ * [net.kernelpanicsoft.tubularstorage.crafting.PatternKind.CRAFTING]/`.PROCESSING` via
+ * [setPatternKind]), and [encode] to actually produce one - consumes a blank
+ * [net.kernelpanicsoft.tubularstorage.crafting.PatternItem] from this terminal's own persistent
+ * [PatternTerminalHookState.blankPatterns] slot and delivers the result into
+ * [PatternTerminalHookState.output]. A near-duplicate of [TerminalHookMenu]/[CraftingTerminalHookMenu]
+ * for the same reason those two are siblings rather than a hierarchy - see
+ * [CraftingTerminalHookMenu]'s own KDoc.
  */
 class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
 	ComposeBlockContainerMenu<HookBlockEntity, PatternTerminalHookMenu>(GuiRegistry.PatternTerminalHook, id, inventory, tile), CraftPreviewMenu, CraftTreeMenu {
@@ -62,6 +67,7 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnti
 	override fun registerSlotHandlers() {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
 		handler("output", state.output)
+		handler("blankPatterns", state.blankPatterns)
 	}
 
 	override fun onMenuOpened() {
@@ -203,13 +209,27 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnti
 		if (clearCarried) carried = ItemStack.EMPTY
 	}
 
+	/** [direction]'s current pattern kind, read once when the screen opens - same "not wired into live sync" reasoning as [currentGhostInputs]. */
+	fun currentPatternKind(): PatternKind = (tile.hooks[direction.name] as? PatternTerminalHookState)?.patternKind ?: PatternKind.CRAFTING
+
 	/** [direction]'s current ghost input grid, read once when the screen opens - same "not wired into live sync" reasoning as [net.kernelpanicsoft.tubularstorage.pipe.gui.SortingHookMenu.currentFilter]. */
 	fun currentGhostInputs(): List<ItemResource> = (tile.hooks[direction.name] as? PatternTerminalHookState)?.ghostInputs?.toList() ?: List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK }
 
-	/** [direction]'s current ghost output resource/amount, read once when the screen opens - same caveat as [currentGhostInputs]. */
-	fun currentGhostOutput(): Pair<ItemResource, Long> {
-		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return ItemResource.BLANK to 1L
-		return state.ghostOutputResource to state.ghostOutputAmount
+	/** [direction]'s current (up to 9) ghost outputs, read once when the screen opens - same caveat as [currentGhostInputs]. Only meaningful in [PatternKind.PROCESSING]. */
+	fun currentGhostOutputs(): List<Pair<ItemResource, Long>> {
+		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK to 1L }
+		return state.ghostOutputs.zip(state.ghostOutputAmounts)
+	}
+
+	/** Client-side: switches this pattern terminal between [PatternKind.CRAFTING] (a real vanilla recipe match, single derived output) and [PatternKind.PROCESSING] (an unordered ingredient bag, up to 9 manually-specified outputs). */
+	fun setPatternKind(kind: PatternKind) {
+		TubularStorageNetworkChannel.toServer(SetPatternKindPacket(kind))
+	}
+
+	/** Server-side: applies [setPatternKind]'s request. */
+	fun applyPatternKind(kind: PatternKind) {
+		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
+		state.patternKind = kind
 	}
 
 	/** Client-side: overwrites ghost input [index] with [resource] (or clears it, for [ItemResource.BLANK]) - see [net.kernelpanicsoft.tubularstorage.pipe.gui.GhostSlot]. */
@@ -224,29 +244,33 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnti
 		state.ghostInputs[index] = resource
 	}
 
-	/** Client-side: sets the ghost output to [resource] at [amount] (or clears it, for [ItemResource.BLANK]). */
-	fun setGhostOutput(resource: ItemResource, amount: Long) {
-		TubularStorageNetworkChannel.toServer(SetPatternGhostOutputPacket(resource, amount))
+	/** Client-side: overwrites ghost output [index] with [resource] at [amount] (or clears it, for [ItemResource.BLANK]). */
+	fun setGhostOutput(index: Int, resource: ItemResource, amount: Long) {
+		TubularStorageNetworkChannel.toServer(SetPatternGhostOutputPacket(index, resource, amount))
 	}
 
 	/** Server-side: applies [setGhostOutput]'s request. */
-	fun applyGhostOutput(resource: ItemResource, amount: Long) {
+	fun applyGhostOutput(index: Int, resource: ItemResource, amount: Long) {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
-		state.ghostOutputResource = resource
-		state.ghostOutputAmount = amount.coerceAtLeast(1)
+		if (index !in state.ghostOutputs.indices) return
+		state.ghostOutputs[index] = resource
+		state.ghostOutputAmounts[index] = amount.coerceAtLeast(1)
 	}
 
-	/** Client-side: asks the server to try [encode]ing the current ghost grid. */
+	/** Client-side: asks the server to try [PatternEncoder.encodeAndConsume]ing the current ghost grid. */
 	fun requestEncode() {
 		TubularStorageNetworkChannel.toServer(EncodePatternRequestPacket)
 	}
 
 	/**
-	 * Server-side: builds a throwaway [ArchieItemStorage] grid/output pair from the ghost state
-	 * ([PatternTerminalHookState.ghostInputs]/`.ghostOutputResource`/`.ghostOutputAmount`, each
-	 * materialized as a plain `amount = 1` (or the chosen output amount) stack) and hands it to
-	 * [PatternEncoder.encodeAndConsume] - the same recipe-matching logic the old Assembly Table
-	 * Encode button used, just fed from ghost references instead of real held items.
+	 * Server-side: builds throwaway [ArchieItemStorage] grid/pattern-outputs storages from the
+	 * ghost state ([PatternTerminalHookState.ghostInputs]/`.ghostOutputs`/`.ghostOutputAmounts`,
+	 * each materialized as a plain `amount = 1` (or the chosen output amount) stack) and hands them
+	 * to [PatternEncoder.encodeAndConsume] along with [PatternTerminalHookState.blankPatterns] (the
+	 * persistent slot to consume a blank from) and [PatternTerminalHookState.output] (this
+	 * terminal's own built-in output slots, where the encoded stack lands) - the same
+	 * recipe-matching logic the old Assembly Table Encode button used, just fed from ghost
+	 * references instead of real held items.
 	 */
 	fun encode() {
 		val level = level as? ServerLevel ?: return
@@ -256,10 +280,13 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnti
 		for ((index, resource) in state.ghostInputs.withIndex()) {
 			if (!resource.isBlank) grid.get(index).set(resource.toStack(1))
 		}
-		val output = ArchieItemStorage(1)
-		if (!state.ghostOutputResource.isBlank) output.get(0).set(state.ghostOutputResource.toStack(state.ghostOutputAmount.toInt().coerceAtLeast(1)))
+		val patternOutputs = ArchieItemStorage(state.ghostOutputs.size)
+		for (index in state.ghostOutputs.indices) {
+			val resource = state.ghostOutputs[index]
+			if (!resource.isBlank) patternOutputs.get(index).set(resource.toStack(state.ghostOutputAmounts[index].toInt().coerceAtLeast(1)))
+		}
 
-		PatternEncoder.encodeAndConsume(level, player, grid, output)
+		PatternEncoder.encodeAndConsume(level, state.patternKind, grid, patternOutputs, state.blankPatterns, state.output)
 	}
 
 	override fun quickMoveStack(

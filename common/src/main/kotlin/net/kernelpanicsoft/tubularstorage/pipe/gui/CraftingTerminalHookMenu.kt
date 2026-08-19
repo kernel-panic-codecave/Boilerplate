@@ -9,12 +9,14 @@ import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
+import net.kernelpanicsoft.tubularstorage.network.CraftGridPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftJobTreeNode
 import net.kernelpanicsoft.tubularstorage.network.CraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftGridRequestPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.CraftingRequestPacket
+import net.kernelpanicsoft.tubularstorage.network.RequestCraftGridPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
@@ -42,13 +44,15 @@ import net.minecraft.world.item.crafting.RecipeType
 
 /**
  * Menu for the crafting terminal hook attached to [tile] - everything [TerminalHookMenu] does
- * (Store/Craft tabs, on-demand job requests, its own built-in output slots), plus a real 3x3
- * [CraftingTerminalHookState.grid]/[CraftingTerminalHookState.result] pair for instant, manual
- * network-backed crafting ([craft]). A near-duplicate of [TerminalHookMenu] rather than a
- * subclass of it - [ComposeBlockContainerMenu]'s own self-referencing `SELF` type parameter
- * (already fixed to `TerminalHookMenu` there) makes real inheritance awkward, and every other
- * hook type in this mod already accepts the same non-inheriting-sibling-classes tradeoff over
- * fighting that. See `docs/design/m4-crafting-automation.md`.
+ * (Store tab, on-demand job requests, its own built-in output slots), plus a real 3x3
+ * [CraftingTerminalHookState.grid] for instant, manual network-backed crafting ([craftOnce]) shown
+ * right below the Store tab's own results - no separate tab, no real "result" slot: [gridPreview]
+ * is a live, virtual preview, matching a vanilla crafting table's own result slot exactly (see
+ * [craftOnce]'s own KDoc). A near-duplicate of [TerminalHookMenu] rather than a subclass of it -
+ * [ComposeBlockContainerMenu]'s own self-referencing `SELF` type parameter (already fixed to
+ * `TerminalHookMenu` there) makes real inheritance awkward, and every other hook type in this mod
+ * already accepts the same non-inheriting-sibling-classes tradeoff over fighting that. See
+ * `docs/design/m4-crafting-automation.md`.
  */
 class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
 	ComposeBlockContainerMenu<HookBlockEntity, CraftingTerminalHookMenu>(GuiRegistry.CraftingTerminalHook, id, inventory, tile), CraftPreviewMenu, CraftTreeMenu {
@@ -62,7 +66,6 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnt
 		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
 		handler("output", state.output)
 		handler("grid", state.grid)
-		handler("result", state.result)
 	}
 
 	override fun onMenuOpened() {
@@ -204,40 +207,84 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnt
 		if (clearCarried) carried = ItemStack.EMPTY
 	}
 
-	/**
-	 * Client-side: asks the server to try assembling [grid][CraftingTerminalHookState.grid]'s
-	 * current contents into [result][CraftingTerminalHookState.result].
-	 */
-	fun requestCraftGrid() {
-		TubularStorageNetworkChannel.toServer(CraftGridRequestPacket)
+	/** The live recipe-match preview for [CraftingTerminalHookState.grid]'s current contents - the same virtual, not-a-real-slot result vanilla's own crafting table shows, computed server-side and polled for rather than derived client-side (matching every other dynamic value this menu surfaces). */
+	var gridPreview: ItemStack? by mutableStateOf(null)
+		private set
+
+	fun updateGridPreview(stack: ItemStack) {
+		gridPreview = stack.takeIf { !it.isEmpty }
+	}
+
+	/** Client-side: asks the server for [gridPreview]'s current value. */
+	fun requestGridPreview() {
+		TubularStorageNetworkChannel.toServer(RequestCraftGridPreviewPacket)
+	}
+
+	/** Matches [CraftingTerminalHookState.grid] against a real vanilla [net.minecraft.world.item.crafting.CraftingRecipe] and returns the assembled result, or [ItemStack.EMPTY] if none matches. */
+	private fun matchGrid(level: ServerLevel, state: CraftingTerminalHookState): ItemStack {
+		val gridItems = (0 until state.grid.size()).map { state.grid.get(it).getItem() }
+		val craftingInput = CraftingInput.of(3, 3, gridItems)
+		val recipe = level.recipeManager.getRecipeFor(RecipeType.CRAFTING, craftingInput, level).orElse(null) ?: return ItemStack.EMPTY
+		return recipe.value().assemble(craftingInput, level.registryAccess())
+	}
+
+	/** Server-side: computes and replies with [matchGrid]'s current result. */
+	fun sendGridPreview() {
+		val level = level as? ServerLevel ?: return
+		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
+		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftGridPreviewPacket(matchGrid(level, state)))
+	}
+
+	/** Client-side: asks the server to try [craftOnce] - a plain click ([shiftClick] `false`) or shift-click ([shiftClick] `true`), matching a real vanilla crafting table's own result slot. */
+	fun requestCraftOnce(shiftClick: Boolean) {
+		TubularStorageNetworkChannel.toServer(CraftGridRequestPacket(shiftClick))
 	}
 
 	/**
-	 * Server-side: matches [CraftingTerminalHookState.grid] against a real vanilla
-	 * [net.minecraft.world.item.crafting.CraftingRecipe] and, if one matches and
-	 * [CraftingTerminalHookState.result] has room, consumes one of each occupied grid slot and
-	 * inserts the assembled result - the same "count via slot occupancy" shape
-	 * [net.kernelpanicsoft.tubularstorage.crafting.Pattern.requiredInputs] uses, just executed
-	 * instantly instead of going through a [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType]
-	 * hook. Ingredient remainders (an emptied bucket, say) aren't handled yet - a deferred gap, see
-	 * `docs/design/m4-crafting-automation.md`.
+	 * Server-side: [matchGrid]'s live preview isn't a real slot - taking it is what actually
+	 * consumes one of each occupied [CraftingTerminalHookState.grid] slot ("count via slot
+	 * occupancy", the same shape [net.kernelpanicsoft.tubularstorage.crafting.Pattern.requiredInputs]
+	 * uses) and produces the result, instantly, no
+	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType] hook involved. A plain
+	 * click ([shiftClick] `false`) crafts once onto [carried] - refused if [carried] already holds
+	 * something else, or would overflow its own max stack size, so nothing is silently lost. A
+	 * shift-click ([shiftClick] `true`) instead repeatedly crafts straight into the player's own
+	 * inventory (never touching [carried]) until the grid stops matching, the inventory has no more
+	 * room, or [MAX_QUICK_CRAFT] runs have happened - a safety cap, not a expected stopping point.
 	 */
-	fun craftGrid() {
+	fun craftOnce(shiftClick: Boolean) {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
-		val gridItems = (0 until state.grid.size()).map { state.grid.get(it).getItem() }
-		val craftingInput = CraftingInput.of(3, 3, gridItems)
-		val recipe = level.recipeManager.getRecipeFor(RecipeType.CRAFTING, craftingInput, level).orElse(null) ?: return
-		val assembled = recipe.value().assemble(craftingInput, level.registryAccess())
-		if (assembled.isEmpty) return
-		val resultResource = ItemResource.of(assembled)
-		if (state.result.insert(resultResource, assembled.count.toLong(), true) < assembled.count.toLong()) return
+
+		if (shiftClick) {
+			var runs = 0
+			while (runs < MAX_QUICK_CRAFT && craftOneRun(level, state, intoCursor = false)) runs++
+		} else {
+			craftOneRun(level, state, intoCursor = true)
+		}
+		sendGridPreview()
+	}
+
+	private fun craftOneRun(level: ServerLevel, state: CraftingTerminalHookState, intoCursor: Boolean): Boolean {
+		val assembled = matchGrid(level, state)
+		if (assembled.isEmpty) return false
+
+		if (intoCursor) {
+			val current = carried
+			if (!current.isEmpty && (!ItemStack.isSameItemSameComponents(current, assembled) || current.count + assembled.count > current.maxStackSize)) return false
+		}
 
 		for (i in 0 until state.grid.size()) {
 			val stack = state.grid.get(i).getItem()
 			if (!stack.isEmpty) state.grid.extract(ItemResource.of(stack), 1, false)
 		}
-		state.result.insert(resultResource, assembled.count.toLong(), false)
+
+		if (intoCursor) {
+			carried = if (carried.isEmpty) assembled else carried.also { it.grow(assembled.count) }
+		} else if (!player.inventory.add(assembled)) {
+			player.drop(assembled, false)
+		}
+		return true
 	}
 
 	override fun quickMoveStack(
@@ -292,5 +339,9 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEnt
 		if (stackInSlot.isEmpty) slot.set(ItemStack.EMPTY) else slot.setChanged()
 		slot.onTake(player, stackInSlot)
 		return copied
+	}
+
+	companion object {
+		private const val MAX_QUICK_CRAFT = 64
 	}
 }

@@ -20,7 +20,7 @@ import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 
 /**
- * One cell of a virtual (non-slot-backed) result grid, e.g. [TerminalHookScreen]'s - the same
+ * One cell of a virtual (non-slot-backed) result grid, e.g. [StoreResultsGrid]'s - the same
  * 18x18 [SlotBackground] every cell shows regardless of whether it's occupied, an [ItemIcon]
  * layered on top only when [stack] is non-`null` (inset 1px, matching a real slot's own item
  * position), [SlotHighlight] on top of *that* while hovered - matching vanilla, where any active
@@ -33,13 +33,27 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
  *   any) across the whole grid should get a tooltip.
  * @param countText Overrides the vanilla count-label decoration (e.g. `""` to hide it entirely) -
  *   for a cell whose [stack]'s own `amount` is a display placeholder rather than a real count, like
- *   [TerminalHookScreen]'s Craft-tab catalog entries (a known-craftable resource at whatever stock
- *   it currently has, possibly none).
+ *   an autocraftable-but-out-of-stock entry showing "Craft" instead of `0`.
+ * @param onMiddleClick Offered a [middleClickHandler]-registered action only when [stack] is
+ *   non-`null` and the caller passes one (e.g. [StoreResultsGrid]'s own "open the autocraft dialog
+ *   for an in-stock, also-craftable entry" interaction) - see [MiddleClickHandler]'s own KDoc for
+ *   why detecting the actual click happens one level up, at the screen.
  */
 @Composable
-fun TerminalSlot(stack: ResourceStack<ItemResource>?, onClick: () -> Unit = {}, onHovered: (Boolean) -> Unit = {}, modifier: Modifier = Modifier, countText: String? = null) {
+fun TerminalSlot(
+	stack: ResourceStack<ItemResource>?,
+	onClick: () -> Unit = {},
+	onHovered: (Boolean) -> Unit = {},
+	modifier: Modifier = Modifier,
+	countText: String? = null,
+	middleClickHandler: MiddleClickHandler? = null,
+	onMiddleClick: (() -> Unit)? = null,
+) {
 	Clickable(showHandCursor = stack != null, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
-		LaunchedEffect(isHovered) { onHovered(isHovered) }
+		LaunchedEffect(isHovered) {
+			onHovered(isHovered)
+			middleClickHandler?.setHovered(if (isHovered) onMiddleClick else null)
+		}
 		FakeSlot(stack, isHovered, countText)
 	}
 }

@@ -9,7 +9,10 @@ import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
+import net.kernelpanicsoft.archie.gui.modifiers.input.onScroll
+import net.kernelpanicsoft.archie.gui.nodes.UINode
 import net.minecraft.world.item.ItemStack
+import kotlin.math.sign
 
 /**
  * Tracks which ghost slot (if any) is currently hovered, so the owning
@@ -52,6 +55,13 @@ class MiddleClickHandler {
  * [net.kernelpanicsoft.tubularstorage.pipe.hook.filter.FilterCardItem], by the caller's own
  * choice) opens that card's own editor - see [MiddleClickHandler]'s KDoc for why detecting the
  * actual click happens one level up, at the screen.
+ *
+ * @param amount Purely a display quantity (the [FakeSlot] count badge) - ghost slots have no real
+ *   items to actually hold a stack size, so this only matters to a caller that also tracks an
+ *   amount alongside [resource] (a manually-specified pattern output, say - see
+ *   [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternTerminalHookState.ghostOutputAmounts]).
+ *   [onAmountScroll] (mouse-wheel over an occupied slot) is that same caller's hook for adjusting
+ *   it, `null` by default (no adjustable amount).
  */
 @Composable
 fun GhostSlot(
@@ -62,9 +72,17 @@ fun GhostSlot(
 	middleClickHandler: MiddleClickHandler,
 	onMiddleClick: (() -> Unit)? = null,
 	filter: (ItemResource) -> Boolean = { true },
+	amount: Long = 1,
+	onAmountScroll: ((Int) -> Unit)? = null,
 	modifier: Modifier = Modifier,
 ) {
-	val display = if (resource.isBlank) null else ResourceStack(resource, 1L)
+	val display = if (resource.isBlank) null else ResourceStack(resource, amount)
+	var effectiveModifier = modifier
+	if (onAmountScroll != null) {
+		effectiveModifier = effectiveModifier.onScroll<UINode> { _, event ->
+			if (!resource.isBlank) onAmountScroll(event.scrollY.sign.toInt())
+		}
+	}
 	Clickable(
 		onClick = {
 			val held = carried()
@@ -72,7 +90,7 @@ fun GhostSlot(
 			if (heldResource != null && filter(heldResource)) onPlace(heldResource)
 			else if (heldResource == null && !resource.isBlank) onClear()
 		},
-		modifier = modifier,
+		modifier = effectiveModifier,
 	) { isHovered, _, _ ->
 		LaunchedEffect(isHovered, resource, onMiddleClick) {
 			middleClickHandler.setHovered(if (isHovered) onMiddleClick else null)
@@ -96,6 +114,8 @@ fun GhostSlotGrid(
 	middleClickHandler: MiddleClickHandler,
 	onMiddleClick: (Int) -> (() -> Unit)?,
 	filter: (ItemResource) -> Boolean = { true },
+	amounts: List<Long>? = null,
+	onAmountScroll: ((Int, Int) -> Unit)? = null,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(0)) {
 		resources.chunked(columns).forEachIndexed { rowIndex, row ->
@@ -110,6 +130,8 @@ fun GhostSlotGrid(
 						middleClickHandler = middleClickHandler,
 						onMiddleClick = onMiddleClick(index),
 						filter = filter,
+						amount = amounts?.getOrNull(index) ?: 1,
+						onAmountScroll = onAmountScroll?.let { callback -> { delta: Int -> callback(index, delta) } },
 					)
 				}
 			}

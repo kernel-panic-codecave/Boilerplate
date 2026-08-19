@@ -18,75 +18,64 @@ import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
-import net.minecraft.world.level.GameType
 
 /**
- * GameTest coverage for [PatternEncoder.encodeAndConsume] - authoring a
- * [net.kernelpanicsoft.tubularstorage.crafting.Pattern] from a grid/output pair (in practice, a
- * Pattern Terminal's own ghost state - see
- * [net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookMenu.encode]) and writing it onto
- * a blank [net.kernelpanicsoft.tubularstorage.crafting.PatternItem] consumed from the requesting
- * player's inventory - see `docs/design/m4-crafting-automation.md`. Exercised against
- * [PatternEncoder] directly rather than through a live
- * [net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookMenu]:
- * [GameTestHelper.makeMockPlayer] returns an internal mock, not a real
- * [net.minecraft.server.level.ServerPlayer], and [net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu]'s
- * own `onMenuOpened` unconditionally casts to one.
+ * GameTest coverage for [PatternEncoder.encodeAndConsume] as wired up by
+ * [net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookMenu.encode] - consuming a blank
+ * [net.kernelpanicsoft.tubularstorage.crafting.PatternItem] from the terminal's own persistent
+ * [PatternTerminalHookState.blankPatterns] slot and delivering the encoded result into
+ * [PatternTerminalHookState.output] - see `docs/design/m4-crafting-automation.md`.
  */
 @Suppress("unused")
 class PatternTerminalHookGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 40)
-	fun GameTestHelper.testEncodeConsumesABlankPatternAndWritesTheGrid() {
+	fun GameTestHelper.testEncodeConsumesABlankFromTheBlankSlotAndDeliversToOutput() {
 		val level = level as ServerLevel
-		val player = makeMockPlayer(GameType.CREATIVE)
-		player.inventory.add(ItemStack(ItemRegistry.Pattern))
+		val state = PatternTerminalHookType.createState() as PatternTerminalHookState
+		state.blankPatterns.get(0).set(ItemStack(ItemRegistry.Pattern))
 
 		val grid = ArchieItemStorage(9)
 		grid.get(0).set(ItemStack(Items.OAK_LOG))
-		val output = ArchieItemStorage(1)
+		val patternOutputs = ArchieItemStorage(9)
 
-		val encoded = PatternEncoder.encodeAndConsume(level, player, grid, output)
-		assertTrue(encoded) { "Expected encodeAndConsume to succeed with a matching grid and a blank pattern on hand" }
+		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid, patternOutputs, state.blankPatterns, state.output)
+		assertTrue(encoded) { "Expected encodeAndConsume to succeed with a matching grid and a blank pattern in the blank slot" }
 
-		val encodedData = player.inventory.items.map { PatternItemData(it) }.firstOrNull { it.pattern != null }
-		assertTrue(encodedData != null) { "Expected an encoded pattern to end up in the player's inventory" }
-		val pattern = encodedData!!.pattern!!
-		assertTrue(pattern.kind == PatternKind.CRAFTING) { "Expected the oak log grid to encode a CRAFTING pattern, got ${pattern.kind}" }
-		assertTrue(pattern.outputs.singleOrNull()?.amount == 4L) { "Expected the encoded pattern's output amount to be 4, got ${pattern.outputs}" }
-		assertTrue(player.inventory.items.none { it.item == ItemRegistry.Pattern && PatternItemData(it).pattern == null }) {
-			"Expected the blank pattern stack to have been consumed"
-		}
+		assertTrue(state.blankPatterns.get(0).getItem().isEmpty) { "Expected the blank pattern stack to have been consumed from the blank slot" }
+		val outputData = (0 until state.output.size()).map { state.output.get(it).getItem() }.map { PatternItemData(it) }.firstOrNull { it.pattern != null }
+		assertTrue(outputData != null) { "Expected an encoded pattern to land in the terminal's own output slots" }
+		val pattern = outputData!!.pattern!!
+		assertTrue(pattern.kind == PatternKind.CRAFTING) { "Expected a CRAFTING-mode encode to produce a CRAFTING pattern, got ${pattern.kind}" }
 		succeed()
 	}
 
 	@GameTest(template = SMALL, timeoutTicks = 40)
-	fun GameTestHelper.testEncodeDoesNothingWithoutABlankPatternOnHand() {
+	fun GameTestHelper.testEncodeDoesNothingWithoutABlankInTheBlankSlot() {
 		val level = level as ServerLevel
-		val player = makeMockPlayer(GameType.CREATIVE)
-		// No blank pattern given.
+		val state = PatternTerminalHookType.createState() as PatternTerminalHookState
+		// blankPatterns left empty.
 
 		val grid = ArchieItemStorage(9)
 		grid.get(0).set(ItemStack(Items.OAK_LOG))
-		val output = ArchieItemStorage(1)
+		val patternOutputs = ArchieItemStorage(9)
 
-		val encoded = PatternEncoder.encodeAndConsume(level, player, grid, output)
-		assertTrue(!encoded) { "Expected encodeAndConsume to fail without a blank pattern on hand" }
-		assertTrue(player.inventory.items.none { it.item == ItemRegistry.Pattern }) {
-			"Expected nothing to appear in the player's inventory when there was no blank pattern to consume"
-		}
+		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid, patternOutputs, state.blankPatterns, state.output)
+		assertTrue(!encoded) { "Expected encodeAndConsume to fail without a blank pattern in the blank slot" }
+		assertTrue((0 until state.output.size()).all { state.output.get(it).getItem().isEmpty }) { "Expected nothing to land in output when there was no blank to consume" }
 		succeed()
 	}
 
 	@GameTest(template = SMALL, timeoutTicks = 40)
-	fun GameTestHelper.testGhostStateDefaultsToBlank() {
+	fun GameTestHelper.testGhostStateDefaultsToBlankCraftingMode() {
 		val hookPos = BlockPos(0, 2, 0)
 		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
 
 		val tile = getBlockEntity(hookPos) as HookBlockEntity
 		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() } as PatternTerminalHookState
 
+		assertTrue(state.patternKind == PatternKind.CRAFTING) { "Expected a fresh pattern terminal to default to CRAFTING mode, got ${state.patternKind}" }
 		assertTrue(state.ghostInputs.all { it.isBlank }) { "Expected a fresh pattern terminal's ghost grid to start empty, got ${state.ghostInputs}" }
-		assertTrue(state.ghostOutputResource.isBlank) { "Expected a fresh pattern terminal's ghost output to start empty, got ${state.ghostOutputResource}" }
+		assertTrue(state.ghostOutputs.all { it.isBlank }) { "Expected a fresh pattern terminal's ghost outputs to start empty, got ${state.ghostOutputs}" }
 		succeed()
 	}
 
@@ -98,13 +87,15 @@ class PatternTerminalHookGameTest {
 		val tile = getBlockEntity(hookPos) as HookBlockEntity
 		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() } as PatternTerminalHookState
 
-		state.ghostInputs[0] = ItemResource.of(ItemStack(Items.OAK_LOG))
-		state.ghostOutputResource = ItemResource.of(ItemStack(Items.OAK_PLANKS))
-		state.ghostOutputAmount = 4
+		state.patternKind = PatternKind.PROCESSING
+		state.ghostInputs[0] = ItemResource.of(ItemStack(Items.DIAMOND))
+		state.ghostOutputs[0] = ItemResource.of(ItemStack(Items.NETHER_STAR))
+		state.ghostOutputAmounts[0] = 4
 
-		assertTrue(state.ghostInputs[0] == ItemResource.of(ItemStack(Items.OAK_LOG))) { "Expected ghost input 0 to hold what was written, got ${state.ghostInputs[0]}" }
-		assertTrue(state.ghostOutputResource == ItemResource.of(ItemStack(Items.OAK_PLANKS))) { "Expected the ghost output resource to hold what was written, got ${state.ghostOutputResource}" }
-		assertTrue(state.ghostOutputAmount == 4L) { "Expected the ghost output amount to hold what was written, got ${state.ghostOutputAmount}" }
+		assertTrue(state.patternKind == PatternKind.PROCESSING) { "Expected the pattern kind to hold what was written, got ${state.patternKind}" }
+		assertTrue(state.ghostInputs[0] == ItemResource.of(ItemStack(Items.DIAMOND))) { "Expected ghost input 0 to hold what was written, got ${state.ghostInputs[0]}" }
+		assertTrue(state.ghostOutputs[0] == ItemResource.of(ItemStack(Items.NETHER_STAR))) { "Expected ghost output 0 to hold what was written, got ${state.ghostOutputs[0]}" }
+		assertTrue(state.ghostOutputAmounts[0] == 4L) { "Expected the ghost output amount to hold what was written, got ${state.ghostOutputAmounts[0]}" }
 		succeed()
 	}
 }

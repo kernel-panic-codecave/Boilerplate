@@ -12,10 +12,10 @@ import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
-import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
 import net.kernelpanicsoft.archie.gui.composables.containers.TabContainerPanel
 import net.kernelpanicsoft.archie.gui.composables.input.Button
-import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
+import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
+import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
 import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.gui.layout.Alignment
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
@@ -23,12 +23,10 @@ import net.kernelpanicsoft.archie.gui.layout.Box
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
-import net.kernelpanicsoft.archie.gui.modifiers.height
 import net.kernelpanicsoft.archie.gui.modifiers.size
-import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.Theme
-import net.kernelpanicsoft.tubularstorage.network.EncodePatternRequestPacket
+import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftableListPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestTerminalSearchResultsPacket
@@ -41,15 +39,18 @@ import net.kernelpanicsoft.tubularstorage.util.resourceStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
-import net.minecraft.world.item.ItemStack
 
 /**
- * [TerminalHookScreen]'s own tabs, plus an "Encode" tab: a *ghost* 3x3 grid + ghost output
- * ([PatternTerminalHookMenu.currentGhostInputs]/`.currentGhostOutput`, the same reference-only
- * "not real items" grid [SortingHookScreen]'s filter uses - see [GhostSlot]'s own KDoc) with a
- * quantity stepper for the output amount and an "Encode" button triggering
- * [PatternTerminalHookMenu.requestEncode]. A near-duplicate of [TerminalHookScreen] for the same
- * reason [CraftingTerminalHookScreen] duplicates it - see that class's own KDoc.
+ * [TerminalHookScreen]'s own single Store tab, plus a ghost-grid pattern authoring area right
+ * underneath the output slots (no dedicated "Encode" tab, matching [CraftingTerminalHookScreen]'s
+ * own grid-in-Store placement): a [RadioGroup] toggles [PatternKind.CRAFTING] (a real vanilla
+ * recipe match, single derived output - the ghost grid's own inputs matter positionally) against
+ * [PatternKind.PROCESSING] (an unordered ingredient bag, up to 9 manually-specified ghost outputs,
+ * each with a scroll-to-adjust amount), a real, persistent [Slots] row holds the blank
+ * [net.kernelpanicsoft.tubularstorage.crafting.PatternItem] stack encoding draws from, and an
+ * "Encode" button drives [PatternTerminalHookMenu.requestEncode]. A near-duplicate of
+ * [TerminalHookScreen] for the same reason [CraftingTerminalHookScreen] duplicates it - see that
+ * class's own KDoc.
  */
 class PatternTerminalHookScreen(private val menu: PatternTerminalHookMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<PatternTerminalHookMenu>(menu, playerInventory, title) {
@@ -58,9 +59,15 @@ class PatternTerminalHookScreen(private val menu: PatternTerminalHookMenu, playe
 	private val middleClickHandler = MiddleClickHandler()
 
 	private var hoveredStack: SResourceStack<SItemResource>? = null
+	private var sidebarTooltip: String? = null
 
 	init {
 		start { content() }
+	}
+
+	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+		if (middleClickHandler.tryHandle(button)) return true
+		return super.mouseClicked(mouseX, mouseY, button)
 	}
 
 	@Composable
@@ -71,21 +78,19 @@ class PatternTerminalHookScreen(private val menu: PatternTerminalHookMenu, playe
 					horizontalArrangement = Arrangement.spacedBy(2),
 					verticalAlignment = Alignment.Top
 				) {
+					var viewMode by remember { mutableStateOf(StoreViewMode.BOTH) }
 					Column {
-						Button(onClick = {
+						SidebarButton("↻", "Refresh", { sidebarTooltip = it }) {
 							TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
 							TubularStorageNetworkChannel.toServer(RequestCraftableListPacket)
-						}) {
-							Text(Component.literal("↻"), dropShadow = false)
 						}
-						Button(onClick = { TubularStorageNetworkChannel.toServer(RequestWarehouseDefragPacket) }) {
-							Text(Component.literal("⥮"), dropShadow = false)
+						SidebarButton("⥮", "Defragment warehouses", { sidebarTooltip = it }) {
+							TubularStorageNetworkChannel.toServer(RequestWarehouseDefragPacket)
 						}
+						StoreViewModeButton(viewMode, { sidebarTooltip = it }) { viewMode = it }
 					}
 					TabContainerPanel(contentWidth = contentWidth) {
-						tab(id = "store", title = Component.literal("Store")) { storeTab() }
-						tab(id = "craft", title = Component.literal("Craft")) { craftTab() }
-						tab(id = "encode", title = Component.literal("Encode")) { encodeTab() }
+						tab(id = "store", title = Component.literal("Store")) { storeTab(viewMode) }
 						tab(id = "tree", title = Component.literal("Tree")) { treeTab() }
 					}
 				}
@@ -94,106 +99,100 @@ class PatternTerminalHookScreen(private val menu: PatternTerminalHookMenu, playe
 	}
 
 	@Composable
-	private fun storeTab() {
+	private fun storeTab(viewMode: StoreViewMode) {
 		val layers = LocalLayerManager.current
 		Column(verticalArrangement = Arrangement.spacedBy(6)) {
-			ResultsGrid(
+			StoreResultsGrid(
 				results = menu.results,
-				onSelect = { s ->
-					hoveredStack = null
-					layers.requestQuantityDialog(s) { amount -> menu.requestWithdraw(s.withCount(amount)) }
-				},
+				craftable = menu.craftableResources,
+				mode = viewMode,
+				contentWidth = contentWidth,
+				carried = { menu.carried },
+				onDepositCarried = { menu.requestDeposit(menu.carried.resourceStack, true) },
+				onRequestWithdraw = { stack -> layers.requestQuantityDialog(stack) { amount -> menu.requestWithdraw(stack.withCount(amount)) } },
+				onRequestCraft = { resource -> layers.requestCraftQuantityDialog(menu, resource) { amount -> menu.requestCraft(ResourceStack(resource, amount)) } },
+				middleClickHandler = middleClickHandler,
+				onHoveredStackChanged = { hoveredStack = it },
 			)
 			Slots("output", COLUMNS, 1)
+			patternAuthoringArea()
 		}
 	}
 
 	@Composable
-	private fun craftTab() {
-		val layers = LocalLayerManager.current
-		var status by remember { mutableStateOf(menu.craftJobStatus) }
-		LaunchedEffect(Unit) {
-			while (true) {
-				status = menu.craftJobStatus
-				delay(STATUS_POLL_MILLIS)
-			}
-		}
-
-		Column(verticalArrangement = Arrangement.spacedBy(6)) {
-			ResultsGrid(
-				results = menu.craftableResources.map { ResourceStack(it, 1L) },
-				countText = "",
-				onSelect = { s ->
-					hoveredStack = null
-					layers.requestCraftQuantityDialog(menu, s.resource) { amount -> menu.requestCraft(ResourceStack(s.resource, amount)) }
-				},
-			)
-			Slots("output", COLUMNS, 1)
-			Text(Component.literal(status.ifBlank { "No crafting job in progress" }), dropShadow = false)
-		}
-	}
-
-	@Composable
-	private fun encodeTab() {
+	private fun patternAuthoringArea() {
+		var kind by remember { mutableStateOf(menu.currentPatternKind()) }
 		var inputs by remember { mutableStateOf(menu.currentGhostInputs()) }
-		var outputResource by remember { mutableStateOf(menu.currentGhostOutput().first) }
-		var outputAmount by remember { mutableStateOf(menu.currentGhostOutput().second) }
-		var amountText by remember { mutableStateOf(outputAmount.toString()) }
+		var outputs by remember { mutableStateOf(menu.currentGhostOutputs()) }
 
 		fun setInput(index: Int, resource: ItemResource) {
 			inputs = inputs.toMutableList().also { it[index] = resource }
 			menu.setGhostInput(index, resource)
 		}
 
-		fun setOutput(resource: ItemResource, amount: Long) {
-			outputResource = resource
-			outputAmount = amount
-			amountText = amount.toString()
-			menu.setGhostOutput(resource, amount)
+		fun setOutput(index: Int, resource: ItemResource, amount: Long) {
+			outputs = outputs.toMutableList().also { it[index] = resource to amount }
+			menu.setGhostOutput(index, resource, amount)
 		}
 
 		Column(verticalArrangement = Arrangement.spacedBy(6)) {
-			Text(Component.literal("Inputs"), dropShadow = false)
-			GhostSlotGrid(
-				resources = inputs,
-				columns = 3,
-				carried = { menu.carried },
-				onPlace = { index, resource -> setInput(index, resource) },
-				onClear = { index -> setInput(index, ItemResource.BLANK) },
-				middleClickHandler = middleClickHandler,
-				onMiddleClick = { null },
+			RadioGroup(
+				options = listOf(
+					RadioOption(PatternKind.CRAFTING, Component.literal("Crafting")),
+					RadioOption(PatternKind.PROCESSING, Component.literal("Processing")),
+				),
+				selected = kind,
+				onSelected = { kind = it; menu.setPatternKind(it) },
 			)
 
-			Text(Component.literal("Output"), dropShadow = false)
-			Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
-				GhostSlot(
-					resource = outputResource,
-					carried = { menu.carried },
-					onPlace = { resource -> setOutput(resource, outputAmount.coerceAtLeast(1)) },
-					onClear = { setOutput(ItemResource.BLANK, 1) },
-					middleClickHandler = middleClickHandler,
-				)
-				Button(onClick = { setOutput(outputResource, (outputAmount - 1).coerceAtLeast(1)) }) { Text(Component.literal("-"), dropShadow = false) }
-				BasicTextField(
-					value = amountText,
-					onValueChange = { raw ->
-						val digits = raw.filter { it.isDigit() }
-						amountText = digits
-						digits.toLongOrNull()?.let { setOutput(outputResource, it.coerceAtLeast(1)) }
-					},
-					modifier = Modifier.width(40),
-				)
-				Button(onClick = { setOutput(outputResource, outputAmount + 1) }) { Text(Component.literal("+"), dropShadow = false) }
+			Row(horizontalArrangement = Arrangement.spacedBy(18)) {
+				Column {
+					Text(Component.literal("Inputs"), dropShadow = false)
+					GhostSlotGrid(
+						resources = inputs,
+						columns = 3,
+						carried = { menu.carried },
+						onPlace = { index, resource -> setInput(index, resource) },
+						onClear = { index -> setInput(index, ItemResource.BLANK) },
+						middleClickHandler = middleClickHandler,
+						onMiddleClick = { null },
+					)
+				}
+
+				if (kind == PatternKind.PROCESSING) {
+					Column {
+						Text(Component.literal("Outputs (scroll to adjust)"), dropShadow = false)
+						GhostSlotGrid(
+							resources = outputs.map { it.first },
+							columns = 3,
+							carried = { menu.carried },
+							onPlace = { index, resource -> setOutput(index, resource, outputs.getOrNull(index)?.second ?: 1) },
+							onClear = { index -> setOutput(index, ItemResource.BLANK, 1) },
+							middleClickHandler = middleClickHandler,
+							onMiddleClick = { null },
+							amounts = outputs.map { it.second },
+							onAmountScroll = { index, delta ->
+								val (resource, amount) = outputs.getOrNull(index) ?: return@GhostSlotGrid
+								if (!resource.isBlank) setOutput(index, resource, (amount + delta).coerceIn(1, 64))
+							},
+						)
+					}
+				} else {
+					Text(
+						Component.literal("Encodes the vanilla recipe matching the input grid."),
+						dropShadow = false,
+						color = LocalTheme.current.darkTextColor,
+					)
+				}
 			}
 
-			Button(onClick = { TubularStorageNetworkChannel.toServer(EncodePatternRequestPacket) }) {
-				Text(Component.literal("Encode"), dropShadow = false)
+			Row(horizontalArrangement = Arrangement.spacedBy(6), verticalAlignment = Alignment.CenterVertically) {
+				Text(Component.literal("Blanks"), dropShadow = false)
+				Slots("blankPatterns", 1, 1)
+				Button(onClick = { menu.requestEncode() }) {
+					Text(Component.literal("Encode"), dropShadow = false)
+				}
 			}
-			Text(
-				Component.literal("Consumes one blank pattern from your inventory."),
-				dropShadow = false,
-				color = LocalTheme.current.darkTextColor,
-			)
 		}
 	}
 
@@ -208,61 +207,10 @@ class PatternTerminalHookScreen(private val menu: PatternTerminalHookMenu, playe
 		CraftingTreeView(menu.craftTree, modifier = Modifier.size(contentWidth, 18 * VISIBLE_ROWS))
 	}
 
-	/** Shared search box + result grid, reused by [storeTab]/[craftTab]. */
-	@Composable
-	private fun ResultsGrid(results: List<SResourceStack<SItemResource>>, onSelect: (SResourceStack<SItemResource>) -> Unit, countText: String? = null) {
-		var query by remember { mutableStateOf("") }
-		val filtered = results.filter { query.isBlank() || it.resource.cachedStack.hoverName.string.contains(query, ignoreCase = true) }
-		val rows = maxOf(VISIBLE_ROWS, (filtered.size + COLUMNS - 1) / COLUMNS)
-
-		Column(verticalArrangement = Arrangement.spacedBy(6)) {
-			BasicTextField(
-				value = query,
-				onValueChange = { query = it },
-				modifier = Modifier.width(contentWidth),
-			)
-
-			Scrollable(modifier = Modifier.width(contentWidth).height(18 * VISIBLE_ROWS)) {
-				Column {
-					for (row in 0 until rows)
-					{
-						Row {
-							for (column in 0 until COLUMNS)
-							{
-								val stack = filtered.getOrNull(row * COLUMNS + column)
-								TerminalSlot(
-									stack = stack,
-									countText = countText,
-									onClick = {
-										if (menu.carried == ItemStack.EMPTY)
-										{
-											stack?.let(onSelect)
-										} else
-										{
-											menu.requestDeposit(menu.carried.resourceStack, true)
-										}
-									},
-									onHovered = { hovered ->
-										hoveredStack =
-											if (hovered) stack else if (hoveredStack === stack) null else hoveredStack
-									},
-								)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		if (middleClickHandler.tryHandle(button)) return true
-		return super.mouseClicked(mouseX, mouseY, button)
-	}
-
 	override fun renderTooltip(guiGraphics: GuiGraphics, x: Int, y: Int) {
 		super.renderTooltip(guiGraphics, x, y)
-		hoveredStack?.let { guiGraphics.renderTooltip(font, it.itemStack, x, y) }
+		sidebarTooltip?.let { guiGraphics.renderTooltip(font, Component.literal(it), x, y) }
+			?: hoveredStack?.let { guiGraphics.renderTooltip(font, it.itemStack, x, y) }
 	}
 
 	companion object {

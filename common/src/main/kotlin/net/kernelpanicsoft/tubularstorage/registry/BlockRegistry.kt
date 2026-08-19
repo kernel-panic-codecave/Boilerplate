@@ -4,6 +4,7 @@ import dev.architectury.registry.client.rendering.RenderTypeRegistry
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.blockProperties
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.GlassPipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
@@ -57,6 +58,10 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(TubularStorage.MOD, Regist
 
 	val UnstackableRack: UnstackableRackBlock by register("unstackable_rack") {
 		UnstackableRackBlock(blockProperties(Blocks.IRON_BLOCK) { })
+	}
+
+	val AssemblyTable: AssemblyTableBlock by register("assembly_table") {
+		AssemblyTableBlock(blockProperties(Blocks.IRON_BLOCK) { })
 	}
 
 	override fun initClient() {

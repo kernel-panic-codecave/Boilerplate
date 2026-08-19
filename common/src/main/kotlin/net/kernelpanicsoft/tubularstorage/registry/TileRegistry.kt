@@ -7,6 +7,7 @@ import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.archie.util.blockEntityType
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.client.HookBlockEntityVisual
 import net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer
 import net.kernelpanicsoft.tubularstorage.pipe.client.TravelingItemBlockEntityRenderer
@@ -84,6 +85,13 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 			add(BlockRegistry.UnstackableRack)
 		}
 	}.apply { exposeRackStorage(UnstackableRackBlockEntity::storage) }
+
+	/** No [exposeItemStorage] yet - pipe-fed processing (grid/output exposure) lands with the actual processing behavior, not the bare pattern data model. */
+	val AssemblyTable: BlockEntityType<AssemblyTableBlockEntity> by register("assembly_table") {
+		blockEntityType(::AssemblyTableBlockEntity) {
+			add(BlockRegistry.AssemblyTable)
+		}
+	}
 
 	override fun initClient() {
 		SimpleBlockEntityVisualizer.builder(Hook)

@@ -29,5 +29,6 @@ private fun AGametestEvents.ArchieGameTestBuilder.tubularStorageGameTests() {
 		register<WarehouseGameTest>()
 		register<RackGameTest>()
 		register<SubnetBoundaryGameTest>()
+		register<AssemblyTableGameTest>()
 	}
 }

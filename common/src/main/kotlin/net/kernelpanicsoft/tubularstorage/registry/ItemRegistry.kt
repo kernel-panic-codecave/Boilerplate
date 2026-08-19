@@ -84,6 +84,10 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 		BlockItem(BlockRegistry.UnstackableRack, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
 
+	val AssemblyTable by register("assembly_table") {
+		BlockItem(BlockRegistry.AssemblyTable, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	}
+
 	/**
 	 * One item per registered [net.kernelpanicsoft.tubularstorage.pipe.hook.filter.FilterConditionType],
 	 * mirroring [ExtractionHook]/[ProviderHook]/etc. above - see [FilterCardItem]'s own KDoc for why

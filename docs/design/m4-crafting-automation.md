@@ -4,18 +4,21 @@ See [README.md](README.md) for shared conventions and [m3-warehouse-storage.md](
 
 ## Pattern representation
 
-Built on vanilla recipes rather than inventing a new format: a pattern references a resolved `RecipeHolder<CraftingRecipe>` snapshot at encode time (AE2-style pattern encoding), or a manual input/output list for non-vanilla "processing" conversions:
+Built on vanilla recipes rather than inventing a new format: a `Pattern` is a snapshot taken at encode time (AE2-style pattern encoding, not a live `RecipeHolder<CraftingRecipe>` reference - a later game/recipe change should never retroactively invalidate an already-encoded pattern), or a manual input/output list for non-vanilla "processing" conversions:
 
 ```kotlin
-@Serializable
 data class Pattern(
-    val inputs: List<ItemResourceDto>,      // 9 slots, shaped
-    val outputs: List<ResourceStackDto>,
-    val kind: PatternKind,                  // CRAFTING | PROCESSING
+    val inputs: List<SItemResource>,               // up to 9, one per grid cell for CRAFTING (positional), an unordered bag for PROCESSING
+    val outputs: List<SResourceStack<SItemResource>>,
+    val kind: PatternKind,                          // CRAFTING | PROCESSING
 )
 ```
 
-Stored per `PatternProviderBlockEntity` as `nbt.listField(Pattern.serializer())`. Authored via a `PatternEditorBlock` GUI mirroring a vanilla crafting-table grid (`Slots("grid", 3, 3)` + output slot); an "encode" button snapshots the current grid into a `Pattern`.
+No separate per-input quantity field - a resource's own required count is just how many of the 9 `inputs` entries hold it (`Pattern.requiredInputs()`), the same "count via slot occupancy" shape a real crafting grid already has.
+
+No separate `PatternProviderBlockEntity`/`PatternEditorBlock` pair after all - `AssemblyTableBlockEntity` (see "Physical Assembly Table" below) is both: it stores `patterns: MutableList<Pattern>` (`nbt.listField(Pattern.serializer())`) *and* owns the one shared `grid`/`output` slot pair (`AssemblyTableMenu`, a vanilla-crafting-table-shaped `Slots("grid", 3, 3)` + `Slots("output", 1, 1)`) used both to manually author a new pattern (an "Encode" button, `EncodeAssemblyPatternPacket` → `PatternEncoder.encode`) and, later, to run an already-encoded one. `PatternEncoder.encode` picks `CRAFTING` if the grid currently matches a real vanilla recipe (assembling the *actual* result via `RecipeManager.getRecipeFor`/`CraftingRecipe.assemble`, not whatever happens to be sitting in `output`) and falls back to `PROCESSING` only if `output` itself has something manually placed; a no-op (nothing encoded) if neither holds. Kept as a standalone object, not inlined into the menu, so it's directly testable without a real menu/player.
+
+Caught the same latent knbt bug `FilterMode`/`RoutingModule` did (see `docs/design/m2-sorting-routing.md`): a plain enum's default `encodeEnum` isn't supported by knbt's encoder at all, only silently "working" for whichever constant happens to be the field's declared default. `PatternKindSerializer` (encode/decode by name) fixes it the same way `FilterModeSerializer` does - confirmed by an actual crash on `PROCESSING` before the fix.
 
 ## Resolution
 

@@ -27,9 +27,10 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
  * [net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer]
  * looks up directly (registered as an [net.kernelpanicsoft.tubularstorage.registry.ItemRegistry]
  * item purely so it bakes, not because it's player-obtainable - the gantry head is always a
- * dynamic render, never a placed block), and the three plain-cube rack block types
+ * dynamic render, never a placed block), the three plain-cube rack block types
  * ([net.kernelpanicsoft.tubularstorage.warehouse.rack.GeneralRackBlockEntity]/[net.kernelpanicsoft.tubularstorage.warehouse.rack.BulkRackBlockEntity]/
- * [net.kernelpanicsoft.tubularstorage.warehouse.rack.UnstackableRackBlockEntity]). Replaces what
+ * [net.kernelpanicsoft.tubularstorage.warehouse.rack.UnstackableRackBlockEntity]), and the
+ * plain-cube [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]. Replaces what
  * was previously hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
  * `common/src/main/resources`.
  */
@@ -66,6 +67,10 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	simpleBlockWithItem(BlockRegistry.GeneralRack)
 	simpleBlockWithItem(BlockRegistry.BulkRack)
 	simpleBlockWithItem(BlockRegistry.UnstackableRack)
+
+	// Same plain-cube treatment for the assembly table - not a hand-modeled shape like the
+	// warehouse controller, since there's no gantry-style moving geometry to justify one yet.
+	simpleBlockWithItem(BlockRegistry.AssemblyTable)
 
 	// Filter cards are plain items (no block of their own), unlike a hook's block-model-backed
 	// icon above - a flat `item/generated` icon over each one's own `textures/item/*.png` instead.

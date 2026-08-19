@@ -5,6 +5,9 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.serialization.SerializationManager
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
+import net.kernelpanicsoft.tubularstorage.crafting.gui.AssemblyTableMenu
+import net.kernelpanicsoft.tubularstorage.crafting.gui.AssemblyTableScreen
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.FilterCardScreen
@@ -63,11 +66,19 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 		}
 	}
 
+	val AssemblyTable: MenuType<AssemblyTableMenu> by register("assembly_table") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as AssemblyTableBlockEntity
+			AssemblyTableMenu(id, inventory, tile)
+		}
+	}
+
 	override fun initClient() {
 		MenuRegistry.registerScreenFactory(SortingHook, ::SortingHookScreen)
 		MenuRegistry.registerScreenFactory(RequesterHook, ::RequesterHookScreen)
 		MenuRegistry.registerScreenFactory(TerminalHook, ::TerminalHookScreen)
 		MenuRegistry.registerScreenFactory(FilterCard, ::FilterCardScreen)
 		MenuRegistry.registerScreenFactory(InterfaceHook, ::InterfaceHookScreen)
+		MenuRegistry.registerScreenFactory(AssemblyTable, ::AssemblyTableScreen)
 	}
 }

@@ -16,6 +16,7 @@ import net.minecraft.world.InteractionHand
 import net.minecraft.world.ItemInteractionResult
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.LevelAccessor
@@ -74,7 +75,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		propertiesByDirection.values.forEach { builder.add(it) }
 	}
 
-	override fun getStateForPlacement(context: net.minecraft.world.item.context.BlockPlaceContext): BlockState =
+	override fun getStateForPlacement(context: BlockPlaceContext): BlockState =
 		computeConnections(defaultBlockState(), context.level, context.clickedPos)
 
 	override fun updateShape(
@@ -148,33 +149,8 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		return BlockRegistry.Hook.clickBlockWithItem(stack, level.getBlockState(pos), level, pos, player, hand, hitResult)
 	}
 
-	/**
-	 * Which face a click actually targets: [BlockHitResult.getDirection] is the literal geometric
-	 * face normal, which for a connected face's arm is only correct if you click the arm's outward
-	 * tip - clicking one of its (narrower-than-a-full-face) lateral sides reports that side's own
-	 * direction instead, e.g. the *east* side of a *north*-pointing arm reports EAST. Resolves the
-	 * hit point back to whichever connected arm's own shape it actually landed in, if any.
-	 *
-	 * A click lands exactly on the clicked face's plane, i.e. exactly on one of the arm shape's own
-	 * bounds - [net.minecraft.world.phys.AABB.contains] is exclusive on the *max* bound, so it
-	 * silently rejects a hit on an arm's south/east/up-facing side while accepting one on its
-	 * north/west/down-facing side. [containsInclusive] checks both bounds inclusively (with a small
-	 * epsilon for floating-point slop in the hit point itself) so every side matches consistently.
-	 */
-	protected fun armFor(state: BlockState, pos: BlockPos, hitResult: BlockHitResult): Direction? {
-		val local = hitResult.location.subtract(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
-		return propertiesByDirection.entries
-			.firstOrNull { (direction, property) -> state.getValue(property) && containsInclusive(armShapes.getValue(direction).bounds(), local.x, local.y, local.z) }
-			?.key
-	}
-
-	private fun containsInclusive(bounds: AABB, x: Double, y: Double, z: Double): Boolean =
-		x >= bounds.minX - EPSILON && x <= bounds.maxX + EPSILON &&
-			y >= bounds.minY - EPSILON && y <= bounds.maxY + EPSILON &&
-			z >= bounds.minZ - EPSILON && z <= bounds.maxZ + EPSILON
 
 	companion object {
-		private const val EPSILON = 1.0E-5
 
 		val CODEC: MapCodec<PipeBlock> = simpleCodec(::PipeBlock)
 
@@ -187,15 +163,17 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 			Direction.DOWN to BlockStateProperties.DOWN,
 		)
 
-		val CORE_SHAPE: VoxelShape = Shapes.box(0.375, 0.375, 0.375, 0.625, 0.625, 0.625)
+		/** 6x6 (`0.3125..0.6875`, pixels 5-11), matching the pipe model's own core cross-section - same numbers as [net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock.CORE_SHAPE], which uses an identical connecting-block shape. */
+		val CORE_SHAPE: VoxelShape = Shapes.box(0.3125, 0.3125, 0.3125, 0.6875, 0.6875, 0.6875)
 
+		/** Same 6x6 cross-section as [CORE_SHAPE], reaching from each face to the core's own boundary - see [net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock.armShapes]. */
 		val armShapes: Map<Direction, VoxelShape> = mapOf(
-			Direction.NORTH to Shapes.box(0.375, 0.375, 0.0, 0.625, 0.625, 0.375),
-			Direction.SOUTH to Shapes.box(0.375, 0.375, 0.625, 0.625, 0.625, 1.0),
-			Direction.WEST to Shapes.box(0.0, 0.375, 0.375, 0.375, 0.625, 0.625),
-			Direction.EAST to Shapes.box(0.625, 0.375, 0.375, 1.0, 0.625, 0.625),
-			Direction.DOWN to Shapes.box(0.375, 0.0, 0.375, 0.625, 0.375, 0.625),
-			Direction.UP to Shapes.box(0.375, 0.625, 0.375, 0.625, 1.0, 0.625),
+			Direction.NORTH to Shapes.box(0.3125, 0.3125, 0.0, 0.6875, 0.6875, 0.3125),
+			Direction.SOUTH to Shapes.box(0.3125, 0.3125, 0.6875, 0.6875, 0.6875, 1.0),
+			Direction.WEST to Shapes.box(0.0, 0.3125, 0.3125, 0.3125, 0.6875, 0.6875),
+			Direction.EAST to Shapes.box(0.6875, 0.3125, 0.3125, 1.0, 0.6875, 0.6875),
+			Direction.DOWN to Shapes.box(0.3125, 0.0, 0.3125, 0.6875, 0.3125, 0.6875),
+			Direction.UP to Shapes.box(0.3125, 0.6875, 0.3125, 0.6875, 1.0, 0.6875),
 		)
 	}
 }

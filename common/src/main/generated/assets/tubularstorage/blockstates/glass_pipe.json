@@ -2,60 +2,114 @@
   "multipart": [
     {
       "apply": {
-        "model": "tubularstorage:block/glass_pipe_core"
-      }
-    },
-    {
-      "apply": {
-        "model": "tubularstorage:block/glass_pipe_arm"
-      },
-      "when": {
-        "north": "true"
-      }
-    },
-    {
-      "apply": {
-        "model": "tubularstorage:block/glass_pipe_arm",
-        "y": 180
-      },
-      "when": {
-        "south": "true"
-      }
-    },
-    {
-      "apply": {
-        "model": "tubularstorage:block/glass_pipe_arm",
-        "y": 90
-      },
-      "when": {
-        "east": "true"
-      }
-    },
-    {
-      "apply": {
-        "model": "tubularstorage:block/glass_pipe_arm",
+        "model": "tubularstorage:block/pipe_straight_glass",
         "y": 270
       },
       "when": {
+        "axis": "x",
+        "straight": "true"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_core_glass"
+      },
+      "when": {
+        "straight": "false"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_straight_glass",
+        "x": 90
+      },
+      "when": {
+        "axis": "y",
+        "straight": "true"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_core_glass"
+      },
+      "when": {
+        "straight": "false"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_straight_glass"
+      },
+      "when": {
+        "axis": "z",
+        "straight": "true"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_core_glass"
+      },
+      "when": {
+        "straight": "false"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_arm_glass"
+      },
+      "when": {
+        "north": "true",
+        "straight": "false"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_arm_glass",
+        "y": 180
+      },
+      "when": {
+        "south": "true",
+        "straight": "false"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_arm_glass",
+        "y": 90
+      },
+      "when": {
+        "east": "true",
+        "straight": "false"
+      }
+    },
+    {
+      "apply": {
+        "model": "tubularstorage:block/pipe_arm_glass",
+        "y": 270
+      },
+      "when": {
+        "straight": "false",
         "west": "true"
       }
     },
     {
       "apply": {
-        "model": "tubularstorage:block/glass_pipe_arm",
+        "model": "tubularstorage:block/pipe_arm_glass",
         "x": 270
       },
       "when": {
+        "straight": "false",
         "up": "true"
       }
     },
     {
       "apply": {
-        "model": "tubularstorage:block/glass_pipe_arm",
+        "model": "tubularstorage:block/pipe_arm_glass",
         "x": 90
       },
       "when": {
-        "down": "true"
+        "down": "true",
+        "straight": "false"
       }
     }
   ]

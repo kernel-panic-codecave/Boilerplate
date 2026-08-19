@@ -41,13 +41,13 @@ object TravelingItemRenderer {
 			val to = toDirection?.let(::tipOf) ?: CENTER
 			val itemPos = pathPosition(from, to, progress.toDouble())
 			val seed = pos.asLong().toInt()
-			val centeringOffset = centeringOffset(itemRenderer, stack, level, seed)
+			val centeringOffset = centeringOffset(itemRenderer, stack.resource.cachedStack, level, seed)
 
 			poseStack.pushPose()
 			poseStack.translate(itemPos.x, itemPos.y - centeringOffset, itemPos.z)
 			poseStack.mulPose(Axis.YP.rotationDegrees((level.gameTime + partialTick) * SPIN_DEGREES_PER_TICK))
 			poseStack.scale(ITEM_SCALE, ITEM_SCALE, ITEM_SCALE)
-			itemRenderer.renderStatic(stack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
+			itemRenderer.renderStatic(stack.resource.cachedStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
 			poseStack.popPose()
 		}
 	}

@@ -10,6 +10,8 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.archie.serialization.serializers.SItemStack
+import net.kernelpanicsoft.tubularstorage.network.SItemResource
+import net.kernelpanicsoft.tubularstorage.network.SResourceStack
 import net.minecraft.core.Direction
 import net.minecraft.world.item.DyeColor
 
@@ -21,15 +23,15 @@ import net.minecraft.world.item.DyeColor
  */
 @Serializable
 data class TravelingItem(
-	val stack: SItemStack,
+	val stack: SResourceStack<SItemResource>,
 	val fromDirection: SDirection,
 	var progress: Float = 0f,
 	var path: List<SBlockPos> = emptyList(),
 	val color: SDyeColor? = null,
 )
 
-typealias SDirection = @Contextual Direction
-typealias SDyeColor = @Contextual DyeColor
+typealias SDirection = @Serializable(with = DirectionSerializer::class) Direction
+typealias SDyeColor = @Serializable(with = DyeColorSerializer::class) DyeColor
 
 /** A [KSerializer] for [Direction], encoded/decoded as its enum name. */
 object DirectionSerializer : KSerializer<Direction> {

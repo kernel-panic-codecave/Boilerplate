@@ -10,14 +10,14 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
-import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
-import net.kernelpanicsoft.archie.gui.composables.containers.TabContainer
+import net.kernelpanicsoft.archie.gui.composables.containers.TabContainerPanel
 import net.kernelpanicsoft.archie.gui.composables.input.Button
 import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
 import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.gui.layout.Alignment
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
+import net.kernelpanicsoft.archie.gui.layout.Box
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
@@ -38,11 +38,15 @@ import net.minecraft.world.item.ItemStack
 
 /**
  * Two tabs over everything [menu] can currently reach (see [TerminalHookMenu]) - see
- * `docs/design/m3-warehouse-storage.md`/`docs/design/m4-crafting-automation.md`. Both share
- * [ResultsGrid] (search box + scrollable, non-slot-backed result grid over [TerminalHookMenu.results],
- * filtered locally by display name) - "Store" clicking a cell opens [requestQuantityDialog] and
- * withdraws, "Craft" clicking a cell opens [requestCraftQuantityDialog] and submits a
- * [TerminalHookMenu.requestCraft] instead, with a status line underneath reading
+ * `docs/design/m3-warehouse-storage.md`/`docs/design/m4-crafting-automation.md`. Built on Archie's
+ * `TabContainerPanel` (a fixed-width `TabPanel` that wraps each tab's own content in its own
+ * `ContainerPanel`, tabs poking out of the top the same way vanilla's own Create World screen
+ * looks) rather than the lower-level `TabContainer` DSL, which has no width of its own and left the
+ * whole screen mismeasured/left-pinned when tried first. Both tabs share [ResultsGrid] (search box
+ * + scrollable, non-slot-backed result grid over [TerminalHookMenu.results], filtered locally by
+ * display name) - "Store" clicking a cell opens [requestQuantityDialog] and withdraws, "Craft"
+ * clicking a cell opens [requestCraftQuantityDialog] and submits a [TerminalHookMenu.requestCraft]
+ * instead, with a status line underneath reading
  * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity.craftJobStatus] (polled into
  * Compose state - see [craftTab] - rather than pushed, since that field is synced onto the
  * client's own [menu]`.tile` the ordinary block-entity way, not through a dedicated packet).
@@ -76,27 +80,29 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 	@Composable
 	fun content() {
 		Theme {
-			Row(
-				horizontalArrangement = Arrangement.spacedBy(2),
-				verticalAlignment = Alignment.Top
-			) {
-				Column {
-					Button(onClick = { TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket) }) {
-						Text(
-							Component.literal("↻"),
-							dropShadow = false
-						)
+			Box(contentAlignment = Alignment.Center) {
+				Row(
+					horizontalArrangement = Arrangement.spacedBy(2),
+					verticalAlignment = Alignment.Top
+				) {
+					Column {
+						Button(onClick = { TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket) }) {
+							Text(
+								Component.literal("↻"),
+								dropShadow = false
+							)
+						}
+						Button(onClick = { TubularStorageNetworkChannel.toServer(RequestWarehouseDefragPacket) }) {
+							Text(
+								Component.literal("⥮"),
+								dropShadow = false
+							)
+						}
 					}
-					Button(onClick = { TubularStorageNetworkChannel.toServer(RequestWarehouseDefragPacket) }) {
-						Text(
-							Component.literal("⥮"),
-							dropShadow = false
-						)
+					TabContainerPanel(contentWidth = contentWidth) {
+						tab(id = "store", title = Component.literal("Store")) { storeTab() }
+						tab(id = "craft", title = Component.literal("Craft")) { craftTab() }
 					}
-				}
-				TabContainer {
-					tab(id = "store", title = Component.literal("Store")) { storeTab() }
-					tab(id = "craft", title = Component.literal("Craft")) { craftTab() }
 				}
 			}
 		}
@@ -142,39 +148,37 @@ class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: In
 		val filtered = menu.results.filter { query.isBlank() || it.resource.cachedStack.hoverName.string.contains(query, ignoreCase = true) }
 		val rows = maxOf(VISIBLE_ROWS, (filtered.size + COLUMNS - 1) / COLUMNS)
 
-		ContainerPanel(contentWidth) {
-			Column(verticalArrangement = Arrangement.spacedBy(6)) {
-				BasicTextField(
-					value = query,
-					onValueChange = { query = it },
-					modifier = Modifier.width(contentWidth),
-				)
+		Column(verticalArrangement = Arrangement.spacedBy(6)) {
+			BasicTextField(
+				value = query,
+				onValueChange = { query = it },
+				modifier = Modifier.width(contentWidth),
+			)
 
-				Scrollable(modifier = Modifier.width(contentWidth).height(18 * VISIBLE_ROWS)) {
-					Column {
-						for (row in 0 until rows)
-						{
-							Row {
-								for (column in 0 until COLUMNS)
-								{
-									val stack = filtered.getOrNull(row * COLUMNS + column)
-									TerminalSlot(
-										stack = stack,
-										onClick = {
-											if (menu.carried == ItemStack.EMPTY)
-											{
-												stack?.let(onSelect)
-											} else
-											{
-												menu.requestDeposit(menu.carried.resourceStack, true)
-											}
-										},
-										onHovered = { hovered ->
-											hoveredStack =
-												if (hovered) stack else if (hoveredStack === stack) null else hoveredStack
-										},
-									)
-								}
+			Scrollable(modifier = Modifier.width(contentWidth).height(18 * VISIBLE_ROWS)) {
+				Column {
+					for (row in 0 until rows)
+					{
+						Row {
+							for (column in 0 until COLUMNS)
+							{
+								val stack = filtered.getOrNull(row * COLUMNS + column)
+								TerminalSlot(
+									stack = stack,
+									onClick = {
+										if (menu.carried == ItemStack.EMPTY)
+										{
+											stack?.let(onSelect)
+										} else
+										{
+											menu.requestDeposit(menu.carried.resourceStack, true)
+										}
+									},
+									onHovered = { hovered ->
+										hoveredStack =
+											if (hovered) stack else if (hoveredStack === stack) null else hoveredStack
+									},
+								)
 							}
 						}
 					}

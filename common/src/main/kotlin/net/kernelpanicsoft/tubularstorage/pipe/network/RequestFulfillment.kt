@@ -4,11 +4,11 @@ import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
@@ -77,8 +77,8 @@ object RequestFulfillment {
 	/** Every [WarehouseControllerBlockEntity] reachable from [from], for a warehouse terminal's search. */
 	fun reachableWarehouses(level: ServerLevel, from: BlockPos): List<WarehouseControllerBlockEntity> = warehousesIn(level, reachablePipes(level, from))
 
-	/** Every [AssemblyTableBlockEntity] reachable from [from], for [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest]'s own pattern search. */
-	fun reachableAssemblyTables(level: ServerLevel, from: BlockPos): List<AssemblyTableBlockEntity> = assemblyTablesIn(level, reachablePipes(level, from))
+	/** Every [PatternProviderHookState] reachable from [from], for [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest]'s own pattern search and [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType]'s step feeding. */
+	fun reachablePatternProviders(level: ServerLevel, from: BlockPos): List<PatternProviderSource> = patternProviderSourcesIn(level, reachablePipes(level, from))
 
 	private fun providerSources(level: ServerLevel, reachable: Set<BlockPos>): List<ProviderSource> {
 		val sources = mutableListOf<ProviderSource>()
@@ -106,15 +106,16 @@ object RequestFulfillment {
 		return warehouses.toList()
 	}
 
-	private fun assemblyTablesIn(level: ServerLevel, reachable: Set<BlockPos>): List<AssemblyTableBlockEntity> {
-		val tables = LinkedHashSet<AssemblyTableBlockEntity>()
+	private fun patternProviderSourcesIn(level: ServerLevel, reachable: Set<BlockPos>): List<PatternProviderSource> {
+		val sources = mutableListOf<PatternProviderSource>()
 		for (candidatePos in reachable) {
-			for (direction in Direction.entries) {
-				val table = level.getBlockEntity(candidatePos.relative(direction)) as? AssemblyTableBlockEntity ?: continue
-				tables += table
+			val tile = level.getBlockEntity(candidatePos) as? HookBlockEntity ?: continue
+			for ((directionName, entry) in tile.hooks) {
+				val state = entry as? PatternProviderHookState ?: continue
+				sources += PatternProviderSource(candidatePos, Direction.valueOf(directionName), state)
 			}
 		}
-		return tables.toList()
+		return sources
 	}
 
 	/** Every pipe position reachable from [from], [from] itself included - the search space for both fulfillment sources. */
@@ -149,5 +150,10 @@ object RequestFulfillment {
 	 */
 	data class ProviderSource(val hookPos: BlockPos, val direction: Direction, val hookState: HookHolderState) {
 		fun storage(level: ServerLevel): CommonStorage<ItemResource>? = ItemApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
+	}
+
+	/** A [PatternProviderHookState] at [hookPos] facing [direction] - [targetPos] is whatever it's feeding/draining patterns against. */
+	data class PatternProviderSource(val hookPos: BlockPos, val direction: Direction, val state: PatternProviderHookState) {
+		val targetPos: BlockPos get() = hookPos.relative(direction)
 	}
 }

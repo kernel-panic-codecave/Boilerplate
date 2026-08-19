@@ -51,7 +51,6 @@ object TubularStorageNetworkChannel : NetworkChannel(TubularStorage.MOD % "main"
 		serverbound(OpenFilterCardEditorPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(UpdateFilterCardFieldPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(UpdateFilterCardModePacket::class) { packet, context -> packet.handleOnServer(context) }
-		serverbound(EncodeAssemblyPatternPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CraftingRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftableListPacket::class) { packet, context -> packet.handleOnServer(context) }

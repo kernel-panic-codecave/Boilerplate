@@ -98,11 +98,11 @@ class TerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, val
 		craftableResources = resources
 	}
 
-	/** Server-side: computes and replies with the distinct resources every reachable [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]'s own patterns can produce. */
+	/** Server-side: computes and replies with the distinct resources every reachable [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState]'s own held patterns can produce. */
 	fun sendCraftableList() {
 		val level = level as? ServerLevel ?: return
-		val resources = RequestFulfillment.reachableAssemblyTables(level, tile.blockPos)
-			.flatMap { it.patterns }
+		val resources = RequestFulfillment.reachablePatternProviders(level, tile.blockPos)
+			.flatMap { it.state.heldPatterns() }
 			.flatMap { it.outputs }
 			.map { it.resource }
 			.distinct()

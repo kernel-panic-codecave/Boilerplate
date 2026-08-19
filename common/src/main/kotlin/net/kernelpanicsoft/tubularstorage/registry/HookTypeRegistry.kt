@@ -8,6 +8,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
@@ -35,6 +37,7 @@ object HookTypeRegistry : ADeferredRegistryHolder<PipeHookType<out HookHolderSta
 	val Requester: PipeHookType<RequesterHookState> by register(RequesterHookType.ID) { RequesterHookType }
 	val Terminal: PipeHookType<TerminalHookState> by register(TerminalHookType.ID) { TerminalHookType }
 	val Interface: PipeHookType<InterfaceHookState> by register(InterfaceHookType.ID) { InterfaceHookType }
+	val PatternProvider: PipeHookType<PatternProviderHookState> by register(PatternProviderHookType.ID) { PatternProviderHookType }
 
 	/**
 	 * Looks up a registered [PipeHookType] by its full id (e.g.

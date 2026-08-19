@@ -49,16 +49,16 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 
 	/**
 	 * Advances [job] by exactly one tick's worth of work: feeds any still-unrequested step
-	 * ingredients into their assigned [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]
-	 * (picked once, the first reachable table carrying a step's [net.kernelpanicsoft.tubularstorage.crafting.Pattern]
-	 * that no other step in this job has already claimed), then - throttled to
+	 * ingredients into their assigned [PatternProviderHookType] hook's own attached target (picked
+	 * once, the first reachable hook holding a step's [net.kernelpanicsoft.tubularstorage.crafting.Pattern]
+	 * whose target no other step in this job has already claimed), then - throttled to
 	 * [PULL_INTERVAL_TICKS] - retries pulling [CraftingJob.target] itself to [adjacentInventory],
 	 * exactly the same [RequestFulfillment.request] a plain withdrawal uses. A step with no
 	 * [CraftingJob.steps] at all (the target was already fully covered by stock) skips straight to
 	 * that pull. Reaching the target this way requires whatever produces it - a reachable warehouse,
-	 * or a [ProviderHookType]/[ExtractionHookType]/`sync` hook physically wired to the final
-	 * assembly table's output - the same requirement every other hook already has for pulling from
-	 * a non-pipe inventory; nothing here reaches into a table without one.
+	 * or a [PatternProviderHookType] hook (`providesItems = true`) exposing its own target's output
+	 * once produced - the same requirement every other provider-style hook already has for pulling
+	 * from a non-pipe inventory; nothing here reaches into anything without one.
 	 */
 	private fun advance(level: ServerLevel, pos: BlockPos, tile: HookBlockEntity, job: CraftingJob) {
 		val destination = adjacentInventory(level, pos)
@@ -78,13 +78,13 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 		for ((index, step) in job.steps.withIndex()) {
 			var tablePos = job.tableForStep[index]
 			if (tablePos == null) {
-				val table = RequestFulfillment.reachableAssemblyTables(level, pos)
-					.firstOrNull { it.patterns.contains(step.pattern) && it.blockPos !in job.tableForStep.values }
-				if (table == null) {
-					job.status = "No free assembly table for ${step.resource.cachedStack.hoverName.string}"
+				val provider = RequestFulfillment.reachablePatternProviders(level, pos)
+					.firstOrNull { it.state.heldPatterns().contains(step.pattern) && it.targetPos !in job.tableForStep.values }
+				if (provider == null) {
+					job.status = "No free pattern provider for ${step.resource.cachedStack.hoverName.string}"
 					continue
 				}
-				tablePos = table.blockPos
+				tablePos = provider.targetPos
 				job.tableForStep[index] = tablePos
 			}
 			for ((resource, perRun) in step.pattern.requiredInputs()) {

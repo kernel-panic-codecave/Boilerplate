@@ -13,7 +13,7 @@ import net.minecraft.core.BlockPos
  * ([net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem] included) persists either.
  */
 class CraftingJob(val target: ItemResource, val targetAmount: Long, val steps: List<CraftStep>) {
-	/** The assembly table position assigned to each [steps] index, once one is picked - stable for the rest of the job so two steps never contend for the same table. */
+	/** The pattern provider hook's own target position assigned to each [steps] index, once one is picked - stable for the rest of the job so two steps never contend for the same target. */
 	val tableForStep: MutableMap<Int, BlockPos> = mutableMapOf()
 
 	/** `(step index, ingredient resource)` pairs whose delivery has already been requested - requested exactly once each, regardless of how many ticks it takes to arrive. */

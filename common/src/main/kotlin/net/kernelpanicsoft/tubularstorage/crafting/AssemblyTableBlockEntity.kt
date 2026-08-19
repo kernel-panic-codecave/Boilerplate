@@ -23,30 +23,35 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 
 /**
- * A real, pipe-fed block that both stores encoded [Pattern]s and executes them, rather than
- * resolving a craft instantly - `docs/design/m4-crafting-automation.md`'s "Physical Assembly
- * Table" decision. [grid]/[output] are one shared 3x3-plus-result shape used for both purposes: a
- * player manually filling [grid] (and, for a [PatternKind.PROCESSING] pattern, [output] too) and
- * encoding it via [AssemblyTableMenu.encode] is exactly the same slots [tick] later matches
- * [patterns] against and pipes feed - [ioStorage] exposes [grid] for insertion and [output] for
- * extraction as one combined [CommonStorage] (see [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.AssemblyTable]'s
- * [net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeRackStorage] registration, reused as-is
- * from the rack block types - it's already generic over any [CommonStorage], not rack-specific).
- *
- * A pattern is matched purely by ingredient *count*, not grid position - [PatternKind] only ever
- * mattered for how a pattern was originally encoded (see [PatternEncoder]), not for how it's later
- * run: [Pattern.requiredInputs] already collapses a [PatternKind.CRAFTING] pattern's own positional
- * grid into the same shape a [PatternKind.PROCESSING] one already has.
+ * A real, pipe-fed block that visibly processes a [Pattern] over time rather than resolving a
+ * craft instantly - `docs/design/m4-crafting-automation.md`'s "Physical Assembly Table" decision.
+ * Holds no patterns of its own - a [PatternProviderHookType] hook attached to any of its faces owns
+ * those (as [PatternItem]s) and decides *what* to run, via [beginProcessing]; this block only knows
+ * *how* to run whatever it's told, the same way a vanilla furnace doesn't know its own recipes
+ * either. [grid]/[output] are exposed as one combined [ioStorage] (see
+ * [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.AssemblyTable]'s
+ * [net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeRackStorage] registration) so a
+ * Pattern Provider hook (or anything else) can feed/drain it exactly like any other reachable
+ * inventory - no special coupling required.
  */
 class AssemblyTableBlockEntity(pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(TileRegistry.AssemblyTable, pos, state), ExtendedMenuProvider, PressureConsumer {
 
-	val patterns: MutableList<Pattern> by listField(Pattern.serializer()) { emptyList() }
 	val grid: ArchieItemStorage by itemField(Pattern.GRID_SIZE)
 	val output: ArchieItemStorage by itemField(1)
 
-	/** Ticks the currently-matched pattern has been processing for - reset to `0` whenever nothing in [patterns] currently matches [grid]/[output], so pulling an ingredient out mid-run genuinely aborts it rather than leaving silent progress behind. */
+	/** Ticks [activePattern] has been processing for - reset to `0` whenever it stops matching [grid]/[output] (an ingredient pulled back out mid-run genuinely aborts it) or once it completes. */
 	private var progressTicks: Double by field(Double.serializer()) { 0.0 }
+
+	/**
+	 * The pattern currently being run, or `null` if idle - set only by [beginProcessing], never
+	 * scanned for internally. Not NBT-persisted (runtime-only, like
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob]'s own identical tradeoff) - a
+	 * reload aborts an in-progress run, which the owning Pattern Provider hook simply retries once
+	 * it next sees [grid] satisfied again.
+	 */
+	var activePattern: Pattern? = null
+		private set
 
 	val ioStorage: CommonStorage<ItemResource> = AssemblyTableIO(grid, output)
 
@@ -59,11 +64,27 @@ class AssemblyTableBlockEntity(pos: BlockPos, state: BlockState) :
 		buf.writeBlockPos(blockPos)
 	}
 
+	/**
+	 * Starts running [pattern] if idle and [grid]/[output] currently satisfy it ([canRun]) - called
+	 * externally (a [PatternProviderHookType] hook, once it sees a held pattern's ingredients
+	 * present), not decided here. Returns whether it actually started; `false` while already
+	 * mid-run or if [pattern] doesn't currently fit, either of which the caller should treat as
+	 * "try again later."
+	 */
+	fun beginProcessing(pattern: Pattern): Boolean {
+		if (activePattern != null) return false
+		if (!canRun(pattern)) return false
+		activePattern = pattern
+		progressTicks = 0.0
+		return true
+	}
+
 	fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
-		val pattern = patterns.firstOrNull { canRun(it) }
-		if (pattern == null) {
-			if (progressTicks != 0.0) progressTicks = 0.0
+		val pattern = activePattern ?: return
+		if (!canRun(pattern)) {
+			activePattern = null
+			progressTicks = 0.0
 			return
 		}
 
@@ -71,6 +92,7 @@ class AssemblyTableBlockEntity(pos: BlockPos, state: BlockState) :
 		if (progressTicks < PROCESSING_TIME_TICKS) return
 		progressTicks = 0.0
 		run(pattern)
+		activePattern = null
 	}
 
 	/** Whether [grid] currently holds enough of every one of [pattern]'s [Pattern.requiredInputs], and [output] has room for the result - checked every tick rather than cached, since either can change out from under an in-progress run (an ingredient pulled back out, say). */

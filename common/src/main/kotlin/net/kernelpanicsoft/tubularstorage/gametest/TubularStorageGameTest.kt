@@ -33,5 +33,7 @@ private fun AGametestEvents.ArchieGameTestBuilder.tubularStorageGameTests() {
 		register<CraftingResolverGameTest>()
 		register<TerminalCraftGameTest>()
 		register<PatternItemGameTest>()
+		register<PatternEncoderGameTest>()
+		register<PatternProviderHookGameTest>()
 	}
 }

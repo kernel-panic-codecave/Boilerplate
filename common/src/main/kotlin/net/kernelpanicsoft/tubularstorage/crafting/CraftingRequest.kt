@@ -10,15 +10,15 @@ import net.minecraft.server.level.ServerLevel
  * [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity] reachable from
  * [from] (the same [RequestFulfillment.reachableWarehouses] a terminal withdrawal already
  * searches), and a sub-craft's pattern is the first match found across every reachable
- * [AssemblyTableBlockEntity]'s own [AssemblyTableBlockEntity.patterns] - see
- * `docs/design/m4-crafting-automation.md`. Deliberately re-scans both on every call rather than
- * pre-indexing them: a resolution touches a handful of distinct resources at most, triggered only
- * on an actual player request, not a hot per-tick path.
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState]'s own held
+ * [PatternItem]s - see `docs/design/m4-crafting-automation.md`. Deliberately re-scans both on
+ * every call rather than pre-indexing them: a resolution touches a handful of distinct resources
+ * at most, triggered only on an actual player request, not a hot per-tick path.
  */
 object CraftingRequest {
 	fun resolve(level: ServerLevel, from: BlockPos, target: ItemResource, amount: Long): CraftingResolver.Result {
 		val warehouses = RequestFulfillment.reachableWarehouses(level, from)
-		val patterns = RequestFulfillment.reachableAssemblyTables(level, from).flatMap { it.patterns }
+		val patterns = RequestFulfillment.reachablePatternProviders(level, from).flatMap { it.state.heldPatterns() }
 
 		return CraftingResolver.resolve(
 			target = target,
@@ -31,7 +31,7 @@ object CraftingRequest {
 	/** [CraftingResolver.maxCraftable] wired the same way [resolve] is - see its own KDoc. */
 	fun maxCraftable(level: ServerLevel, from: BlockPos, target: ItemResource, upperBound: Long): Long {
 		val warehouses = RequestFulfillment.reachableWarehouses(level, from)
-		val patterns = RequestFulfillment.reachableAssemblyTables(level, from).flatMap { it.patterns }
+		val patterns = RequestFulfillment.reachablePatternProviders(level, from).flatMap { it.state.heldPatterns() }
 
 		return CraftingResolver.maxCraftable(
 			target = target,

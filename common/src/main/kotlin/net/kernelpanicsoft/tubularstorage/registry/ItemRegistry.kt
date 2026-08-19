@@ -7,6 +7,7 @@ import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookType
@@ -63,6 +64,10 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val InterfaceHook by register("interface_hook") {
 		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = InterfaceHookType.ID)
+	}
+
+	val PatternProviderHook by register("pattern_provider_hook") {
+		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = PatternProviderHookType.ID)
 	}
 
 	val WarehouseController by register("warehouse_controller") {

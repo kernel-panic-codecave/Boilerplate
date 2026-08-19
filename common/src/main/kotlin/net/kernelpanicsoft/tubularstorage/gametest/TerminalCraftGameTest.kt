@@ -8,16 +8,16 @@ import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
 import net.kernelpanicsoft.tubularstorage.crafting.Pattern
+import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
 import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
-import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
-import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookState
-import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
+import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.Bounds
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
@@ -69,11 +69,11 @@ class TerminalCraftGameTest {
 	}
 
 	/**
-	 * A full single-step craft: iron ingot stock in a reachable warehouse, an assembly table
-	 * carrying a matching [Pattern], a [ProviderHookType] hook wired to the table's own output so
-	 * the crafted result can leave it, and a terminal pulling the finished iron block to its own
-	 * adjacent chest once the table's [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity.tick]
-	 * finishes processing.
+	 * A full single-step craft: iron ingot stock in a reachable warehouse, an assembly table, a
+	 * [PatternProviderHookType] hook facing it holding a matching encoded [Pattern] (feeding the
+	 * table's grid and exposing its output as pullable stock, both through the same hook - its
+	 * target's `ioStorage` is direction-agnostic), and a terminal pulling the finished iron block
+	 * to its own adjacent chest once the table finishes processing.
 	 */
 	@GameTest(template = SMALL, timeoutTicks = 500)
 	fun GameTestHelper.testSingleStepCraftFeedsTableAndDeliversResult() {
@@ -81,7 +81,7 @@ class TerminalCraftGameTest {
 		val controllerPos = BlockPos(1, 2, 0)
 		val feedPipePos = BlockPos(2, 2, 0)
 		val tablePos = BlockPos(3, 2, 0)
-		val outputPipePos = BlockPos(3, 2, 1)
+		val patternHookPos = BlockPos(3, 2, 1)
 		val linkPipePos = BlockPos(2, 2, 1)
 		val terminalPos = BlockPos(2, 2, 2)
 		val destPos = BlockPos(2, 2, 3)
@@ -100,15 +100,17 @@ class TerminalCraftGameTest {
 		terminal.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val terminalState = terminal.hooks.getOrPut(Direction.NORTH.name) { TerminalHookType.createState() } as TerminalHookState
 
-		setBlock(outputPipePos, BlockRegistry.Hook.defaultBlockState())
-		val outputHook = getBlockEntity(outputPipePos) as HookBlockEntity
-		outputHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		val providerState = outputHook.hooks.getOrPut(Direction.NORTH.name) { ProviderHookType.createState() } as ProviderHookState
-		// ProviderHookState extends SortingHookState and defaults to an empty whitelist (reject
-		// everything) - see PipeExtractionGameTest.testRequesterHookPullsFromProviderHook's
-		// identical fix. A blacklist with no entries accepts everything, matching an unfiltered
-		// provider's intended behavior.
-		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		val pattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT)), ItemResource.of(ItemStack(Items.IRON_INGOT))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_BLOCK)), 1)),
+			kind = PatternKind.PROCESSING,
+		)
+
+		setBlock(patternHookPos, BlockRegistry.Hook.defaultBlockState())
+		val patternHook = getBlockEntity(patternHookPos) as HookBlockEntity
+		patternHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val patternHookState = patternHook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		patternHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
 
 		setBlock(linkPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
@@ -118,17 +120,10 @@ class TerminalCraftGameTest {
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
 
-		val table = getBlockEntity(tablePos) as AssemblyTableBlockEntity
-		table.patterns += Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT)), ItemResource.of(ItemStack(Items.IRON_INGOT))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_BLOCK)), 1)),
-			kind = PatternKind.PROCESSING,
-		)
-
 		val target = ItemResource.of(ItemStack(Items.IRON_BLOCK))
 		runAfterDelay(20) {
-			val reachableTables = RequestFulfillment.reachableAssemblyTables(level as ServerLevel, terminal.blockPos)
-			assertTrue(reachableTables.isNotEmpty()) { "Expected the assembly table to be reachable from the terminal, got $reachableTables" }
+			val reachableProviders = RequestFulfillment.reachablePatternProviders(level as ServerLevel, terminal.blockPos)
+			assertTrue(reachableProviders.isNotEmpty()) { "Expected the pattern provider hook to be reachable from the terminal, got $reachableProviders" }
 			val result = CraftingRequest.resolve(level as ServerLevel, terminal.blockPos, target, 1)
 			assertTrue(result is CraftingResolver.Result.Success) { "Expected the iron block to resolve to exactly one craft step, got $result" }
 			terminalState.jobs += CraftingJob(target, 1, (result as CraftingResolver.Result.Success).plan.steps)
@@ -136,8 +131,9 @@ class TerminalCraftGameTest {
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			val table = getBlockEntity(tablePos) as AssemblyTableBlockEntity
 			assertTrue(dest.getItem(0).`is`(Items.IRON_BLOCK) && dest.getItem(0).count == 1) {
-				"Expected 1 crafted iron block to have arrived at the terminal's own chest, got ${dest.getItem(0)}"
+				"Expected 1 crafted iron block to have arrived at the terminal's own chest, got ${dest.getItem(0)} (table active pattern: ${table.activePattern})"
 			}
 		}
 	}

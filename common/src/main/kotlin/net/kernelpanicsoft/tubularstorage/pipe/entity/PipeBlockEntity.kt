@@ -8,6 +8,7 @@ import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.client.PipeContentsClientCache
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
+import net.kernelpanicsoft.tubularstorage.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
@@ -78,7 +79,15 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				continue
 			}
 
-			if (isPipe(serverLevel, nextPos)) {
+			// A route ending at a subnet boundary (see SubnetBoundary) always terminates its own
+			// `path` right at the far hook's own position, which is still, ordinarily, "a pipe" as
+			// far as this hop check is concerned - without the boundary carve-out below, delivery
+			// would keep trying to hop the item into a further pipe segment that was never actually
+			// part of the route, instead of the InterfaceHookType hook's own stock right there.
+			val direction = Direction.fromDelta(nextPos.x - pos.x, nextPos.y - pos.y, nextPos.z - pos.z)
+			val boundary = direction != null && SubnetBoundary.isBoundaryEdge(serverLevel, pos, direction)
+
+			if (isPipe(serverLevel, nextPos) && !boundary) {
 				val nextTile = serverLevel.getBlockEntity(nextPos) as? PipeBlockEntity
 				if (nextTile == null) {
 					jam(serverLevel, pos, item)
@@ -86,14 +95,12 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					hopped = true
 					continue
 				}
-				val direction = Direction.fromDelta(nextPos.x - pos.x, nextPos.y - pos.y, nextPos.z - pos.z)
 				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color)
 				items.removeAt(index)
 				hopped = true
 				continue
 			}
 
-			val direction = Direction.fromDelta(nextPos.x - pos.x, nextPos.y - pos.y, nextPos.z - pos.z)
 			val storage = ItemApi.BLOCK.find(serverLevel, nextPos, direction?.opposite)
 			if (storage == null) {
 				jam(serverLevel, pos, item)
@@ -102,15 +109,15 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				continue
 			}
 
-			val resource = ItemResource.of(item.stack)
-			val inserted = storage.insert(resource, item.stack.count.toLong(), false)
+			val resource = item.stack.resource
+			val inserted = storage.insert(resource, item.stack.amount, false)
 			when {
-				inserted >= item.stack.count -> {
+				inserted >= item.stack.amount -> {
 					items.removeAt(index)
 					hopped = true
 				}
 				inserted > 0 -> {
-					item.stack.shrink(inserted.toInt())
+					item.stack.shrink(inserted)
 					items[index] = item.copy(progress = 1f)
 					hopped = true
 					index++
@@ -130,7 +137,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	}
 
 	private fun jam(level: ServerLevel, pos: BlockPos, item: TravelingItem) {
-		ItemEntity(level, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, item.stack)
+		ItemEntity(level, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, item.stack.resource.toStack(item.stack.amount.toInt()))
 			.also { level.addFreshEntity(it) }
 	}
 

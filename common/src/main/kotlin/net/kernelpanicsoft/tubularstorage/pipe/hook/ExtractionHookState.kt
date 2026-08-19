@@ -7,7 +7,7 @@ import net.minecraft.world.item.DyeColor
 /** Self-contained state for one [ExtractionHookType] attachment. */
 class ExtractionHookState : HookHolderState(ExtractionHookType.ID) {
 	/** Ticks since this hook last attempted an extraction; resets to 0 on every attempt, successful or not. */
-	var ticksSinceExtraction: Int by intField()
+	var ticksSinceExtraction: Int = 0
 
 	/**
 	 * The consignment color (if any) this hook stamps on whatever it sends out - see

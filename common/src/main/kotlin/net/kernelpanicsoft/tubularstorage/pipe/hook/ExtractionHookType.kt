@@ -1,21 +1,30 @@
 package net.kernelpanicsoft.tubularstorage.pipe.hook
 
 import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
+import net.kernelpanicsoft.tubularstorage.pipe.network.SubnetBoundary
+import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.item.Item
 
 /**
  * Periodically pulls a resource from the (non-pipe) inventory on the attached face and, if the
  * network can route it somewhere that will accept it, spawns it as a [TravelingItem]. The only
- * self-initiating hook - a [SortingHookType] hook never pulls on its own.
+ * self-initiating hook - a [FilterHookType] hook never pulls on its own.
+ *
+ * Facing an [InterfaceHookType] hook directly is the one case where the neighbor genuinely *is*
+ * "a pipe" (another [HookBlockEntity]) and this hook still pulls from it anyway - the subnet
+ * boundary's own active-extract role (`docs/design/m2-sorting-routing.md`), reaching across into
+ * whatever that interface's own [InterfaceHookState.stock] currently holds.
  */
 object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "extraction"
@@ -35,7 +44,10 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 		val color = state.color
 
 		val neighborPos = pos.relative(direction)
-		if (level.getBlockState(neighborPos).block is PipeBlock) return
+		// A hook-carrying neighbor is normally still "a pipe" for this guard's purposes (nothing
+		// to extract from) - except an InterfaceHookType hook facing this one, a subnet boundary
+		// this hook is deliberately allowed to reach across (see `docs/design/m2-sorting-routing.md`).
+		if (level.getBlockState(neighborPos).block is PipeBlock && !SubnetBoundary.isBoundaryEdge(level, pos, direction)) return
 		val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite) ?: return
 
 		for (slotIndex in 0 until storage.size()) {
@@ -50,11 +62,13 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 			val extracted = storage.extract(resource, available, false)
 			if (extracted <= 0) continue
 
-			tile.travelingItems += TravelingItem(resource.toStack(extracted.toInt()), direction, 0f, route, color)
+			tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction, 0f, route, color)
 			return
 		}
 	}
 
 	const val EXTRACTION_INTERVAL_TICKS = 10
 	const val EXTRACTION_AMOUNT = 64L
+
+	override fun asItem(): Item = ItemRegistry.ExtractionHook
 }

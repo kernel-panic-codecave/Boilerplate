@@ -3,13 +3,12 @@ package net.kernelpanicsoft.tubularstorage.pipe.network
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
-import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
 import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
-import net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType
+import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType
+import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -26,15 +25,22 @@ import java.util.UUID
  * Unlike M1, candidates aren't accepted on first hit: the whole reachable space is explored so
  * that a sorting hook's [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.priority]
  * can prefer one accepting destination over another. A candidate reached through a pipe face with
- * a [net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookType] hook attached is only valid if
+ * a [net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookType] hook attached is only valid if
  * the item's [color] and that hook's filter/mode accept it; a candidate reached through a
  * hookless face always accepts, at the baseline priority (0) - except on a
  * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity] that also carries a
- * [net.kernelpanicsoft.tubularstorage.pipe.hook.WarehouseTerminalHookType] hook on one of its other
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType] hook on one of its other
  * faces, where a hookless face is never a candidate: it's the terminal's own well-defined
  * withdrawal destination (see `WarehouseTerminalMenu.adjacentInventory`), reachable only via
  * [findRouteTo]'s targeted routing, not something a default route or extractor's push should ever
  * dump into.
+ *
+ * A [SubnetBoundary.isBoundaryEdge] never gets the ordinary "keep walking the BFS through it"
+ * treatment an ordinary hook-to-hook/pipe-to-pipe connection would: [step] instead evaluates
+ * whichever hook sits on *this* side of the edge as a normal candidate against whatever's exposed
+ * on the far side (an [net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType] hook's own
+ * stock) - the far network's own topology beyond that one hook stays invisible to this search,
+ * which is the isolation the boundary exists for.
  */
 object PipeRouter {
 	private data class CacheKey(
@@ -100,7 +106,12 @@ object PipeRouter {
 			val neighborPos = current.relative(direction)
 			if (!visited.add(neighborPos)) continue
 			if (neighborPos == to) return path + neighborPos
-			if (isPipe(level, neighborPos)) queue += neighborPos to (path + neighborPos)
+			// A boundary edge (see SubnetBoundary) is only ever a valid *destination* (the check
+			// above already covers that), never a through-route to somewhere further on the far
+			// side - without this, a delivery leg that happens to pass near a boundary can find a
+			// shorter-looking path straight through the far network instead of staying within its
+			// own, silently misdelivering (extracted stock landing right back where it came from).
+			if (isPipe(level, neighborPos) && !SubnetBoundary.isBoundaryEdge(level, current, direction)) queue += neighborPos to (path + neighborPos)
 		}
 		return stepTo(level, to, queue, visited)
 	}
@@ -129,7 +140,8 @@ object PipeRouter {
 			val neighborPos = current.relative(direction)
 			if (!visited.add(neighborPos)) continue
 
-			if (isPipe(level, neighborPos)) {
+			val boundary = SubnetBoundary.isBoundaryEdge(level, current, direction)
+			if (isPipe(level, neighborPos) && !boundary) {
 				queue += neighborPos to (path + neighborPos)
 				continue
 			}
@@ -138,12 +150,14 @@ object PipeRouter {
 			if (storage.insert(resource, 1, true) <= 0) continue
 
 			val hookState = tile?.hooks?.get(direction.name) as? HookHolderState
+			val hookType = hookState?.type?.let(HookTypeRegistry::byId)
 			if (hookState == null && tile != null && hasTerminal(tile)) continue
+			if (hookType != null && !hookType.validRoute) continue
 
 			val priority = if (tile != null && hookState is SortingHookState) {
 				val module = hookState.routing
 				if (module.color != null && module.color != color) continue
-				if (!matchesFilter(tile, direction, module, resource)) continue
+				if (!hookState.accepts(resource, color)) continue
 				module.priority
 			} else {
 				0
@@ -159,22 +173,10 @@ object PipeRouter {
 		return step(level, resource, color, queue, visited, nextBest)
 	}
 
-	/** Whether [tile] carries a [WarehouseTerminalHookType] hook on any of its faces - see [step]'s hookless-face exclusion. */
+	/** Whether [tile] carries a [TerminalHookType] hook on any of its faces - see [step]'s hookless-face exclusion. */
 	private fun hasTerminal(tile: HookBlockEntity): Boolean {
-		for ((_, entry) in tile.hooks) if ((entry as HookHolderState).type == WarehouseTerminalHookType.ID) return true
+		for ((_, entry) in tile.hooks) if ((entry as HookHolderState).type == TerminalHookType.ID) return true
 		return false
 	}
 
-	/** Empty filter grid: whitelist accepts nothing, blacklist accepts everything. Otherwise matches by item (ignoring data components), per [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.mode]. */
-	private fun matchesFilter(tile: HookBlockEntity, direction: Direction, routing: RoutingModule, resource: ItemResource): Boolean {
-		val filter = tile.filterFor(direction)
-		val entries = (0 until filter.size()).map { filter[it].resource }.filter { !it.isBlank }
-		if (entries.isEmpty()) return routing.mode == FilterMode.BLACKLIST
-
-		val matchesAnyEntry = entries.any { it.isOf(resource.item) }
-		return when (routing.mode) {
-			FilterMode.WHITELIST -> matchesAnyEntry
-			FilterMode.BLACKLIST -> !matchesAnyEntry
-		}
-	}
 }

@@ -17,6 +17,10 @@ import java.util.WeakHashMap
  * always derived from the pipes actually present, so there's nothing to desync from world data.
  * Removal can split a network, which [ensureRegistered]'s cheap merge can't detect; that case is
  * handled by a chunked BFS rebuild spread across [tick] calls (see [scheduleRebuild]).
+ *
+ * [SubnetBoundary.isBoundaryEdge] is the one exception to "any two adjacent pipe/hook positions
+ * merge": an edge it flags never merges its two sides, no matter how many other regular
+ * connections eventually join them from elsewhere - see its own KDoc.
  */
 class PipeNetworkManager {
 	private val networkOf = HashMap<BlockPos, UUID>()
@@ -41,6 +45,7 @@ class PipeNetworkManager {
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
 			if (!PipeRouter.isPipe(level, neighborPos)) continue
+			if (SubnetBoundary.isBoundaryEdge(level, pos, direction)) continue
 			ensureRegistered(level, neighborPos)
 			val ownId = networkOf.getValue(pos)
 			val neighborId = networkOf.getValue(neighborPos)

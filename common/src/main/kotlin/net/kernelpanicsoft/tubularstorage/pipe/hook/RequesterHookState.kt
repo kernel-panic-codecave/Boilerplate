@@ -9,5 +9,5 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook
  */
 class RequesterHookState : HookHolderState(RequesterHookType.ID) {
 	val request by itemField(1)
-	var ticksSinceRequest: Int by intField()
+	var ticksSinceRequest: Int = 0
 }

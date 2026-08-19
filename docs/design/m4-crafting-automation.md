@@ -35,6 +35,10 @@ The result (`CraftingResolver.Plan`) lists `steps` (one `CraftStep(pattern, runs
 
 [Decision #4](README.md#resolved-architectural-decisions): a real `AssemblyTableBlockEntity` that pipes feed and which visibly processes crafts over time, rather than resolving instantly once inputs are satisfied. Fits the mailroom/industrial-process theme, and gives M5's pressure mechanic something concrete to gate via the `PressureConsumer` hook (`basePressureCost`/`onPressureTick` scale how fast a craft completes — see [m5-pressure-power.md](m5-pressure-power.md)).
 
+Every tick, `AssemblyTableBlockEntity.tick` picks the first of its own `patterns` whose `requiredInputs()` are all currently satisfied in `grid` and whose `output` has room for the result (`canRun`, re-checked every tick rather than cached — an ingredient pulled back out mid-run genuinely aborts progress, since `progressTicks` resets to `0` the moment nothing matches). Once a pattern matches, `progressTicks` accumulates `onPressureTick(NO_PRESSURE_LINE)` (a stand-in energy line until M5, so this is presently a flat `1.0`/tick) each tick; at `PROCESSING_TIME_TICKS` (100, ~5 seconds at 1.0x) it consumes the inputs and produces the outputs (`run`) and resets. Confirmed genuinely gated (not instant) via a gametest that reverted the tick-budget check and watched it fail.
+
+`grid`/`output` are one shared slot pair for both authoring and running a pattern — the same cells `AssemblyTableMenu`'s "Encode" button reads from also feed `tick`'s matching, and pipes reach them through `ioStorage`, a small `CommonStorage<ItemResource>` wrapper that routes `insert` to `grid` and `extract` to `output` regardless of which slot index a call touches (`get`/`size` still expose both combined, for generic introspection), exposed via `exposeRackStorage` (the same helper the rack block types use — generic over any `CommonStorage`, not rack-specific).
+
 ## Terminal
 
 Reuses `WarehouseTerminalBlock`'s menu with a "Craft" tab (`TabContainerPanel`):

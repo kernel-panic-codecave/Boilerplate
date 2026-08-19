@@ -86,12 +86,12 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 		}
 	}.apply { exposeRackStorage(UnstackableRackBlockEntity::storage) }
 
-	/** No [exposeItemStorage] yet - pipe-fed processing (grid/output exposure) lands with the actual processing behavior, not the bare pattern data model. */
+	/** [AssemblyTableBlockEntity.ioStorage] is a custom [earth.terrarium.common_storage_lib.storage.base.CommonStorage], not an [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] - exposed via [exposeRackStorage] for the same reason [BulkRack]/[UnstackableRack] are (that helper isn't rack-specific, just generic over any `CommonStorage`). */
 	val AssemblyTable: BlockEntityType<AssemblyTableBlockEntity> by register("assembly_table") {
 		blockEntityType(::AssemblyTableBlockEntity) {
 			add(BlockRegistry.AssemblyTable)
 		}
-	}
+	}.apply { exposeRackStorage(AssemblyTableBlockEntity::ioStorage) }
 
 	override fun initClient() {
 		SimpleBlockEntityVisualizer.builder(Hook)

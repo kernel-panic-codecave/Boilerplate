@@ -11,15 +11,21 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternBufferIO
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType
+import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.warehouse.Bounds
+import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.entity.ChestBlockEntity
 
 /**
  * GameTest coverage for [PatternProviderHookType]'s own reactive tick behavior against an
@@ -189,5 +195,73 @@ class PatternProviderHookGameTest {
 		assertTrue(PatternProviderHookType.amountIn(hookState.bufferFor(0), planks) == 2L) { "Expected the sticks pattern's own buffer to hold exactly its own 2-plank requirement, got ${PatternProviderHookType.amountIn(hookState.bufferFor(0), planks)}" }
 		assertTrue(PatternProviderHookType.amountIn(hookState.bufferFor(1), planks) == 3L) { "Expected the pickaxe pattern's own buffer to hold the remaining 3 planks, got ${PatternProviderHookType.amountIn(hookState.bufferFor(1), planks)}" }
 		succeed()
+	}
+
+	/**
+	 * Two separate [PatternProviderHookState]s on different faces of the exact same
+	 * [HookBlockEntity] - a real delivery, [RequestFulfillment.request]'s own `deliverFace` in hand,
+	 * has to land in the *specific* face's own buffer it was aimed at rather than whichever
+	 * same-type hook the block happens to expose first. Both patterns deliberately share the same
+	 * input resource (iron ingots) so a delivery leaking into the wrong face's buffer would be
+	 * unmistakable rather than merely absent.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testTwoPatternProviderHooksOnDifferentFacesOfOneBlockStayIsolated() {
+		val rackPos = BlockPos(0, 2, 2)
+		val controllerPos = BlockPos(1, 2, 2)
+		val feedPipePos = BlockPos(2, 2, 2)
+		val hookPos = BlockPos(3, 2, 2)
+		val northTablePos = hookPos.relative(Direction.NORTH)
+		val southTablePos = hookPos.relative(Direction.SOUTH)
+
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(northTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+		setBlock(southTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		val hook = getBlockEntity(hookPos) as HookBlockEntity
+		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val northState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		val southState = hook.hooks.getOrPut(Direction.SOUTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+
+		val northPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_BLOCK)), 1)),
+			kind = PatternKind.PROCESSING,
+		)
+		val southPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_TRAPDOOR)), 1)),
+			kind = PatternKind.PROCESSING,
+		)
+		northState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = northPattern })
+		southState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = southPattern })
+
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.IRON_INGOT, 1))
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
+
+		val ironIngot = ItemResource.of(ItemStack(Items.IRON_INGOT))
+		val northTable = getBlockEntity(northTablePos) as AssemblyTableBlockEntity
+		var dispatched = false
+
+		succeedWhen {
+			if (!dispatched) {
+				val shipped = RequestFulfillment.request(level as ServerLevel, hook.blockPos, ResourceStack(ironIngot, 1), hook.blockPos, Direction.NORTH)
+				if (shipped > 0) dispatched = true
+			}
+
+			val southLeaked = PatternProviderHookType.amountIn(southState.bufferFor(0), ironIngot) > 0
+			assertTrue(!southLeaked) { "Expected the ingot aimed at the NORTH face to never leak into the SOUTH face's own buffer, got ${PatternProviderHookType.amountIn(southState.bufferFor(0), ironIngot)}" }
+
+			val northReceived = PatternProviderHookType.amountIn(northState.bufferFor(0), ironIngot) > 0 ||
+				northTable.activeRuns.any { it.pattern == northPattern } ||
+				(0 until northTable.output.size()).any { northTable.output.getResource(it) == ItemResource.of(ItemStack(Items.IRON_BLOCK)) && northTable.output.getAmount(it) > 0 }
+			assertTrue(northReceived) {
+				"Expected the ingot to actually reach the NORTH face's own buffer/run/output, got ${PatternProviderHookType.amountIn(northState.bufferFor(0), ironIngot)} buffered and activeRuns=${northTable.activeRuns.map { it.pattern }}"
+			}
+		}
 	}
 }

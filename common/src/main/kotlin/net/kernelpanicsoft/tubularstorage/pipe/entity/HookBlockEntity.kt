@@ -40,7 +40,7 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	 * each entry's own state already carries.
 	 */
 	@Sync
-	val hooks: NestedNBTHolderMap by nestedMapField { tag ->
+	val hooks: NestedNBTHolderMap<HookHolderState> by nestedMapField { tag ->
 		val id = ResourceLocation.parse(tag.getString("type"))
 		HookTypeRegistry.byId(id)?.createState() ?: error("Unknown hook type $id while loading $blockPos")
 	}
@@ -76,11 +76,11 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 	fun filterFor(direction: Direction) = (hooks[direction.name] as SortingHookState).filter
 
 	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu {
-		val hookState = hooks[pendingMenuFace.name] as HookHolderState
+		val hookState = hooks[pendingMenuFace.name] ?: error("No hook at $blockPos/$pendingMenuFace")
 		val hookType = HookTypeRegistry.byId(hookState.type) ?: error("Unknown hook type ${hookState.type} at $blockPos/$pendingMenuFace")
 		return hookType.createMenu(id, inventory, this, pendingMenuFace)
 	}
-	override fun getDisplayName(): Component = (hooks[pendingMenuFace.name] as? HookHolderState)?.type?.let { Component.translatable(Util.makeDescriptionId("hook", it)) } ?: blockState.block.name
+	override fun getDisplayName(): Component = hooks[pendingMenuFace.name]?.type?.let { Component.translatable(Util.makeDescriptionId("hook", it)) } ?: blockState.block.name
 	override fun saveExtraData(buf: FriendlyByteBuf) {
 		buf.writeBlockPos(blockPos)
 		buf.writeEnum(pendingMenuFace)
@@ -91,8 +91,7 @@ class HookBlockEntity(pos: BlockPos, state: BlockState) :
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
 		if (hooks.size == 0) return
-		for ((directionName, entry) in hooks) {
-			val hookState = entry as HookHolderState
+		for ((directionName, hookState) in hooks) {
 			val direction = Direction.valueOf(directionName)
 			val hookType = HookTypeRegistry.byId(hookState.type) ?: continue
 			hookType.tick(serverLevel, pos, direction, this, hookState)

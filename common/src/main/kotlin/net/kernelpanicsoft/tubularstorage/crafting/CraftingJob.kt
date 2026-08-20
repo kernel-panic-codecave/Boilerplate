@@ -3,6 +3,7 @@ package net.kernelpanicsoft.tubularstorage.crafting
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.tubularstorage.network.CraftJobTreeNode
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 
 /**
  * One in-flight [CraftingResolver.Plan] execution, driven forward a tick at a time by
@@ -45,6 +46,17 @@ class CraftingJob(val target: ItemResource, val targetAmount: Long, val steps: L
 	 * [net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment.request] can still resolve.
 	 */
 	val patternIndexForStep: MutableMap<Int, Int> = mutableMapOf()
+
+	/**
+	 * [hookPosForStep]'s own face for each [steps] index, once resolved - which specific face of
+	 * that block actually carries the [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState]
+	 * this step means, threaded all the way through
+	 * [net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment.request]'s own
+	 * `deliverFace` so delivery lands correctly even when another same-type hook sits on a different
+	 * face of the same block (see [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem.targetFace]'s
+	 * own KDoc). Populated in lockstep with [tableForStep]/[hookPosForStep]/[patternIndexForStep].
+	 */
+	val hookFaceForStep: MutableMap<Int, Direction> = mutableMapOf()
 
 	/**
 	 * `(step index, ingredient resource)` -> cumulative amount already delivered toward that

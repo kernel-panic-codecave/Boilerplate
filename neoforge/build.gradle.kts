@@ -50,6 +50,7 @@ loom {
 			name = "Minecraft GameTest"
 			property("neoforge.enableGameTest", "true")
 			property("neoforge.gameTestServer", "true")
+			property("archie.gametest.side", "server")
 			property("archie.gametest", "true")
 			property("archie.gametest.modid", "tubularstorage")
 		}

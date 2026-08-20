@@ -28,7 +28,7 @@ class FilterCardState(stack: ItemStack) {
 
 	var mode: FilterMode by holder.field(FilterModeSerializer) { FilterMode.WHITELIST }
 
-	private val conditionStates: NestedNBTHolderMap by holder.nestedMapField { tag ->
+	private val conditionStates: NestedNBTHolderMap<FilterConditionState> by holder.nestedMapField { tag ->
 		val id = ResourceLocation.parse(tag.getString("type"))
 		FilterConditionTypeRegistry.byId(id)?.createState() ?: error("Unknown filter condition type $id")
 	}

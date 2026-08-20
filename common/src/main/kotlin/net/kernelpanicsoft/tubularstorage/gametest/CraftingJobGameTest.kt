@@ -79,7 +79,7 @@ class CraftingJobGameTest {
 		job.tableForStep[0] = BlockPos.ZERO
 		assertTrue(job.stepStatus(0) == "Feeding ingredients…") { "Expected an assigned-but-unfed step to report feeding, got ${job.stepStatus(0)}" }
 
-		for (resource in blockPattern.requiredInputs().keys) job.fedInputs += 0 to resource
+		for ((resource, perRun) in blockPattern.requiredInputs()) job.fedAmounts[0 to resource] = perRun * job.steps[0].runs
 		assertTrue(job.stepStatus(0) == "Processing…") { "Expected a fully-fed step to report processing, got ${job.stepStatus(0)}" }
 
 		job.done = true

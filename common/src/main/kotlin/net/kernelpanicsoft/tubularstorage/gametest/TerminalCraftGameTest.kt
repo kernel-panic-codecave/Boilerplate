@@ -131,4 +131,328 @@ class TerminalCraftGameTest {
 			}
 		}
 	}
+
+	/**
+	 * A request needing several runs of the same pattern (12 sticks, 2 planks -> 4 sticks each, 3
+	 * runs) has to actually collect *all* of them before the job finishes - a periodic
+	 * [RequestFulfillment.request] pull can land mid-batch and only find whatever's shipped so
+	 * far, so a job that marked itself done the first time *anything* arrived would leave the rest
+	 * of the batch stranded in the assembly table's own output slot forever.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 700)
+	fun GameTestHelper.testMultiRunCraftRequestCollectsTheFullAmountBeforeFinishing() {
+		val rackPos = BlockPos(0, 2, 0)
+		val controllerPos = BlockPos(1, 2, 0)
+		val feedPipePos = BlockPos(2, 2, 0)
+		val tablePos = BlockPos(3, 2, 0)
+		val patternHookPos = BlockPos(3, 2, 1)
+		val linkPipePos = BlockPos(2, 2, 1)
+		val terminalPos = BlockPos(2, 2, 2)
+
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(tablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+
+		setBlock(terminalPos, BlockRegistry.Hook.defaultBlockState())
+		val terminal = getBlockEntity(terminalPos) as HookBlockEntity
+		terminal.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val terminalState = terminal.hooks.getOrPut(Direction.NORTH.name) { TerminalHookType.createState() } as TerminalHookState
+
+		val pattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			kind = PatternKind.PROCESSING,
+		)
+
+		setBlock(patternHookPos, BlockRegistry.Hook.defaultBlockState())
+		val patternHook = getBlockEntity(patternHookPos) as HookBlockEntity
+		patternHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val patternHookState = patternHook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		patternHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
+
+		setBlock(linkPipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.OAK_PLANKS, 64))
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
+
+		val target = ItemResource.of(ItemStack(Items.STICK))
+		runAfterDelay(20) {
+			val result = CraftingRequest.resolve(level as ServerLevel, terminal.blockPos, target, 12)
+			assertTrue(result is CraftingResolver.Result.Success) { "Expected 12 sticks to resolve to a single 3-run craft step, got $result" }
+			terminalState.jobs += CraftingJob(target, 12, (result as CraftingResolver.Result.Success).plan.steps)
+		}
+
+		succeedWhen {
+			assertTrue(terminalState.output.getResource(0) == target && terminalState.output.getAmount(0) == 12L) {
+				"Expected all 12 requested sticks to have arrived in the terminal's own output slots, got ${terminalState.output.getResource(0)} x${terminalState.output.getAmount(0)}"
+			}
+			assertTrue(terminalState.jobs.isEmpty()) { "Expected the job to be done and dropped from the queue only once the full amount actually arrived" }
+		}
+	}
+
+	/**
+	 * A genuine two-level chain (oak logs -> oak planks -> sticks, the same shape as a wooden
+	 * pickaxe depending on sticks which themselves depend on planks) with only logs in stock -
+	 * nothing pre-supplies planks, so the sticks step's own planks requirement can only ever be
+	 * satisfied by the planks step actually running first. Regression coverage for
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.fedAmounts]: a step's input used to
+	 * be marked "fed" after the *first* delivery no matter how small, which for a multi-step job
+	 * almost always fires before the producing step has finished - here, before any planks exist
+	 * at all - permanently starving the rest of what the sticks step actually needed and stalling
+	 * the whole job forever.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 900)
+	fun GameTestHelper.testMultiStepCraftFeedsALaterStepsInputAcrossMultipleDeliveries() {
+		val rackPos = BlockPos(0, 2, 0)
+		val controllerPos = BlockPos(1, 2, 0)
+		val feedPipePos = BlockPos(2, 2, 0)
+		val planksTablePos = BlockPos(3, 2, 0)
+		val planksHookPos = BlockPos(3, 2, 1)
+		val sticksTablePos = BlockPos(3, 2, 2)
+		val sticksHookPos = BlockPos(3, 2, 3)
+		val linkPipePos = BlockPos(2, 2, 1)
+		val linkPipe2Pos = BlockPos(2, 2, 2)
+		val linkPipe3Pos = BlockPos(2, 2, 3)
+		val terminalPos = BlockPos(2, 2, 4)
+
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(planksTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+		setBlock(sticksTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+
+		setBlock(terminalPos, BlockRegistry.Hook.defaultBlockState())
+		val terminal = getBlockEntity(terminalPos) as HookBlockEntity
+		terminal.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val terminalState = terminal.hooks.getOrPut(Direction.NORTH.name) { TerminalHookType.createState() } as TerminalHookState
+
+		val planksPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
+			kind = PatternKind.PROCESSING,
+		)
+		setBlock(planksHookPos, BlockRegistry.Hook.defaultBlockState())
+		val planksHook = getBlockEntity(planksHookPos) as HookBlockEntity
+		planksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val planksHookState = planksHook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		planksHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = planksPattern })
+
+		val sticksPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			kind = PatternKind.PROCESSING,
+		)
+		setBlock(sticksHookPos, BlockRegistry.Hook.defaultBlockState())
+		val sticksHook = getBlockEntity(sticksHookPos) as HookBlockEntity
+		sticksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val sticksHookState = sticksHook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		sticksHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
+
+		setBlock(linkPipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(linkPipe2Pos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(linkPipe3Pos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		// Exactly enough oak logs for 8 planks (2 runs), which is exactly enough for 16 sticks (4
+		// runs) - no slack, so the whole chain genuinely has to run to completion.
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.OAK_LOG, 2))
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
+
+		val target = ItemResource.of(ItemStack(Items.STICK))
+		runAfterDelay(20) {
+			val result = CraftingRequest.resolve(level as ServerLevel, terminal.blockPos, target, 16)
+			assertTrue(result is CraftingResolver.Result.Success) { "Expected 16 sticks (needing 8 planks, needing 2 logs) to resolve to a two-step craft, got $result" }
+			terminalState.jobs += CraftingJob(target, 16, (result as CraftingResolver.Result.Success).plan.steps)
+		}
+
+		succeedWhen {
+			assertTrue(terminalState.output.getResource(0) == target && terminalState.output.getAmount(0) == 16L) {
+				"Expected all 16 requested sticks to have arrived in the terminal's own output slots, got ${terminalState.output.getResource(0)} x${terminalState.output.getAmount(0)}"
+			}
+			assertTrue(terminalState.jobs.isEmpty()) { "Expected the job to be done and dropped from the queue only once the full amount actually arrived" }
+		}
+	}
+
+	/**
+	 * The real "wooden pickaxe" shape: the target (pickaxe) itself directly needs planks *and*
+	 * sticks, and sticks themselves also need planks - so the planks step has two independent
+	 * consumers (the sticks step, and the target/pickaxe step) pulling from the very same table's
+	 * output at once, not just one. Regression coverage for exactly this shared-intermediate case,
+	 * distinct from [testMultiStepCraftFeedsALaterStepsInputAcrossMultipleDeliveries]'s single-
+	 * consumer chain.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 900)
+	fun GameTestHelper.testSharedIntermediateFeedsBothItsConsumers() {
+		val rackPos = BlockPos(0, 2, 0)
+		val controllerPos = BlockPos(1, 2, 0)
+		val feedPipePos = BlockPos(2, 2, 0)
+		val planksTablePos = BlockPos(3, 2, 0)
+		val planksHookPos = BlockPos(3, 2, 1)
+		val sticksTablePos = BlockPos(3, 2, 2)
+		val sticksHookPos = BlockPos(3, 2, 3)
+		val linkPipePos = BlockPos(2, 2, 1)
+		val linkPipe2Pos = BlockPos(2, 2, 2)
+		val linkPipe3Pos = BlockPos(2, 2, 3)
+		val terminalPos = BlockPos(2, 2, 4)
+		// The pickaxe table/hook branch off vertically (down a level) from linkPipe2Pos, rather
+		// than needing a fourth Z slot the SMALL template's 5-deep footprint doesn't have room for.
+		val verticalLinkPos = BlockPos(2, 1, 2)
+		val pickaxeHookPos = BlockPos(2, 1, 3)
+		val pickaxeTablePos = BlockPos(3, 1, 3)
+
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(planksTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+		setBlock(sticksTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+		setBlock(pickaxeTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+
+		setBlock(terminalPos, BlockRegistry.Hook.defaultBlockState())
+		val terminal = getBlockEntity(terminalPos) as HookBlockEntity
+		terminal.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val terminalState = terminal.hooks.getOrPut(Direction.NORTH.name) { TerminalHookType.createState() } as TerminalHookState
+
+		val planksPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
+			kind = PatternKind.PROCESSING,
+		)
+		setBlock(planksHookPos, BlockRegistry.Hook.defaultBlockState())
+		val planksHook = getBlockEntity(planksHookPos) as HookBlockEntity
+		planksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val planksHookState = planksHook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		planksHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = planksPattern })
+
+		val sticksPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			kind = PatternKind.PROCESSING,
+		)
+		setBlock(sticksHookPos, BlockRegistry.Hook.defaultBlockState())
+		val sticksHook = getBlockEntity(sticksHookPos) as HookBlockEntity
+		sticksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val sticksHookState = sticksHook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		sticksHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
+
+		val pickaxePattern = Pattern(
+			inputs = listOf(
+				ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS)),
+				ItemResource.of(ItemStack(Items.STICK)), ItemResource.of(ItemStack(Items.STICK)),
+			),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.WOODEN_PICKAXE)), 1)),
+			kind = PatternKind.PROCESSING,
+		)
+		setBlock(pickaxeHookPos, BlockRegistry.Hook.defaultBlockState())
+		val pickaxeHook = getBlockEntity(pickaxeHookPos) as HookBlockEntity
+		pickaxeHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val pickaxeHookState = pickaxeHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		pickaxeHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pickaxePattern })
+
+		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(linkPipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(linkPipe2Pos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(linkPipe3Pos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(verticalLinkPos, BlockRegistry.Pipe.defaultBlockState())
+
+		// Exactly enough logs: pickaxe needs 3 planks directly + 2 (via 1 stick-run) = 5 planks,
+		// needing 2 log-runs (4+4=8 >= 5) - no slack, so both planks consumers genuinely have to be
+		// fed from the very same table's output.
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.OAK_LOG, 2))
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
+
+		val target = ItemResource.of(ItemStack(Items.WOODEN_PICKAXE))
+		runAfterDelay(20) {
+			val result = CraftingRequest.resolve(level as ServerLevel, terminal.blockPos, target, 1)
+			assertTrue(result is CraftingResolver.Result.Success) { "Expected 1 wooden pickaxe to resolve to a three-step craft, got $result" }
+			terminalState.jobs += CraftingJob(target, 1, (result as CraftingResolver.Result.Success).plan.steps)
+		}
+
+		succeedWhen {
+			assertTrue(terminalState.output.getResource(0) == target && terminalState.output.getAmount(0) == 1L) {
+				"Expected the pickaxe to have arrived in the terminal's own output slot, got ${terminalState.output.getResource(0)} x${terminalState.output.getAmount(0)}"
+			}
+			assertTrue(terminalState.jobs.isEmpty()) { "Expected the job to be done and dropped from the queue only once the pickaxe actually arrived" }
+		}
+	}
+
+	/**
+	 * The same wooden-pickaxe chain as [testSharedIntermediateFeedsBothItsConsumers], but with a
+	 * single pattern-provider hook/table holding *all three* patterns at once, rather than one
+	 * table per pattern - a very plausible real setup (why build three assembly tables when one
+	 * can hold every pattern it needs). [CraftingJob.tableForStep]'s own assignment logic refuses
+	 * to give the same table to a second step of the same job
+	 * (`it.targetPos !in job.tableForStep.values`), which was fine when every step naturally had
+	 * its own dedicated table - here it means the planks step claims the only table and the
+	 * sticks/pickaxe steps can *never* get one at all, stalling forever on "No free pattern
+	 * provider" even once the planks step is long done running.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 900)
+	fun GameTestHelper.testOneTableSharedAcrossAllStepsOfTheSameJob() {
+		val rackPos = BlockPos(0, 2, 0)
+		val controllerPos = BlockPos(1, 2, 0)
+		val feedPipePos = BlockPos(2, 2, 0)
+		val tablePos = BlockPos(3, 2, 0)
+		val hookPos = BlockPos(3, 2, 1)
+		val linkPipePos = BlockPos(2, 2, 1)
+		val terminalPos = BlockPos(2, 2, 2)
+
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(tablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+
+		setBlock(terminalPos, BlockRegistry.Hook.defaultBlockState())
+		val terminal = getBlockEntity(terminalPos) as HookBlockEntity
+		terminal.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val terminalState = terminal.hooks.getOrPut(Direction.NORTH.name) { TerminalHookType.createState() } as TerminalHookState
+
+		val planksPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
+			kind = PatternKind.PROCESSING,
+		)
+		val sticksPattern = Pattern(
+			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			kind = PatternKind.PROCESSING,
+		)
+		val pickaxePattern = Pattern(
+			inputs = listOf(
+				ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS)),
+				ItemResource.of(ItemStack(Items.STICK)), ItemResource.of(ItemStack(Items.STICK)),
+			),
+			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.WOODEN_PICKAXE)), 1)),
+			kind = PatternKind.PROCESSING,
+		)
+
+		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		val hook = getBlockEntity(hookPos) as HookBlockEntity
+		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		hookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = planksPattern })
+		hookState.patterns.get(1).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
+		hookState.patterns.get(2).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pickaxePattern })
+
+		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(linkPipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.OAK_LOG, 2))
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
+
+		val target = ItemResource.of(ItemStack(Items.WOODEN_PICKAXE))
+		runAfterDelay(20) {
+			val result = CraftingRequest.resolve(level as ServerLevel, terminal.blockPos, target, 1)
+			assertTrue(result is CraftingResolver.Result.Success) { "Expected 1 wooden pickaxe to resolve to a three-step craft, got $result" }
+			terminalState.jobs += CraftingJob(target, 1, (result as CraftingResolver.Result.Success).plan.steps)
+		}
+
+		succeedWhen {
+			assertTrue(terminalState.output.getResource(0) == target && terminalState.output.getAmount(0) == 1L) {
+				"Expected the pickaxe to have arrived in the terminal's own output slot, got ${terminalState.output.getResource(0)} x${terminalState.output.getAmount(0)}"
+			}
+			assertTrue(terminalState.jobs.isEmpty()) { "Expected the job to be done and dropped from the queue only once the pickaxe actually arrived" }
+		}
+	}
 }

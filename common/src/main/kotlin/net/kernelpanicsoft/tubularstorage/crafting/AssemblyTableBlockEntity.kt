@@ -38,7 +38,7 @@ class AssemblyTableBlockEntity(pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(TileRegistry.AssemblyTable, pos, state), ExtendedMenuProvider, PressureConsumer {
 
 	val grid: ArchieItemStorage by itemField(Pattern.GRID_SIZE)
-	val output: ArchieItemStorage by itemField(1)
+	val output: ArchieItemStorage by itemField(OUTPUT_SLOTS)
 
 	/** Ticks [activePattern] has been processing for - reset to `0` whenever it stops matching [grid]/[output] (an ingredient pulled back out mid-run genuinely aborts it) or once it completes. */
 	private var progressTicks: Double by field(Double.serializer()) { 0.0 }
@@ -52,6 +52,18 @@ class AssemblyTableBlockEntity(pos: BlockPos, state: BlockState) :
 	 */
 	var activePattern: Pattern? = null
 		private set
+
+	/**
+	 * Runs currently processing in parallel, fed via a [PatternProviderHookType] hook's own
+	 * per-pattern buffer ([net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState.patternBuffers])
+	 * rather than [grid] - a genuinely separate pathway from [activePattern]'s single, [grid]-
+	 * checked run: ingredients are consumed from the buffer the instant [beginBufferedRun] accepts
+	 * a run (an "atomic move-in", not tracked in [grid] at all), so any number of different
+	 * patterns can process side by side without contending over shared grid slots the way trying
+	 * to run them all through [beginProcessing]/[grid] at once would. Not NBT-persisted, same
+	 * runtime-only tradeoff as [activePattern].
+	 */
+	val activeRuns: MutableList<ActiveRun> = mutableListOf()
 
 	val ioStorage: CommonStorage<ItemResource> = AssemblyTableIO(grid, output)
 
@@ -79,20 +91,62 @@ class AssemblyTableBlockEntity(pos: BlockPos, state: BlockState) :
 		return true
 	}
 
+	/**
+	 * Starts a new parallel [ActiveRun] for [pattern], trusting the caller ([PatternProviderHookType])
+	 * already extracted this run's own ingredients from its own buffer - unlike [beginProcessing],
+	 * this never touches [grid] and never re-checks anything about [pattern]'s own inputs, since
+	 * they're already spent by the time this is called. Returns `false` (and does nothing) once
+	 * [activeRuns] is already at [maxParallelRuns] - the caller should treat that as "try again once
+	 * something else finishes," the same as a rejected [beginProcessing].
+	 */
+	fun beginBufferedRun(pattern: Pattern): Boolean {
+		if (activeRuns.size >= maxParallelRuns()) return false
+		activeRuns += ActiveRun(pattern)
+		setChanged()
+		return true
+	}
+
+	/** How many [activeRuns] can process at once right now. TODO M5: scale with real pressure capacity, once this has one - a flat baseline until then, same as [maxBufferedRunsPerPattern]. */
+	fun maxParallelRuns(): Int = BASE_MAX_PARALLEL_RUNS
+
+	/** How many runs' worth of a single pattern [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState.patternBuffers] holds before refusing more. TODO M5: scale with real pressure capacity - a flat baseline until then, same as [maxParallelRuns]. */
+	fun maxBufferedRunsPerPattern(): Int = BASE_MAX_BUFFERED_RUNS_PER_PATTERN
+
 	fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
-		val pattern = activePattern ?: return
-		if (!canRun(pattern)) {
-			activePattern = null
-			progressTicks = 0.0
-			return
+
+		val pattern = activePattern
+		if (pattern != null) {
+			if (!canRun(pattern)) {
+				activePattern = null
+				progressTicks = 0.0
+			} else {
+				progressTicks += onPressureTick(NO_PRESSURE_LINE)
+				if (progressTicks >= PROCESSING_TIME_TICKS) {
+					progressTicks = 0.0
+					run(pattern)
+					activePattern = null
+				}
+			}
 		}
 
-		progressTicks += onPressureTick(NO_PRESSURE_LINE)
-		if (progressTicks < PROCESSING_TIME_TICKS) return
-		progressTicks = 0.0
-		run(pattern)
-		activePattern = null
+		val iterator = activeRuns.iterator()
+		while (iterator.hasNext()) {
+			val activeRun = iterator.next()
+			if (!activeRun.completed) {
+				activeRun.progressTicks += onPressureTick(NO_PRESSURE_LINE)
+				if (activeRun.progressTicks < PROCESSING_TIME_TICKS) continue
+				activeRun.completed = true
+			}
+			// Completed, but output might not have room yet (another run's own product still
+			// sitting there, say) - stays in activeRuns, retried next tick, rather than losing the
+			// already-consumed ingredients' own product.
+			val outputs = activeRun.pattern.outputs
+			if (outputs.any { out -> output.insert(out.resource, out.amount, true) < out.amount }) continue
+			for (out in outputs) output.insert(out.resource, out.amount, false)
+			iterator.remove()
+			setChanged()
+		}
 	}
 
 	/** Whether [grid] currently holds enough of every one of [pattern]'s [Pattern.requiredInputs], and [output] has room for the result - checked every tick rather than cached, since either can change out from under an in-progress run (an ingredient pulled back out, say). */
@@ -125,12 +179,31 @@ class AssemblyTableBlockEntity(pos: BlockPos, state: BlockState) :
 		/** Ticks a matched pattern takes to complete at 1.0x (baseline, unaffected by pressure until M5) speed. */
 		const val PROCESSING_TIME_TICKS = 100.0
 
+		/** [output]'s own slot count - more than 1 so parallel runs of different patterns can each land their own product without waiting on each other's still-unclaimed output. */
+		private const val OUTPUT_SLOTS = 9
+
+		/** [maxParallelRuns]'s flat baseline until M5 gives pressure scaling a real meaning. */
+		private const val BASE_MAX_PARALLEL_RUNS = 3
+
+		/** [maxBufferedRunsPerPattern]'s flat baseline until M5 gives pressure scaling a real meaning. */
+		private const val BASE_MAX_BUFFERED_RUNS_PER_PATTERN = 4
+
 		/** Stand-in [ArchieEnergyStorage] for [onPressureTick] calls until M5 gives this block a real one - see [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity]'s identical [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity.pressureSpeedMultiplier]. */
 		private val NO_PRESSURE_LINE = ArchieEnergyStorage(0)
 
 		fun tick(level: Level, pos: BlockPos, state: BlockState, tile: AssemblyTableBlockEntity) = tile.tick(level, pos, state)
 	}
 }
+
+/**
+ * One parallel run in progress on an [AssemblyTableBlockEntity]'s own [AssemblyTableBlockEntity.activeRuns] -
+ * [pattern]'s own ingredients are already spent (extracted from a [PatternProviderHookType] hook's
+ * own buffer the instant this was created), so nothing about this run can be aborted the way
+ * [AssemblyTableBlockEntity.activePattern] can if [AssemblyTableBlockEntity.grid] stops matching -
+ * the only outstanding question left is *when* [progressTicks] finishes and whether
+ * [AssemblyTableBlockEntity.output] has room for the result yet.
+ */
+class ActiveRun(val pattern: Pattern, var progressTicks: Double = 0.0, var completed: Boolean = false)
 
 /**
  * [grid]/[output] combined into one [CommonStorage] for [earth.terrarium.common_storage_lib.item.ItemApi.BLOCK]

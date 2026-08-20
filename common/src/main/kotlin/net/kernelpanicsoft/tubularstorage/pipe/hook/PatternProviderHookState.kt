@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.tubularstorage.pipe.hook
 
+import net.kernelpanicsoft.archie.serialization.ArchieStorageMap
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.crafting.Pattern
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
@@ -11,14 +12,53 @@ import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
 class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID) {
 	val patterns: ArchieItemStorage by itemField(SLOT_COUNT)
 
-	/** Index into [patterns] the attached target is currently feeding/processing, or `null` if idle - runtime-only, like [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity.activePattern]; a reload just re-detects it from whatever's still sitting in the target. */
+	/**
+	 * Index into [patterns] the attached target is currently feeding/processing, or `null` if idle
+	 * - only meaningful for a target *without* its own [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity.activeRuns]-style
+	 * parallel tracking (a generic inventory that just processes on its own once fed, a vanilla
+	 * furnace say) - an [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]
+	 * target tracks its own multiple simultaneous runs itself and never touches this. Runtime-only;
+	 * a reload just re-detects it from whatever's still sitting in the target.
+	 */
 	var activeSlot: Int? = null
+
+	/**
+	 * Virtual per-pattern-slot input buffer, keyed by [patterns]' own slot index (as a string) -
+	 * staged ingredients for a queued/in-flight [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob]
+	 * step, isolated from whatever's actively running (and from every *other* slot's own staged
+	 * ingredients) instead of sharing the attached target's own physical grid. [patterns] can hold
+	 * up to [SLOT_COUNT] entirely different patterns at once, and (now that multiple job steps are
+	 * allowed to share one hook, see [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType.advance])
+	 * more than one of them can genuinely be feeding/running at the same time - without a buffer
+	 * *per pattern*, two different patterns needing the exact same ingredient (planks, say) would
+	 * have no way to keep "these 2 planks are for sticks" and "these 3 planks are for the pickaxe
+	 * itself" apart in one shared grid. [PatternBufferIO] is what a delivery aimed at this hook
+	 * actually inserts into; [PatternProviderHookType.tick] atomically moves a whole run's worth out
+	 * of the relevant buffer the moment it starts that run.
+	 */
+	val patternBuffers: ArchieStorageMap<ArchieItemStorage> by itemMapField(Pattern.GRID_SIZE)
+
+	/** [patternBuffers]' own entry for [index] into [patterns], lazily created on first use. */
+	fun bufferFor(index: Int): ArchieItemStorage = patternBuffers.getOrPut(index.toString())
 
 	/** The actual [Pattern] carried by each non-blank slot in [patterns], in slot order - what [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest]/[net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType] search across reachable pattern providers for. */
 	fun heldPatterns(): List<Pattern> =
 		(0 until patterns.size()).mapNotNull { i -> patterns.get(i).getItem().takeIf { !it.isEmpty }?.let { PatternItemData(it).pattern } }
 
+	/** [patterns]' own slot index holding [pattern], or `null` if it isn't currently held at all - the [bufferFor] index a [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob] step targeting this [pattern] needs to feed directly, rather than the shared, round-robin [PatternBufferIO]. */
+	fun indexOfPattern(pattern: Pattern): Int? {
+		for (i in 0 until patterns.size()) {
+			val stack = patterns.get(i).getItem()
+			if (stack.isEmpty) continue
+			if (PatternItemData(stack).pattern == pattern) return i
+		}
+		return null
+	}
+
 	companion object {
 		const val SLOT_COUNT = 9
+
+		/** How many runs' worth of a single pattern [patternBuffers] holds before refusing more. TODO M5: derive from the target's own pressure capacity (see [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity.maxBufferedRunsPerPattern]) - a flat baseline until then. */
+		const val MAX_BUFFERED_RUNS_PER_PATTERN = 4
 	}
 }

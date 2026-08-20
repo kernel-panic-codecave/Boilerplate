@@ -105,13 +105,17 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					hopped = true
 					continue
 				}
-				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color)
+				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace)
 				items.removeAt(index)
 				hopped = true
 				continue
 			}
 
-			val storage = ItemApi.BLOCK.find(serverLevel, nextPos, direction?.opposite)
+			// item.targetFace, when the caller knew exactly which face it meant (see TravelingItem's
+			// own KDoc), wins over the topology-derived direction here - the two can legitimately
+			// differ, and only targetFace actually identifies which of a multi-hook block's own faces
+			// this delivery is for.
+			val storage = ItemApi.BLOCK.find(serverLevel, nextPos, item.targetFace ?: direction?.opposite)
 			if (storage == null) {
 				jam(serverLevel, pos, item)
 				items.removeAt(index)

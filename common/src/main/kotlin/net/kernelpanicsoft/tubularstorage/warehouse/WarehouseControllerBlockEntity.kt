@@ -534,7 +534,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 				val inserted = outboundBuffer.insert(resource, amount, false)
 				if (inserted <= 0) return
 				val target = job.deliverTo
-				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos)
+				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos, target.face)
 			}
 			is GantryJob.Stow -> {
 				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
@@ -559,7 +559,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
-	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos) {
+	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos, deliverFace: Direction? = null) {
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
 			if (!level.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) continue
@@ -567,7 +567,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			val route = PipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
 			val extracted = outboundBuffer.extract(resource, amount, false)
 			if (extracted <= 0) continue
-			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null)
+			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null, deliverFace)
 			return
 		}
 	}

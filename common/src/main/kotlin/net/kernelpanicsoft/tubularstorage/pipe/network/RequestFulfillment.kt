@@ -21,7 +21,7 @@ import net.minecraft.server.level.ServerLevel
 
 /**
  * Resolves a [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType]'s standing order (or
- * a [net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookMenu] withdrawal) into an actual
+ * a [net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu] withdrawal) into an actual
  * shipment - see `docs/design/m3-warehouse-storage.md`. Unlike [PipeRouter.findRoute]'s push model
  * (an extractor decides what to send, the network finds any taker), a request already knows its
  * destination and needs a *source*: first a
@@ -37,17 +37,47 @@ object RequestFulfillment {
 	/**
 	 * Attempts to fulfill up to [amount] of [stack], delivering it to [deliverTo] (a non-pipe
 	 * inventory position, matching [PipeRouter.findRoute]'s destination shape). [from] is the
-	 * requesting hook's own pipe position, the search origin. Returns whether a source was found -
-	 * not whether the shipment has *arrived*, since that's asynchronous (in-flight `TravelingItem`
-	 * for a provider hook, a queued `GantryJob` for a warehouse).
+	 * requesting hook's own pipe position, the search origin. Returns how much was actually
+	 * dispatched (`0` if no source had any) - a source can easily hold less than the full [amount]
+	 * requested (a batch still mid-run, say), so this is *not* a "found a source" boolean; a caller
+	 * tracking a larger multi-attempt request (see
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.delivered]) needs the real number to
+	 * know how much of its own total is still outstanding. Either way, this is whatever was
+	 * dispatched, not confirmed *arrived* - that's asynchronous (in-flight `TravelingItem` for a
+	 * provider hook, a queued `GantryJob` for a warehouse).
+	 *
+	 * [deliverFace], when the caller already knows exactly which face of [deliverTo] it means,
+	 * disambiguates a [deliverTo] that carries more than one same-type hook - see
+	 * [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem.targetFace]'s own KDoc for why
+	 * that can't be recovered from arrival topology alone. `null` (the default) preserves the old,
+	 * "whichever face the topology happens to land on" resolution for a caller with no specific
+	 * face in mind.
 	 */
-	fun request(level: ServerLevel, from: BlockPos, stack: ResourceStack<ItemResource>, deliverTo: BlockPos): Boolean {
+	fun request(level: ServerLevel, from: BlockPos, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
 		val reachable = reachablePipes(level, from)
-		return fulfillFromProvider(level, providerSources(level, reachable), stack, deliverTo) ||
-			fulfillFromWarehouse(level, warehousesIn(level, reachable), stack, deliverTo)
+		val fromProvider = fulfillFromProvider(level, providerSources(level, reachable), stack, deliverTo, deliverFace)
+		if (fromProvider > 0) return fromProvider
+		return fulfillFromWarehouse(level, warehousesIn(level, reachable), stack, deliverTo, deliverFace)
 	}
 
-	private fun fulfillFromProvider(level: ServerLevel, sources: List<ProviderSource>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos): Boolean {
+	/**
+	 * [source.hookPos][ProviderSource.hookPos] `== `[deliverTo] (a pattern-provider hook's own
+	 * target producing something that hook's *own* buffers also want, say) is deliberately left
+	 * unfulfillable through this generic path - [PipeRouter.findRouteTo] returns `null` for it (see
+	 * its own KDoc), and that's correct here: this function has no idea which specific consumer at
+	 * [deliverTo] the caller actually meant (a [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState]
+	 * can hold several patterns' worth of *separate* buffers all exposed as one combined
+	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternBufferIO]), so blindly inserting through
+	 * it can land the resource in the *wrong* pattern's buffer instead of the one the caller's own
+	 * job step actually needs (confirmed the hard way: an early attempt to special-case this here let
+	 * a shared buffer silently misattribute one step's delivery to a different step's slot, and
+	 * separately let an interface hook "supply" itself out of its own stock instead of a real source
+	 * - both broke, in opposite ways, from *this* function trying to guess a specific destination
+	 * without knowing one). A caller that already knows exactly which sub-destination it means (see
+	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.advanceTerminalJobs]'s own same-table self-supply
+	 * step) handles that directly instead of going through here at all.
+	 */
+	private fun fulfillFromProvider(level: ServerLevel, sources: List<ProviderSource>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
 		for (source in sources) {
 			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
 			val storage = source.storage(level) ?: continue
@@ -57,19 +87,20 @@ object RequestFulfillment {
 			val extracted = storage.extract(stack.resource, available, false)
 			if (extracted <= 0) continue
 			val tile = level.getBlockEntity(source.hookPos) as? HookBlockEntity ?: continue
-			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null)
-			return true
+			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace)
+			return extracted
 		}
-		return false
+		return 0
 	}
 
-	private fun fulfillFromWarehouse(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos): Boolean {
+	private fun fulfillFromWarehouse(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
 		for (controller in warehouses) {
 			val slot = controller.index.locations[stack.resource]?.firstOrNull() ?: continue
-			controller.enqueueRetrieve(slot, stack.withCount(minOf(stack.amount, slot.amount)), DeliveryTarget.Pipe(deliverTo))
-			return true
+			val amount = minOf(stack.amount, slot.amount)
+			controller.enqueueRetrieve(slot, stack.withCount(amount), DeliveryTarget.Pipe(deliverTo, deliverFace))
+			return amount
 		}
-		return false
+		return 0
 	}
 
 	/** Every [ProviderHookState]-tagged inventory reachable from [from], for a warehouse terminal's search - see [ProviderSource]. */

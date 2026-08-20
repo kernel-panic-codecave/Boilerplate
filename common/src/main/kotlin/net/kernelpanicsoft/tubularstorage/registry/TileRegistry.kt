@@ -16,6 +16,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternBufferIO
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer
@@ -36,22 +38,46 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 	}
 
 	/**
-	 * [InterfaceHookState.stock] is direction-gated, unlike [WarehouseController]'s own - one
-	 * [HookBlockEntity] can carry up to six independent hooks, and only the one specific face
-	 * actually carrying an [InterfaceHookState] should ever answer a storage query. A
-	 * direction-less query (no face to check against) resolves to `null` rather than guessing
-	 * which face was meant. [TerminalHookState.output], by contrast, is *not* face-gated - a
-	 * terminal is its own self-contained delivery point (see its own KDoc), reachable regardless of
-	 * which face a pipe approaches from, the same as [WarehouseController]'s `inboundBuffer`.
+	 * One [HookBlockEntity] can carry up to six independent hooks, so a query with a real [direction]
+	 * (the caller knows exactly which face it means - see
+	 * [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem.targetFace]'s own KDoc for how
+	 * that survives delivery) always checks that specific face first, for every hook type that can
+	 * legitimately repeat across faces of the same block: [InterfaceHookState.stock],
+	 * [PatternBufferIO] (over a [PatternProviderHookState]), and [TerminalHookState.output].
+	 * [InterfaceHookState] stops there - a direction-less query (no face to check against) resolves
+	 * to `null` rather than guessing, since guessing wrong there means silently crossing a subnet
+	 * boundary meant to stay isolated. [PatternBufferIO]/[TerminalHookState.output], by contrast,
+	 * fall back to [patternBufferOf]/[terminalOutputOf]'s own first-match-on-any-face search when
+	 * the query's own [direction] is `null` or doesn't land on a matching hook - the direction
+	 * [exposeRackStorage] passes is ordinarily whichever neighboring pipe segment an item is
+	 * arriving *from* (pipe topology, unrelated to which face actually carries the hook in
+	 * question), so most callers still don't have a specific face to offer; the fallback keeps
+	 * those working exactly as before; only a caller that resolved [PatternProviderSource]/[TerminalHookState]
+	 * up front and threaded its own [direction] all the way through (a
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob] step's own delivery, a terminal
+	 * withdrawing to itself) gets genuinely disambiguated when two same-type hooks share a block.
+	 * [PatternBufferIO] itself isn't an [ArchieItemStorage], so this uses [exposeRackStorage] rather
+	 * than Archie's own `exposeItemStorage`, whose signature is fixed to that one concrete type -
+	 * see [BulkRack]/[UnstackableRack]/[AssemblyTable]'s identical note.
 	 */
 	val Hook: BlockEntityType<HookBlockEntity> by register("hook") {
 		blockEntityType(::HookBlockEntity) {
 			add(BlockRegistry.Hook)
 		}
 	}.apply {
-		exposeItemStorage { tile, direction ->
-			(direction?.let { tile.hooks[it.name] } as? InterfaceHookState)?.stock ?: terminalOutputOf(tile)
+		exposeRackStorage { tile, direction ->
+			val hookAtFace = direction?.let { tile.hooks[it.name] }
+			(hookAtFace as? InterfaceHookState)?.stock
+				?: (hookAtFace as? PatternProviderHookState)?.let { PatternBufferIO(it) }
+				?: (hookAtFace as? TerminalHookState)?.output
+				?: patternBufferOf(tile)
+				?: terminalOutputOf(tile)
 		}
+	}
+
+	private fun patternBufferOf(tile: HookBlockEntity): PatternBufferIO? {
+		for ((_, entry) in tile.hooks) (entry as? PatternProviderHookState)?.let { return PatternBufferIO(it) }
+		return null
 	}
 
 	private fun terminalOutputOf(tile: HookBlockEntity): ArchieItemStorage? {

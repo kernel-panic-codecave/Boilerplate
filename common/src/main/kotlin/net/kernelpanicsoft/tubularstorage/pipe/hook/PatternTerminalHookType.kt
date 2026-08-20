@@ -32,7 +32,7 @@ object PatternTerminalHookType : PipeHookType<PatternTerminalHookState>() {
 		PatternTerminalHookMenu(id, inventory, tile, direction)
 
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: PatternTerminalHookState) {
-		advanceTerminalJobs(level, pos, tile, state)
+		advanceTerminalJobs(level, pos, direction, tile, state)
 	}
 
 	override fun asItem(): Item = ItemRegistry.PatternTerminalHook

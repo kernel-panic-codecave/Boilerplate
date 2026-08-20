@@ -87,6 +87,15 @@ object PipeRouter {
 	 * per-candidate filter/color/priority evaluation along the way, and so no caching either -
 	 * unlike [findRoute]'s cache key, [to] varies per call rather than reflecting network topology
 	 * alone, so there's nothing stable to key a cache on.
+	 *
+	 * `from == to` (one hook is simultaneously the request's source and its own destination -
+	 * [net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment.fulfillFromProvider]'s own
+	 * KDoc has the concrete example) is deliberately left unreachable here: this BFS marks [from]
+	 * visited up front and only ever matches `neighborPos == to` one hop *out* from wherever it
+	 * currently is, so it can never rediscover its own starting position - null is correct, not a
+	 * bug, since a genuine self-delivery never needs a pipe hop through
+	 * [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem] at all; [fulfillFromProvider]
+	 * special-cases it directly instead.
 	 */
 	fun findRouteTo(level: ServerLevel, from: BlockPos, to: BlockPos): List<BlockPos>? {
 		val visited = hashSetOf(from)

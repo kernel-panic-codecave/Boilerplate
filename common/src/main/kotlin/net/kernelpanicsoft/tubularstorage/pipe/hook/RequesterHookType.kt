@@ -55,7 +55,7 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 
 		val interfaceState = SubnetBoundary.interfaceAt(level, neighborPos, direction.opposite)
 		if (interfaceState != null) {
-			trySupplyInterface(level, pos, neighborPos, interfaceState.stock)
+			trySupplyInterface(level, pos, neighborPos, direction.opposite, interfaceState.stock)
 			return
 		}
 
@@ -68,18 +68,24 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 
 		val shortfall = order.amount - current
 		if (shortfall <= 0) return
-		RequestFulfillment.request(level, pos, ResourceStack(order.resource, shortfall), neighborPos)
+		RequestFulfillment.request(level, pos, ResourceStack(order.resource, shortfall), neighborPos, direction.opposite)
 	}
 
-	/** One [RequestFulfillment.request] call per non-blank, under-target slot in [stock] - see this type's own KDoc. */
-	private fun trySupplyInterface(level: ServerLevel, pos: BlockPos, interfacePos: BlockPos, stock: ArchieItemStorage) {
+	/**
+	 * One [RequestFulfillment.request] call per non-blank, under-target slot in [stock] - see this
+	 * type's own KDoc. [interfaceFace] is [direction]'s own opposite - the specific face of
+	 * [interfacePos] this [stock] actually belongs to, disambiguating a block that carries more than
+	 * one [InterfaceHookType] hook (see [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem.targetFace]'s
+	 * own KDoc).
+	 */
+	private fun trySupplyInterface(level: ServerLevel, pos: BlockPos, interfacePos: BlockPos, interfaceFace: Direction, stock: ArchieItemStorage) {
 		for (i in 0 until stock.size()) {
 			val slot = stock.get(i)
 			val resource = slot.resource
 			if (resource.isBlank) continue
 			val shortfall = slot.getLimit(resource) - slot.amount
 			if (shortfall <= 0) continue
-			RequestFulfillment.request(level, pos, ResourceStack(resource, shortfall), interfacePos)
+			RequestFulfillment.request(level, pos, ResourceStack(resource, shortfall), interfacePos, interfaceFace)
 		}
 	}
 

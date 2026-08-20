@@ -32,7 +32,7 @@ object CraftingTerminalHookType : PipeHookType<CraftingTerminalHookState>() {
 		CraftingTerminalHookMenu(id, inventory, tile, direction)
 
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: CraftingTerminalHookState) {
-		advanceTerminalJobs(level, pos, tile, state)
+		advanceTerminalJobs(level, pos, direction, tile, state)
 	}
 
 	override fun asItem(): Item = ItemRegistry.CraftingTerminalHook

@@ -41,7 +41,7 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 		TerminalHookMenu(id, inventory, tile, direction)
 
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: TerminalHookState) {
-		advanceTerminalJobs(level, pos, tile, state)
+		advanceTerminalJobs(level, pos, direction, tile, state)
 	}
 
 	override fun asItem(): Item = ItemRegistry.TerminalHook
@@ -65,10 +65,10 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 /** Ticks between retries of the final [CraftingJob.target] pull once every step has at least been fed - matches [RequesterHookType.REQUEST_INTERVAL_TICKS]'s own polling cadence. */
 const val PULL_INTERVAL_TICKS = 40
 
-/** Drives [state]'s job queue forward one tick, shared by [TerminalHookType] and [CraftingTerminalHookType] - see [advance]'s own KDoc. */
-fun advanceTerminalJobs(level: ServerLevel, pos: BlockPos, tile: HookBlockEntity, state: TerminalHookState) {
+/** Drives [state]'s job queue forward one tick, shared by [TerminalHookType] and [CraftingTerminalHookType] - see [advance]'s own KDoc. [direction] is this specific [state]'s own face on [tile], threaded through so a delivery back to this same hook (the final [CraftingJob.target] pull) lands on the right face even when another terminal shares the block. */
+fun advanceTerminalJobs(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: TerminalHookState) {
 	val job = state.jobs.firstOrNull() ?: return
-	advance(level, pos, job)
+	advance(level, pos, direction, job)
 	if (tile.craftJobStatus != job.status) {
 		tile.craftJobStatus = job.status
 		level.sendBlockUpdated(pos, tile.blockState, tile.blockState, Block.UPDATE_ALL)
@@ -110,13 +110,13 @@ fun advanceTerminalJobs(level: ServerLevel, pos: BlockPos, tile: HookBlockEntity
  * already has for pulling from a non-pipe inventory; nothing here reaches into anything without
  * one.
  */
-private fun advance(level: ServerLevel, pos: BlockPos, job: CraftingJob) {
+private fun advance(level: ServerLevel, pos: BlockPos, direction: Direction, job: CraftingJob) {
 	if (job.steps.isEmpty()) {
 		job.ticksSincePull++
 		if (job.delivered > 0 && job.ticksSincePull < PULL_INTERVAL_TICKS) return
 		job.ticksSincePull = 0
 
-		val shipped = RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount - job.delivered), pos)
+		val shipped = RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount - job.delivered), pos, direction)
 		job.delivered += shipped
 		if (job.delivered >= job.targetAmount) {
 			job.status = "Requested ${job.targetAmount}x ${job.target.cachedStack.hoverName.string}"
@@ -144,6 +144,7 @@ private fun advance(level: ServerLevel, pos: BlockPos, job: CraftingJob) {
 			tablePos = provider.targetPos
 			job.tableForStep[index] = tablePos
 			job.hookPosForStep[index] = provider.hookPos
+			job.hookFaceForStep[index] = provider.direction
 			provider.state.indexOfPattern(step.pattern)?.let { job.patternIndexForStep[index] = it }
 		}
 		// An AssemblyTableBlockEntity target buffers ingredients per pattern slot on its own hook
@@ -152,8 +153,14 @@ private fun advance(level: ServerLevel, pos: BlockPos, job: CraftingJob) {
 		// inventory that was never rebuilt to understand buffers).
 		val table = level.getBlockEntity(tablePos) as? AssemblyTableBlockEntity
 		val deliverTo = if (table != null) job.hookPosForStep.getValue(index) else tablePos
+		// deliverFace only makes sense once deliverTo is actually the hook's own position (the
+		// AssemblyTableBlockEntity/buffer case) - for a generic target, deliverTo is the target
+		// itself, an entirely different block from the hook this face belongs to.
+		val deliverFace = if (table != null) job.hookFaceForStep[index] else null
 		val patternIndex = job.patternIndexForStep[index]
-		val hookState = if (table != null && patternIndex != null) patternProviderStateAt(level, job.hookPosForStep.getValue(index)) else null
+		val hookState = if (table != null && patternIndex != null && deliverFace != null) {
+			patternProviderStateAt(level, job.hookPosForStep.getValue(index), deliverFace)
+		} else null
 		for ((resource, perRun) in step.pattern.requiredInputs()) {
 			if (job.isInputFed(index, resource)) continue
 			val key = index to resource
@@ -163,7 +170,8 @@ private fun advance(level: ServerLevel, pos: BlockPos, job: CraftingJob) {
 			// table's own output (produced by an earlier step of this job feeding the same hook),
 			// moves straight into this step's own pattern-slot buffer - bypassing PatternBufferIO's
 			// shared, round-robin insert entirely, which has no way to know a delivery is meant for
-			// one specific step's own slot rather than whichever slot it happens to visit first.
+			// one specific step's own slot rather than whichever slot it happens to visit first (see
+			// RequestFulfillment.fulfillFromProvider's own KDoc for the bug this replaced).
 			if (table != null && hookState != null && patternIndex != null) {
 				val shortfall = needed - already
 				val available = table.output.extract(resource, shortfall, true)
@@ -179,7 +187,7 @@ private fun advance(level: ServerLevel, pos: BlockPos, job: CraftingJob) {
 				}
 			}
 			if (job.isInputFed(index, resource)) continue
-			val shipped = RequestFulfillment.request(level, pos, ResourceStack(resource, needed - already), deliverTo)
+			val shipped = RequestFulfillment.request(level, pos, ResourceStack(resource, needed - already), deliverTo, deliverFace)
 			if (shipped > 0) job.fedAmounts[key] = already + shipped
 		}
 	}
@@ -192,7 +200,7 @@ private fun advance(level: ServerLevel, pos: BlockPos, job: CraftingJob) {
 	}
 	job.ticksSincePull = 0
 
-	val shipped = RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount - job.delivered), pos)
+	val shipped = RequestFulfillment.request(level, pos, ResourceStack(job.target, job.targetAmount - job.delivered), pos, direction)
 	job.delivered += shipped
 	if (job.delivered >= job.targetAmount) {
 		job.status = "Delivered ${job.targetAmount}x ${job.target.cachedStack.hoverName.string}"
@@ -202,9 +210,8 @@ private fun advance(level: ServerLevel, pos: BlockPos, job: CraftingJob) {
 	}
 }
 
-/** The first [PatternProviderHookState] held by any face of the [HookBlockEntity] at [hookPos]. */
-private fun patternProviderStateAt(level: ServerLevel, hookPos: BlockPos): PatternProviderHookState? {
+/** The [PatternProviderHookState] on [face] of the [HookBlockEntity] at [hookPos] specifically - disambiguates two [PatternProviderHookType] hooks sharing one block, the same way [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.Hook]'s own [direction]-first lookup does. */
+private fun patternProviderStateAt(level: ServerLevel, hookPos: BlockPos, face: Direction): PatternProviderHookState? {
 	val tile = level.getBlockEntity(hookPos) as? HookBlockEntity ?: return null
-	for ((_, entry) in tile.hooks) (entry as? PatternProviderHookState)?.let { return it }
-	return null
+	return tile.hooks[face.name] as? PatternProviderHookState
 }

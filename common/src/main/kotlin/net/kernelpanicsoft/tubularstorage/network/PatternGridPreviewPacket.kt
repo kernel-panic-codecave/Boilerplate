@@ -3,6 +3,7 @@ package net.kernelpanicsoft.tubularstorage.network
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SItemStack
 import net.kernelpanicsoft.tubularstorage.pipe.gui.CraftingTerminalHookMenu
+import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookMenu
 import net.minecraft.client.Minecraft
 
 /**
@@ -13,9 +14,9 @@ import net.minecraft.client.Minecraft
  * [CraftingTerminalHookMenu.craftOnce].
  */
 @Serializable
-data class CraftGridPreviewPacket(val resultStack: SResourceStack<SItemResource>) {
+data class PatternGridPreviewPacket(val resultStack: SResourceStack<SItemResource>) {
 	fun handleOnClient() {
-		val menu = Minecraft.getInstance().player?.containerMenu as? CraftingTerminalHookMenu ?: return
+		val menu = Minecraft.getInstance().player?.containerMenu as? PatternTerminalHookMenu ?: return
 		menu.updateGridPreview(resultStack)
 	}
 }

@@ -1,14 +1,14 @@
 package net.kernelpanicsoft.tubularstorage.network
 
 import kotlinx.serialization.Serializable
-import net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookMenu
+import net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu
 import net.minecraft.client.Minecraft
 
-/** Server -> client: reply to [RequestCraftPreviewPacket] - [resource] is currently craftable up to [maxCraftable]. Applied to whichever [TerminalHookMenu] the receiving player currently has open, if any. */
+/** Server -> client: reply to [RequestCraftPreviewPacket] - [resource] is currently craftable up to [maxCraftable]. Applied to whichever [AbstractTerminalHookMenu] the receiving player currently has open, if any. */
 @Serializable
 data class CraftPreviewPacket(val resource: SItemResource, val maxCraftable: Long) {
 	fun handleOnClient() {
-		val menu = Minecraft.getInstance().player?.containerMenu as? TerminalHookMenu ?: return
+		val menu = Minecraft.getInstance().player?.containerMenu as? AbstractTerminalHookMenu<*> ?: return
 		menu.updateCraftPreview(resource, maxCraftable)
 	}
 }

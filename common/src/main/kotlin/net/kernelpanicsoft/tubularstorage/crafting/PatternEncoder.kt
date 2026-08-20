@@ -75,15 +75,23 @@ object PatternEncoder {
 	): Boolean {
 		val pattern = encode(level, kind, grid, patternOutputs) ?: return false
 		val blankSlot = (0 until blankPatterns.size()).firstOrNull { i ->
-			val stack = blankPatterns.get(i).getItem()
+			val stack = blankPatterns[i].getItem()
 			stack.item == ItemRegistry.Pattern && PatternItemData(stack).pattern == null
 		} ?: return false
 
 		val encodedStack = ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern }
 		val encodedResource = ItemResource.of(encodedStack)
-		if (deliverTo.insert(encodedResource, 1, true) < 1) return false
+		if (deliverTo.insert(encodedResource, 1, true) < 1)
+		{
+			val resultSlot = deliverTo[0]
+			if (resultSlot.resource.isOf(ItemRegistry.Pattern)) {
+				resultSlot.set(resultSlot.getItem().also { PatternItemData(it).pattern = pattern })
+				return true
+			}
+			return false
+		}
 
-		blankPatterns.get(blankSlot).remove(1)
+		blankPatterns[blankSlot].remove(1)
 		deliverTo.insert(encodedResource, 1, false)
 		return true
 	}

@@ -32,9 +32,10 @@ import net.kernelpanicsoft.tubularstorage.util.resourceStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * A single "Store" tab over everything [menu] can currently reach (see [TerminalHookMenu]), plus a
+ * A single "Store" tab over everything [menu] can currently reach (see [AbstractTerminalHookMenu]), plus a
  * "Tree" tab for the front-of-queue crafting job - see `docs/design/m3-warehouse-storage.md`/
  * `docs/design/m4-crafting-automation.md`. Built on Archie's `TabContainerPanel` (a fixed-width
  * `TabPanel` that wraps each tab's own content in its own `ContainerPanel`, tabs poking out of the
@@ -59,92 +60,5 @@ import net.minecraft.world.entity.player.Inventory
  * guarantee a tooltip paints above everything else (a hovered [TerminalSlot]'s own
  * `SlotHighlight` included).
  */
-class TerminalHookScreen(private val menu: TerminalHookMenu, playerInventory: Inventory, title: Component) :
-	ComposeContainerScreen<TerminalHookMenu>(menu, playerInventory, title) {
-
-	private val contentWidth = 18 * COLUMNS
-	private val middleClickHandler = MiddleClickHandler()
-
-	private var hoveredStack: SResourceStack<SItemResource>? = null
-	private var sidebarTooltip: String? = null
-
-	init {
-		start { content() }
-	}
-
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		if (middleClickHandler.tryHandle(button)) return true
-		return super.mouseClicked(mouseX, mouseY, button)
-	}
-
-	@Composable
-	fun content() {
-		Theme {
-			Box(contentAlignment = Alignment.Center) {
-				Row(
-					horizontalArrangement = Arrangement.spacedBy(2),
-					verticalAlignment = Alignment.Top
-				) {
-					var viewMode by remember { mutableStateOf(StoreViewMode.BOTH) }
-					Column {
-						SidebarButton("↻", "Refresh", { sidebarTooltip = it }) {
-							TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
-							TubularStorageNetworkChannel.toServer(RequestCraftableListPacket)
-						}
-						SidebarButton("⥮", "Defragment warehouses", { sidebarTooltip = it }) {
-							TubularStorageNetworkChannel.toServer(RequestWarehouseDefragPacket)
-						}
-						StoreViewModeButton(viewMode, { sidebarTooltip = it }) { viewMode = it }
-					}
-					TabContainerPanel(contentWidth = contentWidth) {
-						tab(id = "store", title = Component.literal("Store")) { storeTab(viewMode) }
-						tab(id = "tree", title = Component.literal("Tree")) { treeTab() }
-					}
-				}
-			}
-		}
-	}
-
-	@Composable
-	private fun storeTab(viewMode: StoreViewMode) {
-		val layers = LocalLayerManager.current
-		Column(verticalArrangement = Arrangement.spacedBy(6)) {
-			StoreResultsGrid(
-				results = menu.results,
-				craftable = menu.craftableResources,
-				mode = viewMode,
-				contentWidth = contentWidth,
-				carried = { menu.carried },
-				onDepositCarried = { menu.requestDeposit(menu.carried.resourceStack, true) },
-				onRequestWithdraw = { stack -> layers.requestQuantityDialog(stack) { amount -> menu.requestWithdraw(stack.withCount(amount)) } },
-				onRequestCraft = { resource -> layers.requestCraftQuantityDialog(menu, resource) { amount -> menu.requestCraft(ResourceStack(resource, amount)) } },
-				middleClickHandler = middleClickHandler,
-				onHoveredStackChanged = { hoveredStack = it },
-			)
-			Slots("output", COLUMNS, 1)
-		}
-	}
-
-	@Composable
-	private fun treeTab() {
-		LaunchedEffect(Unit) {
-			while (true) {
-				TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
-				delay(STATUS_POLL_MILLIS)
-			}
-		}
-		CraftingTreeView(menu.craftTree, modifier = Modifier.size(contentWidth, 18 * VISIBLE_ROWS))
-	}
-
-	override fun renderTooltip(guiGraphics: GuiGraphics, x: Int, y: Int) {
-		super.renderTooltip(guiGraphics, x, y)
-		sidebarTooltip?.let { guiGraphics.renderTooltip(font, Component.literal(it), x, y) }
-			?: hoveredStack?.let { guiGraphics.renderTooltip(font, it.itemStack, x, y) }
-	}
-
-	companion object {
-		private const val COLUMNS = 9
-		private const val VISIBLE_ROWS = 3
-		private const val STATUS_POLL_MILLIS = 250L
-	}
-}
+class TerminalHookScreen(menu: TerminalHookMenu, playerInventory: Inventory, title: Component) :
+	AbstractTerminalHookScreen<TerminalHookMenu>(menu, playerInventory, title)

@@ -30,6 +30,7 @@ class PatternTerminalHookState : TerminalHookState(PatternTerminalHookType.ID) {
 	val ghostOutputAmounts: MutableList<Long> by listField(Long.serializer()) { List(GRID_SIZE) { 1L } }
 
 	val blankPatterns: ArchieItemStorage by itemField(1)
+	val patternOutput: ArchieItemStorage by itemField(1)
 
 	companion object {
 		const val GRID_SIZE = 9

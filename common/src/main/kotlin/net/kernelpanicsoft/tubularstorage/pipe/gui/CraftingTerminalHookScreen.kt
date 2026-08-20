@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
@@ -19,6 +20,7 @@ import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.size
+import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.Theme
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftGridPreviewPacket
 import net.kernelpanicsoft.tubularstorage.network.RequestCraftJobTreePacket
@@ -35,6 +37,7 @@ import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.ItemStack
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * [TerminalHookScreen]'s own single Store tab (see its KDoc for why there's no dedicated
@@ -43,121 +46,34 @@ import net.minecraft.world.item.ItemStack
  * or by anything physically piped to this terminal's own position - clicking it (or shift-clicking
  * for a vanilla-style quick-craft) crafts, exactly like a real crafting table's own result slot,
  * via [CraftingTerminalHookMenu.craftOnce]. A near-duplicate of [TerminalHookScreen] for the same
- * reason [CraftingTerminalHookMenu] duplicates [TerminalHookMenu] - see its own KDoc.
+ * reason [CraftingTerminalHookMenu] duplicates [AbstractTerminalHookMenu] - see its own KDoc.
  */
-class CraftingTerminalHookScreen(private val menu: CraftingTerminalHookMenu, playerInventory: Inventory, title: Component) :
-	ComposeContainerScreen<CraftingTerminalHookMenu>(menu, playerInventory, title) {
+class CraftingTerminalHookScreen(menu: CraftingTerminalHookMenu, playerInventory: Inventory, title: Component) :
+	AbstractTerminalHookScreen<CraftingTerminalHookMenu>(menu, playerInventory, title) {
 
-	private val contentWidth = 18 * COLUMNS
-	private val middleClickHandler = MiddleClickHandler()
-
-	private var hoveredStack: SResourceStack<SItemResource>? = null
-	private var sidebarTooltip: String? = null
-
-	init {
-		start { content() }
-	}
-
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		if (middleClickHandler.tryHandle(button)) return true
-		return super.mouseClicked(mouseX, mouseY, button)
-	}
 
 	@Composable
-	fun content() {
-		Theme {
-			Box(contentAlignment = Alignment.Center) {
-				Row(
-					horizontalArrangement = Arrangement.spacedBy(2),
-					verticalAlignment = Alignment.Top
-				) {
-					var viewMode by remember { mutableStateOf(StoreViewMode.BOTH) }
-					Column {
-						SidebarButton("↻", "Refresh", { sidebarTooltip = it }) {
-							TubularStorageNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
-							TubularStorageNetworkChannel.toServer(RequestCraftableListPacket)
-						}
-						SidebarButton("⥮", "Defragment warehouses", { sidebarTooltip = it }) {
-							TubularStorageNetworkChannel.toServer(RequestWarehouseDefragPacket)
-						}
-						StoreViewModeButton(viewMode, { sidebarTooltip = it }) { viewMode = it }
-					}
-					TabContainerPanel(contentWidth = contentWidth) {
-						tab(id = "store", title = Component.literal("Store")) { storeTab(viewMode) }
-						tab(id = "tree", title = Component.literal("Tree")) { treeTab() }
-					}
-				}
-			}
-		}
-	}
-
-	@Composable
-	private fun storeTab(viewMode: StoreViewMode) {
-		val layers = LocalLayerManager.current
+	override fun additionalContent()
+	{
 		LaunchedEffect(Unit) {
 			while (true) {
 				TubularStorageNetworkChannel.toServer(RequestCraftGridPreviewPacket)
-				delay(GRID_PREVIEW_POLL_MILLIS)
+				delay(GRID_PREVIEW_POLL_MILLIS.milliseconds)
 			}
 		}
-
-		Column(verticalArrangement = Arrangement.spacedBy(6)) {
-			StoreResultsGrid(
-				results = menu.results,
-				craftable = menu.craftableResources,
-				mode = viewMode,
-				contentWidth = contentWidth,
-				carried = { menu.carried },
-				onDepositCarried = { menu.requestDeposit(menu.carried.resourceStack, true) },
-				onRequestWithdraw = { stack -> layers.requestQuantityDialog(stack) { amount -> menu.requestWithdraw(stack.withCount(amount)) } },
-				onRequestCraft = { resource -> layers.requestCraftQuantityDialog(menu, resource) { amount -> menu.requestCraft(ResourceStack(resource, amount)) } },
-				middleClickHandler = middleClickHandler,
-				onHoveredStackChanged = { hoveredStack = it },
-			)
-			Slots("output", COLUMNS, 1)
+		Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(contentWidth)) {
 			Row(horizontalArrangement = Arrangement.spacedBy(18), verticalAlignment = Alignment.CenterVertically) {
 				Slots("grid", 3, 3)
-				LiveResultSlot(preview = menu.gridPreview) {
-					menu.requestCraftOnce(Screen.hasShiftDown())
-				}
+				TerminalSlot(stack = menu.gridPreview, onClick =  {
+					menu.requestCraftOnce(hasShiftDown())
+					menu.requestGridPreview()
+				})
 			}
 		}
 	}
 
-	@Composable
-	private fun treeTab() {
-		LaunchedEffect(Unit) {
-			while (true) {
-				TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
-				delay(STATUS_POLL_MILLIS)
-			}
-		}
-		CraftingTreeView(menu.craftTree, modifier = Modifier.size(contentWidth, 18 * VISIBLE_ROWS))
-	}
-
-	override fun renderTooltip(guiGraphics: GuiGraphics, x: Int, y: Int) {
-		super.renderTooltip(guiGraphics, x, y)
-		sidebarTooltip?.let { guiGraphics.renderTooltip(font, Component.literal(it), x, y) }
-			?: hoveredStack?.let { guiGraphics.renderTooltip(font, it.itemStack, x, y) }
-	}
-
-	/**
-	 * The crafting terminal's own virtual result slot - a [FakeSlot] over [preview], never a real
-	 * vanilla [net.minecraft.world.inventory.Slot] (nothing to actually hold; [preview] is
-	 * recomputed server-side every time the grid changes, not stored). [onClick] fires on any
-	 * click; [CraftingTerminalHookMenu.craftOnce] itself is what tells a plain click from a
-	 * shift-click apart (`Screen.hasShiftDown()`, read at click time).
-	 */
-	@Composable
-	private fun LiveResultSlot(preview: ItemStack?, onClick: () -> Unit) {
-		val stack = preview?.let { it.resourceStack }
-		TerminalSlot(stack = stack, onClick = onClick)
-	}
 
 	companion object {
-		private const val COLUMNS = 9
-		private const val VISIBLE_ROWS = 3
-		private const val STATUS_POLL_MILLIS = 250L
 		private const val GRID_PREVIEW_POLL_MILLIS = 150L
 	}
 }

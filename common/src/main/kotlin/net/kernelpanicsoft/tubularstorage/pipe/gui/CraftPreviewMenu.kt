@@ -5,7 +5,7 @@ import net.kernelpanicsoft.tubularstorage.network.SItemResource
 
 /**
  * Shared shape [CraftQuantityDialog] needs from whichever terminal-flavored menu opened it -
- * implemented by both [TerminalHookMenu] and [CraftingTerminalHookMenu], which otherwise don't
+ * implemented by both [AbstractTerminalHookMenu] and [CraftingTerminalHookMenu], which otherwise don't
  * share a common menu superclass (see [CraftingTerminalHookMenu]'s own KDoc for why).
  */
 interface CraftPreviewMenu {

@@ -2,7 +2,7 @@ package net.kernelpanicsoft.tubularstorage.network
 
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.networking.IPacketContext
-import net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookMenu
+import net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu
 
 /**
  * Client -> server: re-fetch the distinct set of resources any reachable
@@ -14,7 +14,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookMenu
 @Serializable
 data object RequestCraftableListPacket {
 	fun handleOnServer(context: IPacketContext) {
-		val menu = context.player.containerMenu as? TerminalHookMenu ?: return
+		val menu = context.player.containerMenu as? AbstractTerminalHookMenu<*> ?: return
 		menu.sendCraftableList()
 	}
 }

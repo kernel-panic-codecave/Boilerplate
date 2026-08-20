@@ -7,10 +7,13 @@ import net.minecraft.client.Minecraft
 /**
  * One node of a [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob]'s tree, built by
  * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.toTree] - [resource]/[amount] is the
- * craft step's own output, [status]/[done] its current progress
- * ([net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.stepStatus]), [children] the steps
- * producing this step's own crafted (not stock-pulled) ingredients. A resource needed by more than
- * one consumer appears once under each of them - a plain tree, not a deduplicated DAG, matching
+ * craft step's own output, [status]/[done]/[progress] its current progress
+ * ([net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.stepStatus] for the text; [progress] is
+ * a coarse `0f..1f` reflecting the same states for every node *except* the root, which instead
+ * reports the job's own real `delivered / targetAmount` fraction - the one node with genuinely
+ * continuous progress data), [children] the steps producing this step's own crafted (not
+ * stock-pulled) ingredients. A resource needed by more than one consumer appears once under each of
+ * them - a plain tree, not a deduplicated DAG, matching
  * [net.kernelpanicsoft.tubularstorage.pipe.gui.CraftingTreeView]'s own "advancements-style" layout.
  */
 @Serializable
@@ -19,6 +22,7 @@ data class CraftJobTreeNode(
 	val amount: Long,
 	val status: String,
 	val done: Boolean,
+	val progress: Float,
 	val children: List<CraftJobTreeNode>,
 )
 

@@ -2,13 +2,13 @@ package net.kernelpanicsoft.tubularstorage.network
 
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.networking.IPacketContext
-import net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookMenu
+import net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu
 
-/** Client -> server: withdraw [stack]'s resource/count from whichever [TerminalHookMenu] the requesting player currently has open. */
+/** Client -> server: withdraw [stack]'s resource/count from whichever [AbstractTerminalHookMenu] the requesting player currently has open. */
 @Serializable
 data class TerminalItemWithdrawRequestPacket(val stack: SResourceStack<SItemResource>) {
 	fun handleOnServer(context: IPacketContext) {
-		val menu = context.player.containerMenu as? TerminalHookMenu ?: return
+		val menu = context.player.containerMenu as? AbstractTerminalHookMenu<*> ?: return
 		menu.withdraw(stack)
 	}
 }

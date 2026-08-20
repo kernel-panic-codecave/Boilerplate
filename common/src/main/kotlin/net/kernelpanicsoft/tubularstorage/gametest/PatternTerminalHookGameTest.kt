@@ -79,6 +79,30 @@ class PatternTerminalHookGameTest {
 		succeed()
 	}
 
+	/**
+	 * A blank [net.kernelpanicsoft.tubularstorage.crafting.PatternItem] sitting in a real,
+	 * NBT-persisted item slot ([PatternTerminalHookState.blankPatterns], backed by
+	 * [net.kernelpanicsoft.archie.transfer.ArchieItemStorage]) used to crash every tick -
+	 * `PatternItemData`'s own empty `patternList` (a blank pattern's own data shape) round-tripped
+	 * through a genuinely empty `NbtList`, and `KOps$Nbt`'s own list-building helper force-unwrapped
+	 * a `null` conversion result for that case. Fixed upstream in Archie
+	 * (`net.kernelpanicsoft.archie.serialization.KOps`); this is the regression test for it.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 40)
+	fun GameTestHelper.testBlankPatternInARealSlotSurvivesRepeatedTicking() {
+		val hookPos = BlockPos(0, 2, 0)
+		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+
+		val tile = getBlockEntity(hookPos) as HookBlockEntity
+		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() } as PatternTerminalHookState
+		state.blankPatterns.get(0).set(ItemStack(ItemRegistry.Pattern))
+
+		runAfterDelay(20) {
+			assertTrue(state.blankPatterns.get(0).getItem().item == ItemRegistry.Pattern) { "Expected the blank pattern to still be there after ticking" }
+			succeed()
+		}
+	}
+
 	@GameTest(template = SMALL, timeoutTicks = 40)
 	fun GameTestHelper.testGhostStateIsMutable() {
 		val hookPos = BlockPos(0, 2, 0)

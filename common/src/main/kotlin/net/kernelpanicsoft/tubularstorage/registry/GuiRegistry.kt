@@ -23,6 +23,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.gui.RequesterHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.RequesterHookScreen
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingHookScreen
+import net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookScreen
 import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.FilterCardTarget

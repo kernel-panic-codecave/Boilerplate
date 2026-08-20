@@ -50,7 +50,7 @@ fun TerminalSlot(
 	onMiddleClick: (() -> Unit)? = null,
 ) {
 	Clickable(showHandCursor = stack != null, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
-		LaunchedEffect(isHovered) {
+		LaunchedEffect(isHovered, onMiddleClick) {
 			onHovered(isHovered)
 			middleClickHandler?.setHovered(if (isHovered) onMiddleClick else null)
 		}

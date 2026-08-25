@@ -10,7 +10,7 @@ Must runtime-guard on REI actually being present. Verify REI's dependency scope 
 
 ## Config screens
 
-Config values are declared incrementally as each earlier milestone introduces them (extraction interval and pipe speed in M1, priority tiers in M2, warehouse volume cap and scan budget in M3, crafting DAG depth limits in M4, pressure costs/multiplier curve in M5) via Archie's `ConfigContainer`/`ConfigSpec`/`CategorySpec` — not deferred wholesale to this milestone. M6's actual job is exposing Archie's auto-generated config screen (cloth-config-backed, per `CLAUDE.md`'s Archie/cloth-config dependency note) through the mod's own UI entrypoint, not authoring the config values themselves.
+Config values are declared incrementally as each earlier milestone introduces them (extraction interval and pipe speed in M1, priority tiers in M2, warehouse volume cap and scan budget in M3, crafting DAG depth limits in M4, pressure costs/multiplier curve in M5) via Archie's `ConfigContainer`/`ConfigSpec`/`CategorySpec` — not deferred wholesale to this milestone. M6's actual job is exposing Archie's auto-generated config screen (cloth-config-backed, per `../../AGENTS.md`'s Archie/cloth-config dependency note) through the mod's own UI entrypoint, not authoring the config values themselves.
 
 ## Wireless/remote terminal
 

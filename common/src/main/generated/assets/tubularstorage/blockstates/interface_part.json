@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "active=false": {
+      "model": "tubularstorage:block/interface_hook_off"
+    },
+    "active=true": {
+      "model": "tubularstorage:block/interface_hook_on"
+    }
+  }
+}

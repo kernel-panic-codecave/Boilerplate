@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "tubularstorage:glass_pipe"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "random_sequence": "tubularstorage:blocks/glass_pipe"
+}

@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "tubularstorage:pattern_terminal_hook"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "random_sequence": "tubularstorage:multipart/detach_hook/pattern_terminal"
+}

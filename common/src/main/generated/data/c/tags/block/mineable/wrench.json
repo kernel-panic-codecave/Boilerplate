@@ -1,0 +1,12 @@
+{
+  "values": [
+    "tubularstorage:pipe",
+    "tubularstorage:glass_pipe",
+    "tubularstorage:multipart",
+    "tubularstorage:warehouse_controller",
+    "tubularstorage:gantry_rail",
+    "tubularstorage:general_rack",
+    "tubularstorage:bulk_rack",
+    "tubularstorage:unstackable_rack"
+  ]
+}

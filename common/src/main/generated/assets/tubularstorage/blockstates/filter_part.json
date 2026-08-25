@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "active=false": {
+      "model": "tubularstorage:block/filter_hook_off"
+    },
+    "active=true": {
+      "model": "tubularstorage:block/filter_hook_on"
+    }
+  }
+}

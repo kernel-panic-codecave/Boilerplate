@@ -1,5 +1,13 @@
 {
   "parent": "minecraft:item/generated",
+  "overrides": [
+    {
+      "model": "tubularstorage:item/pattern_encoded",
+      "predicate": {
+        "tubularstorage:encoded": 1.0
+      }
+    }
+  ],
   "textures": {
     "layer0": "tubularstorage:item/pattern"
   }

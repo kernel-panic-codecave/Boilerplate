@@ -3,7 +3,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.gui.InterfaceHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
@@ -18,7 +18,7 @@ import net.minecraft.world.item.Item
 
 /**
  * A stock buffer, exposed to [earth.terrarium.common_storage_lib.item.ItemApi.BLOCK] on its own
- * face (see [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.Hook]) so anything
+ * face (see [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.Multipart]) so anything
  * physically touching it - a hopper, another mod's pipe, or another Tubular Storage hook facing it
  * directly - can insert/extract like it would against any ordinary inventory. Good for two
  * distinct roles: holding stock that's explicitly part of the network ([providesItems] - see
@@ -52,6 +52,8 @@ import net.minecraft.world.item.Item
 object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "interface"
 
+	override val id: ResourceLocation get() = ID
+
 	override fun createState(): InterfaceHookState = InterfaceHookState()
 
 	override val hasMenu: Boolean = true
@@ -60,10 +62,10 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 
 	override val providesItems: Boolean = true
 
-	override fun createMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, direction: Direction): AbstractContainerMenu =
+	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
 		InterfaceHookMenu(id, inventory, tile, direction)
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: InterfaceHookState) {
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: InterfaceHookState) {
 		state.ticksSincePush++
 		if (state.ticksSincePush < PUSH_INTERVAL_TICKS) return
 		state.ticksSincePush = 0
@@ -76,7 +78,7 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	 * inventory, just sourced from this hook's own stock instead. [exclude] = [pos] so this hook's
 	 * own [validRoute]-tagged stock never routes right back into itself.
 	 */
-	private fun tryPush(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: InterfaceHookState) {
+	private fun tryPush(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: InterfaceHookState) {
 		for (slotIndex in 0 until state.stock.size()) {
 			val resource = state.stock.get(slotIndex).resource
 			if (resource.isBlank) continue

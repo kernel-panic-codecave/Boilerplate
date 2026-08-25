@@ -50,13 +50,15 @@ object TubularStorage {
 		LOGGER.info("Tubular Storage initializing")
 
 		Registrars.init()
+		TagsRegistry.init()
 		HookTypeRegistry.init()
+		EncasementTypeRegistry.init()
 		FilterConditionTypeRegistry.init()
 		BlockRegistry.init()
 		ItemRegistry.init()
 		TileRegistry.init()
 		GuiRegistry.init()
-		TagsRegistry.init()
+		LootRegistry.init()
 
 		WarehouseBlockEventListener.register()
 

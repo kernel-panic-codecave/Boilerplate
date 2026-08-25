@@ -5,10 +5,9 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.serialization.SerializationManager
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
-import net.kernelpanicsoft.tubularstorage.crafting.gui.AssemblyTableMenu
-import net.kernelpanicsoft.tubularstorage.crafting.gui.AssemblyTableScreen
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.crafting.gui.CraftingBufferMenu
+import net.kernelpanicsoft.tubularstorage.crafting.gui.CraftingBufferScreen
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.FilterCardScreen
 import net.kernelpanicsoft.tubularstorage.pipe.gui.CraftingTerminalHookMenu
@@ -36,7 +35,7 @@ import net.minecraft.world.inventory.MenuType
 object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Registries.MENU) {
 	val SortingHook: MenuType<SortingHookMenu> by register("sorting_hook") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
 			val direction = buf.readEnum(Direction::class.java)
 			SortingHookMenu(id, inventory, tile, direction)
 		}
@@ -44,7 +43,7 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 
 	val RequesterHook: MenuType<RequesterHookMenu> by register("requester_hook") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
 			val direction = buf.readEnum(Direction::class.java)
 			RequesterHookMenu(id, inventory, tile, direction)
 		}
@@ -52,7 +51,7 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 
 	val TerminalHook: MenuType<TerminalHookMenu> by register("terminal_hook") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
 			val direction = buf.readEnum(Direction::class.java)
 			TerminalHookMenu(id, inventory, tile, direction)
 		}
@@ -67,7 +66,7 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 
 	val InterfaceHook: MenuType<InterfaceHookMenu> by register("interface_hook") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
 			val direction = buf.readEnum(Direction::class.java)
 			InterfaceHookMenu(id, inventory, tile, direction)
 		}
@@ -75,7 +74,7 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 
 	val PatternProviderHook: MenuType<PatternProviderHookMenu> by register("pattern_provider_hook") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
 			val direction = buf.readEnum(Direction::class.java)
 			PatternProviderHookMenu(id, inventory, tile, direction)
 		}
@@ -83,7 +82,7 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 
 	val CraftingTerminalHook: MenuType<CraftingTerminalHookMenu> by register("crafting_terminal_hook") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
 			val direction = buf.readEnum(Direction::class.java)
 			CraftingTerminalHookMenu(id, inventory, tile, direction)
 		}
@@ -91,16 +90,16 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 
 	val PatternTerminalHook: MenuType<PatternTerminalHookMenu> by register("pattern_terminal_hook") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as HookBlockEntity
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
 			val direction = buf.readEnum(Direction::class.java)
 			PatternTerminalHookMenu(id, inventory, tile, direction)
 		}
 	}
 
-	val AssemblyTable: MenuType<AssemblyTableMenu> by register("assembly_table") {
+	val CraftingBuffer: MenuType<CraftingBufferMenu> by register("crafting_buffer") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
-			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as AssemblyTableBlockEntity
-			AssemblyTableMenu(id, inventory, tile)
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as MultipartBlockEntity
+			CraftingBufferMenu(id, inventory, tile)
 		}
 	}
 
@@ -113,6 +112,6 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Re
 		MenuRegistry.registerScreenFactory(PatternProviderHook, ::PatternProviderHookScreen)
 		MenuRegistry.registerScreenFactory(CraftingTerminalHook, ::CraftingTerminalHookScreen)
 		MenuRegistry.registerScreenFactory(PatternTerminalHook, ::PatternTerminalHookScreen)
-		MenuRegistry.registerScreenFactory(AssemblyTable, ::AssemblyTableScreen)
+		MenuRegistry.registerScreenFactory(CraftingBuffer, ::CraftingBufferScreen)
 	}
 }

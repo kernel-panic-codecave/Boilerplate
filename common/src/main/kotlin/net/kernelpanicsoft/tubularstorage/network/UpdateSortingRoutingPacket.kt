@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.networking.IPacketContext
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.tubularstorage.pipe.entity.DirectionSerializer
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
@@ -16,7 +16,7 @@ import net.minecraft.world.level.block.Block
 /**
  * Client -> server: apply a [SortingHookState.routing] edit made in `SortingPipeScreen`. Needed
  * since a nested [net.kernelpanicsoft.archie.serialization.NBTHolder] field (see
- * [HookBlockEntity.hooks]) isn't wired into live GUI observation the way a top-level `@Sync`
+ * [MultipartBlockEntity.hooks]) isn't wired into live GUI observation the way a top-level `@Sync`
  * field is - see `docs/design/m2-sorting-routing.md`. Resyncs on success so every nearby client's
  * own copy (including the editing player's) picks up the change.
  */
@@ -24,7 +24,7 @@ import net.minecraft.world.level.block.Block
 data class UpdateSortingRoutingPacket(val pos: SBlockPos, val direction: @Serializable(with = DirectionSerializer::class) Direction, val routing: RoutingModule) {
 	fun handleOnServer(context: IPacketContext) {
 		val level = context.player.level() as? ServerLevel ?: return
-		val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return
+		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return
 		val hookState = tile.hooks[direction.name] as? SortingHookState ?: return
 
 		hookState.routing = routing
@@ -41,7 +41,7 @@ data class UpdateSortingRoutingPacket(val pos: SBlockPos, val direction: @Serial
 		val network = manager.network(networkId) ?: return
 
 		for (memberPos: BlockPos in network.members) {
-			val memberTile = level.getBlockEntity(memberPos) as? HookBlockEntity ?: continue
+			val memberTile = level.getBlockEntity(memberPos) as? MultipartBlockEntity ?: continue
 			for ((directionName, entry) in memberTile.hooks) {
 				if (memberPos == pos && directionName == direction.name) continue
 				val otherState = entry as? SortingHookState ?: continue

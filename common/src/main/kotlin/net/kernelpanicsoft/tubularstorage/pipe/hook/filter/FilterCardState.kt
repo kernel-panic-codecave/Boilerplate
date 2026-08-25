@@ -11,7 +11,7 @@ import net.minecraft.world.item.ItemStack
 
 /**
  * Reads/writes one [FilterCardItem] stack's own config, persisted the same way
- * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity] persists its [hooks] - [type]
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity] persists its [hooks] - [type]
  * is fixed by which [FilterCardItem] this stack actually is (see its own KDoc for why, mirroring
  * [net.kernelpanicsoft.tubularstorage.pipe.item.HookItem.hookId]), never stored itself; [mode]
  * lives at the root, and the registered [FilterConditionType]'s own [FilterConditionState] is kept

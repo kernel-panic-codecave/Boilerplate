@@ -1,6 +1,6 @@
 package net.kernelpanicsoft.tubularstorage.pipe.network
 
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
@@ -40,5 +40,5 @@ object SubnetBoundary {
 		hookAt(level, pos, direction) as? InterfaceHookState
 
 	private fun hookAt(level: ServerLevel, pos: BlockPos, direction: Direction): HookHolderState? =
-		(level.getBlockEntity(pos) as? HookBlockEntity)?.hooks?.get(direction.name) as? HookHolderState
+		(level.getBlockEntity(pos) as? MultipartBlockEntity)?.hooks?.get(direction.name) as? HookHolderState
 }

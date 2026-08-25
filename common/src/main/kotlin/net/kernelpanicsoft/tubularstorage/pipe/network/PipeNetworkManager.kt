@@ -1,8 +1,8 @@
 package net.kernelpanicsoft.tubularstorage.pipe.network
 
-import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
+import net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel

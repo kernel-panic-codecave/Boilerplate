@@ -2,8 +2,9 @@ package net.kernelpanicsoft.tubularstorage.pipe.block
 
 import com.mojang.serialization.MapCodec
 import earth.terrarium.common_storage_lib.item.ItemApi
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.item.EncasementItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
@@ -31,15 +32,15 @@ import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.level.block.state.properties.BlockStateProperties
 import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.level.pathfinder.PathComputationType
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 
 /**
  * A plain pipe segment: transports items through [PipeBlockEntity], auto-connecting to
- * neighboring pipes and inventories. Carries no hooks - see [HookBlock] for the (heavier,
+ * neighboring pipes and inventories. Carries no hooks - see [MultipartBlock] for the (heavier,
  * hook-carrying) variant this promotes into the moment a [HookItem] is used against it.
  */
 open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
@@ -48,8 +49,8 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	 * Whether this pipe type's contents are visible in transit - see
 	 * [net.kernelpanicsoft.tubularstorage.pipe.client.TravelingItemRenderer]. False for the plain
 	 * (opaque) tier; [GlassPipeBlock] overrides it. Consulted by
-	 * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer] too, off whatever
-	 * pipe type a [HookBlock] was promoted from, so a promoted glass pipe keeps showing its
+	 * [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartTravelingItemRenderer] too, off whatever
+	 * pipe type a [MultipartBlock] was promoted from, so a promoted glass pipe keeps showing its
 	 * contents and a promoted opaque one doesn't - the trait belongs to the pipe type, not to
 	 * whether a hook happens to be attached.
 	 */
@@ -59,8 +60,8 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	 * Whether this pipe type's body should render translucent rather than solid. False for the
 	 * plain (opaque) tier; [GlassPipeBlock] overrides it. A plain `Boolean`, not a
 	 * `net.minecraft.client.renderer.RenderType`, deliberately - that type is client-only, and this
-	 * class is loaded on a dedicated server too; [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]
-	 * (client-only itself) is what actually maps this to a real `RenderType` for a [HookBlock]
+	 * class is loaded on a dedicated server too; [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartTravelingItemRenderer]
+	 * (client-only itself) is what actually maps this to a real `RenderType` for a [MultipartBlock]
 	 * promoted from this pipe type, exactly like [showsTravelingItems] above.
 	 */
 	open val isTranslucent: Boolean = false
@@ -99,12 +100,149 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		return ItemApi.BLOCK.find(realLevel, neighborPos, direction.opposite) != null
 	}
 
-	override fun getShape(state: BlockState, level: BlockGetter, pos: BlockPos, context: CollisionContext): VoxelShape {
-		var shape = CORE_SHAPE
-		for ((direction, property) in propertiesByDirection) {
-			if (state.getValue(property)) shape = Shapes.or(shape, armShapes.getValue(direction))
+	/**
+	 * The segment's body piece - what remains once hooks and arms are accounted for: a wrapped
+	 * segment's whole
+	 * [net.kernelpanicsoft.tubularstorage.pipe.encasement.PipeEncasementType.casingShape] (including
+	 * any protruding face pieces), else the pipe body's own [CORE_SHAPE], or empty when the segment
+	 * carries neither an encasement nor a pipe at all.
+	 */
+	protected fun bodyShapeFor(level: BlockGetter, pos: BlockPos): VoxelShape {
+		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity
+		val encasementState = tile?.encasement?.value
+		encasementState?.fromRegistry?.let { return it.casingShape(level, pos, tile, encasementState) }
+		if (tile != null && tile.pipeBlockId == MultipartBlockEntity.NONE) return Shapes.empty()
+		return CORE_SHAPE
+	}
+
+	protected fun buildFullShape(state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape {
+		var shape = bodyShapeFor(level, pos)
+
+		for ((direction, hookShape) in attachmentShapes(state, level, pos)) {
+			shape = Shapes.or(shape, hookShape)
 		}
+
+		for ((direction, property) in propertiesByDirection) {
+			if (state.getValue(property)) {
+				shape = Shapes.or(shape, armShapes.getValue(direction))
+			}
+		}
+
 		return shape
+	}
+
+	/** Each face's attachable piece - its hook's own shape if one is attached there, otherwise that face's connected arm. An encasement suppresses the arm fallback: the casing physically covers the arm, so a click there belongs to the casing, not to a piece nothing can interact with. */
+	private fun attachmentShapes(state: BlockState, level: BlockGetter, pos: BlockPos): List<Pair<Direction, VoxelShape>> {
+		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return emptyList()
+
+		val shapes = ArrayList<Pair<Direction, VoxelShape>>()
+		for ((dirName, hookState) in tile.hooks) {
+			val direction = Direction.valueOf(dirName)
+			hookState.fromRegistry?.let { shapes.add(direction to it.shapesByDirection.getValue(direction)) }
+		}
+		if (tile.encasement.value != null) return shapes
+
+		for ((direction, property) in propertiesByDirection) {
+			if (state.getValue(property)) shapes.add(direction to armShapes.getValue(direction))
+		}
+		return shapes
+	}
+
+	/**
+	 * The segment's full physical geometry, always - core/casing, hooks and arms alike. Deliberately
+	 * unconditional: vanilla raytraces against this very shape every frame, so varying it based on
+	 * the previous frame's hit result (as an earlier per-part version did) fed the clip back into
+	 * itself and made the selection flicker at piece seams. Per-part *outlines* are drawn separately
+	 * from [targetedPart] instead - see
+	 * [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartHighlightRenderer].
+	 */
+	override fun getShape(
+		state: BlockState,
+		level: BlockGetter,
+		pos: BlockPos,
+		context: CollisionContext
+	): VoxelShape = buildFullShape(state, level, pos)
+
+	override fun getCollisionShape(
+		state: BlockState,
+		level: BlockGetter,
+		pos: BlockPos,
+		context: CollisionContext
+	): VoxelShape? = buildFullShape(state, level, pos)
+
+	override fun getOcclusionShape(
+		state: BlockState,
+		level: BlockGetter,
+		pos: BlockPos
+	): VoxelShape? = buildFullShape(state, level, pos)
+
+	override fun getBlockSupportShape(
+		state: BlockState,
+		level: BlockGetter,
+		pos: BlockPos
+	): VoxelShape? = buildFullShape(state, level, pos)
+
+	/**
+	 * Which single part of this segment the ray from [eye] through [hitLocation] entered first: a
+	 * [Part.Attachment] (a hook or connected arm on a specific face) or [Part.Body] (the bare pipe
+	 * core, or - on a wrapped segment - its whole casing, protruding face pieces included). `null`
+	 * only if the ray somehow misses every piece.
+	 *
+	 * Each candidate is mini-raycast via `VoxelShape.clip` and the nearest entry wins, so the
+	 * answer is exact geometry rather than bounding-box containment in a fixed direction order -
+	 * grazing hits at seams resolve to the piece the ray actually pierced, and the same hit always
+	 * resolves to the same part regardless of what any outline happens to be showing. Runs
+	 * identically on both sides; the eye position is passed in rather than derived from
+	 * client-only state.
+	 */
+	fun targetedPart(state: BlockState, level: BlockGetter, pos: BlockPos, eye: Vec3, hitLocation: Vec3): Part? {
+		val travel = hitLocation.subtract(eye)
+		val end = eye.add(travel.normalize().scale(travel.length() + CLIP_SLACK))
+
+		var bestPart: Part? = null
+		var bestDistance = Double.MAX_VALUE
+
+		fun consider(shape: VoxelShape, part: Part) {
+			if (shape.isEmpty) return
+			val entry = shape.clip(eye, end, pos) ?: return
+			val distance = eye.distanceToSqr(entry.location)
+			if (distance < bestDistance - EPSILON_SQR) {
+				bestDistance = distance
+				bestPart = part
+			}
+		}
+
+		for ((direction, shape) in attachmentShapes(state, level, pos)) {
+			consider(shape, Part.Attachment(direction))
+		}
+		consider(bodyShapeFor(level, pos), Part.Body)
+
+		return bestPart
+	}
+
+	/** The outline geometry for [part]: that attachment's own shape, or the body's whole volume - whose boxes decompose into the frame/ring/cap silhouette on an encased segment. */
+	fun outlineShapeFor(part: Part, state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape = when (part) {
+		is Part.Attachment -> attachmentShapes(state, level, pos).firstOrNull { it.first == part.direction }?.second ?: Shapes.empty()
+		Part.Body -> bodyShapeFor(level, pos)
+	}
+
+	/**
+	 * Returns the attachment the hit landed in - a hook or connected arm - or null if it landed on
+	 * the body. Uses [targetedPart], so the same hit resolves the same way for interaction,
+	 * pick-block, breaking and outlining alike.
+	 */
+	protected open fun armFor(level: Level, state: BlockState, pos: BlockPos, hitResult: BlockHitResult, player: Player): Direction? =
+		(targetedPart(state, level, pos, player.eyePosition, hitResult.location) as? Part.Attachment)?.direction
+
+	/**
+	 * One part of a segment a hit can resolve to - see [targetedPart].
+	 */
+	sealed interface Part {
+		/** A hook or connected arm attached to one face. */
+		data class Attachment(val direction: Direction) : Part
+
+		/** The segment's own body: the bare pipe core, or a wrapped segment's casing. */
+		data object Body : Part
 	}
 
 	override fun getRenderShape(state: BlockState): RenderShape = RenderShape.MODEL
@@ -117,10 +255,11 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	override fun isPathfindable(state: BlockState, pathComputationType: PathComputationType): Boolean = false
 
 	/**
-	 * Right-clicking a plain pipe with a [HookItem] promotes it into a [HookBlock] carrying the
-	 * same connections, transplanting this block entity's data across via [CompoundTag] (not
-	 * vanilla's "with metadata" API, to keep this independent of Archie's own persistence format),
-	 * then delegates to [HookBlock.useItemOn] to actually attach the hook.
+	 * Right-clicking a plain pipe with a [HookItem] or [EncasementItem] promotes it into a
+	 * [MultipartBlock] carrying the same connections, transplanting this block entity's data across via
+	 * [CompoundTag] (not vanilla's "with metadata" API, to keep this independent of Archie's own
+	 * persistence format), then delegates to [MultipartBlock.useItemOn] to actually attach the
+	 * hook/encasement.
 	 */
 	override fun useItemOn(
 		stack: ItemStack,
@@ -131,28 +270,34 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		hand: InteractionHand,
 		hitResult: BlockHitResult,
 	): ItemInteractionResult {
-		if (stack.item !is HookItem) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		if (stack.item !is HookItem && stack.item !is EncasementItem) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		if (level.isClientSide) return ItemInteractionResult.SUCCESS
 		val oldTile = level.getBlockEntity(pos) as? PipeBlockEntity ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 
 		val tag = CompoundTag()
 		oldTile.saveToTag(tag)
 
-		val hookState = propertiesByDirection.values.fold(BlockRegistry.Hook.defaultBlockState()) { result, property ->
+		val hookState = propertiesByDirection.values.fold(BlockRegistry.Multipart.defaultBlockState()) { result, property ->
 			result.setValue(property, state.getValue(property))
 		}
 		level.setBlock(pos, hookState, Block.UPDATE_CLIENTS)
-		val newTile = level.getBlockEntity(pos) as? HookBlockEntity ?: return ItemInteractionResult.SUCCESS
+		val newTile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return ItemInteractionResult.SUCCESS
 		newTile.loadFromTag(tag)
 		newTile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(this)
 
-		return BlockRegistry.Hook.clickBlockWithItem(stack, level.getBlockState(pos), level, pos, player, hand, hitResult)
+		return BlockRegistry.Multipart.clickBlockWithItem(stack, level.getBlockState(pos), level, pos, player, hand, hitResult)
 	}
 
 
 	companion object {
 
 		val CODEC: MapCodec<PipeBlock> = simpleCodec(::PipeBlock)
+
+		/** How far past the observed hit the [targetedPart] mini-raycasts run - just enough slack for floating-point error at the surface itself. */
+		private const val CLIP_SLACK = 1.0E-3
+
+		/** Tie-breaker margin between candidate entry distances (squared blocks) in [targetedPart], so floating-point noise at shared seams never flips the winner frame to frame - the earlier-considered piece wins instead. */
+		private const val EPSILON_SQR = 1.0E-12
 
 		val propertiesByDirection: Map<Direction, BooleanProperty> = mapOf(
 			Direction.NORTH to BlockStateProperties.NORTH,

@@ -2,7 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook
 
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingHookMenu
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.minecraft.core.Direction
@@ -24,6 +24,8 @@ import net.minecraft.world.item.Item
 object ProviderHookType : PipeHookType<ProviderHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "provider"
 
+	override val id: ResourceLocation get() = ID
+
 	override fun createState(): ProviderHookState = ProviderHookState()
 
 	override fun asItem(): Item = ItemRegistry.ProviderHook
@@ -32,6 +34,6 @@ object ProviderHookType : PipeHookType<ProviderHookState>() {
 
 	override val hasMenu: Boolean = true
 
-	override fun createMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, direction: Direction): AbstractContainerMenu =
+	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
 		SortingHookMenu(id, inventory, tile, direction)
 }

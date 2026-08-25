@@ -1,24 +1,25 @@
 package net.kernelpanicsoft.tubularstorage.registry
 
 import dev.architectury.registry.client.rendering.BlockEntityRendererRegistry
-import dev.engine_room.flywheel.api.visualization.VisualizerRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
+import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.archie.util.blockEntityType
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.client.HookBlockEntityVisual
-import net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementState
+import net.kernelpanicsoft.tubularstorage.pipe.client.MultipartBlockEntityVisual
+import net.kernelpanicsoft.tubularstorage.pipe.client.MultipartTravelingItemRenderer
 import net.kernelpanicsoft.tubularstorage.pipe.client.TravelingItemBlockEntityRenderer
 import net.kernelpanicsoft.tubularstorage.pipe.entity.GlassPipeBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
-import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternBufferIO
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
+import net.kernelpanicsoft.tubularstorage.registry.TileRegistry.patternBufferOf
+import net.kernelpanicsoft.tubularstorage.registry.TileRegistry.terminalOutputOf
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer
 import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerVisual
@@ -29,7 +30,7 @@ import net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeRackStorage
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
 
-/** Registers Tubular Storage's block entity types. Only [Hook]/[GlassPipe]/[WarehouseController] get renderers - a plain [Pipe] never carries hooks or renders its contents. */
+/** Registers Tubular Storage's block entity types. Only [Multipart]/[GlassPipe]/[WarehouseController] get renderers - a plain [Pipe] never carries hooks or renders its contents. */
 object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage.MOD, Registries.BLOCK_ENTITY_TYPE) {
 	val Pipe: BlockEntityType<PipeBlockEntity> by register("pipe") {
 		blockEntityType(::PipeBlockEntity) {
@@ -38,7 +39,7 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 	}
 
 	/**
-	 * One [HookBlockEntity] can carry up to six independent hooks, so a query with a real [direction]
+	 * One [MultipartBlockEntity] can carry up to six independent hooks, so a query with a real [direction]
 	 * (the caller knows exactly which face it means - see
 	 * [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem.targetFace]'s own KDoc for how
 	 * that survives delivery) always checks that specific face first, for every hook type that can
@@ -53,16 +54,22 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 	 * arriving *from* (pipe topology, unrelated to which face actually carries the hook in
 	 * question), so most callers still don't have a specific face to offer; the fallback keeps
 	 * those working exactly as before; only a caller that resolved [PatternProviderSource]/[TerminalHookState]
-	 * up front and threaded its own [direction] all the way through (a
-	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob] step's own delivery, a terminal
-	 * withdrawing to itself) gets genuinely disambiguated when two same-type hooks share a block.
-	 * [PatternBufferIO] itself isn't an [ArchieItemStorage], so this uses [exposeRackStorage] rather
-	 * than Archie's own `exposeItemStorage`, whose signature is fixed to that one concrete type -
-	 * see [BulkRack]/[UnstackableRack]/[AssemblyTable]'s identical note.
+	 * up front and threaded its own [direction] all the way through (a Crafting CPU job step's own
+	 * delivery, a terminal withdrawing to itself) gets genuinely disambiguated when two same-type
+	 * hooks share a block. [PatternBufferIO] itself isn't an [ArchieItemStorage], so this uses
+	 * [exposeRackStorage] rather than Archie's own `exposeItemStorage`, whose signature is fixed to
+	 * that one concrete type - see [BulkRack]/[UnstackableRack]'s identical note.
+	 *
+	 * A [CraftingBufferEncasementState] wrapping the whole segment (see
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType]) sits between those
+	 * two tiers: after a hook matched on the query's own [direction], but ahead of the face-less
+	 * fallbacks. An encasement has no face to mismatch on, so it's the one unambiguous answer for a
+	 * direction-less query, and a job's own pull-back (always targeted at the cluster's own position)
+	 * must not be diverted into a pattern buffer that merely happens to share the segment.
 	 */
-	val Hook: BlockEntityType<HookBlockEntity> by register("hook") {
-		blockEntityType(::HookBlockEntity) {
-			add(BlockRegistry.Hook)
+	val Multipart: BlockEntityType<MultipartBlockEntity> by register("hook") {
+		blockEntityType(::MultipartBlockEntity) {
+			add(BlockRegistry.Multipart)
 		}
 	}.apply {
 		exposeRackStorage { tile, direction ->
@@ -70,17 +77,18 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 			(hookAtFace as? InterfaceHookState)?.stock
 				?: (hookAtFace as? PatternProviderHookState)?.let { PatternBufferIO(it) }
 				?: (hookAtFace as? TerminalHookState)?.output
+				?: (tile.encasement.value as? CraftingBufferEncasementState)?.combinedStorage(tile)
 				?: patternBufferOf(tile)
 				?: terminalOutputOf(tile)
 		}
 	}
 
-	private fun patternBufferOf(tile: HookBlockEntity): PatternBufferIO? {
+	private fun patternBufferOf(tile: MultipartBlockEntity): PatternBufferIO? {
 		for ((_, entry) in tile.hooks) (entry as? PatternProviderHookState)?.let { return PatternBufferIO(it) }
 		return null
 	}
 
-	private fun terminalOutputOf(tile: HookBlockEntity): ArchieItemStorage? {
+	private fun terminalOutputOf(tile: MultipartBlockEntity): ArchieItemStorage? {
 		for ((_, entry) in tile.hooks) (entry as? TerminalHookState)?.let { return it.output }
 		return null
 	}
@@ -125,19 +133,12 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 		}
 	}.apply { exposeRackStorage(UnstackableRackBlockEntity::storage) }
 
-	/** [AssemblyTableBlockEntity.ioStorage] is a custom [earth.terrarium.common_storage_lib.storage.base.CommonStorage], not an [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] - exposed via [exposeRackStorage] for the same reason [BulkRack]/[UnstackableRack] are (that helper isn't rack-specific, just generic over any `CommonStorage`). */
-	val AssemblyTable: BlockEntityType<AssemblyTableBlockEntity> by register("assembly_table") {
-		blockEntityType(::AssemblyTableBlockEntity) {
-			add(BlockRegistry.AssemblyTable)
-		}
-	}.apply { exposeRackStorage(AssemblyTableBlockEntity::ioStorage) }
-
 	override fun initClient() {
-		SimpleBlockEntityVisualizer.builder(Hook)
-			.factory(::HookBlockEntityVisual)
+		SimpleBlockEntityVisualizer.builder(Multipart)
+			.factory(::MultipartBlockEntityVisual)
 			.neverSkipVanillaRender()
 			.apply()
-		BlockEntityRendererRegistry.register(Hook, ::PipeHookBlockEntityRenderer)
+		BlockEntityRendererRegistry.register(Multipart, ::MultipartTravelingItemRenderer)
 		BlockEntityRendererRegistry.register(GlassPipe, ::TravelingItemBlockEntityRenderer)
 		SimpleBlockEntityVisualizer.builder(WarehouseController)
 			.factory(::WarehouseControllerVisual)

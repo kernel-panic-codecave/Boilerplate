@@ -1,34 +1,33 @@
 package net.kernelpanicsoft.tubularstorage.registry
 
+import dev.architectury.event.EventResult
+import dev.architectury.event.events.client.ClientScreenInputEvent
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.itemProperties
+import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.TubularStorage.MOD_ID
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType
+import net.kernelpanicsoft.tubularstorage.crafting.Pattern.Companion.EMPTY
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItem
-import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternTerminalHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.SyncHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.ColorConditionType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.CombinedConditionType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.FilterCardItem
-import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.ItemConditionType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.ModConditionType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.RegexConditionType
-import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.TagConditionType
+import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
+import net.kernelpanicsoft.tubularstorage.item.WrenchItem
+import net.kernelpanicsoft.tubularstorage.item.WrenchTier
+import net.kernelpanicsoft.tubularstorage.network.OpenFilterCardEditorPacket
+import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
+import net.kernelpanicsoft.tubularstorage.pipe.hook.*
+import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.*
+import net.kernelpanicsoft.tubularstorage.pipe.item.EncasementItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.PipeItem
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
+import net.minecraft.client.renderer.item.ItemProperties
 import net.minecraft.core.registries.Registries
-import net.minecraft.world.item.BlockItem
-import net.minecraft.world.item.CreativeModeTabs
-import net.minecraft.world.item.Item
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.Slot
+import net.minecraft.world.item.*
 
 /** Registers Tubular Storage's items, including the [BlockItem]s for [BlockRegistry.Pipe]/[BlockRegistry.GlassPipe]. */
 object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registries.ITEM) {
@@ -100,8 +99,9 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 		BlockItem(BlockRegistry.UnstackableRack, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
 
-	val AssemblyTable by register("assembly_table") {
-		BlockItem(BlockRegistry.AssemblyTable, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	/** Named `<encasement type path>_encasement`, mirroring how each [HookItem] above is named `<hook type path>_hook` - the datagen'd item model and [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartBlockEntityVisual]'s own model lookup both rely on that convention. */
+	val CraftingBufferEncasement by register("crafting_buffer_encasement") {
+		EncasementItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, encasementId = CraftingBufferEncasementType.ID)
 	}
 
 	/** See [PatternItem]'s own KDoc - blank until encoded, one item type for both states. */
@@ -145,10 +145,83 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 	val GantryRail by register("gantry_rail") { BlockItem(BlockRegistry.GantryRail, itemProperties {}) }
 
 	/**
-	 * Not player-obtainable (no creative tab) - exists purely as a registered [Item] so its model
-	 * bakes through the normal `ItemModelShaper` path, for
-	 * [net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer]
-	 * to look up and draw as the gantry crane head's own dynamic render.
+	 * The harvesting tool for every player-facing Tubular Storage block - see [WrenchItem]
+	 * and the `tubularstorage:mineable/wrench` block tag those blocks carry. The
+	 * [net.minecraft.world.item.component.Tool] component here is what actually answers vanilla's
+	 * correct-tool check: one rule matching that tag at high mining speed, dropping the block.
 	 */
-//	val GantryHead by register("gantry_head") { Item(itemProperties {}) }
+	val BrassWrench by register("brass_wrench") {
+		WrenchItem(
+			WrenchTier.Brass,
+			itemProperties {
+				tab(CreativeModeTabs.TOOLS_AND_UTILITIES)
+				stacksTo(1)
+				attributes(DiggerItem.createAttributes(WrenchTier.Brass, 1.5f, -3.0f))
+			}
+		)
+	}
+
+	val DiamondWrench by register("diamond_wrench") {
+		WrenchItem(
+			WrenchTier.Diamond,
+			itemProperties {
+				tab(CreativeModeTabs.TOOLS_AND_UTILITIES)
+				stacksTo(1)
+				attributes(DiggerItem.createAttributes(WrenchTier.Diamond, 1.5f, -3.0f))
+			}
+		)
+	}
+
+	override fun initClient()
+	{
+		ItemProperties.register(Pattern, MOD_ID % "encoded") { itemStack, clientLevel, livingEntity, i ->
+			if (PatternItemData(itemStack).pattern != EMPTY) 1f
+			else 0f
+		}
+		fun findPlayerInventoryIndex(player: Player, slot: Slot): Int? {
+			val stack = slot.item
+			if (stack.isEmpty) return null
+
+			val inv = player.inventory
+
+			// 1. Fast path: normal survival slots
+			if (slot.container === inv) {
+				val idx = slot.containerSlot
+				if (idx in 0 until inv.containerSize && inv.getItem(idx) === stack) {
+					return idx
+				}
+			}
+
+			// 2. Creative (or any wrapper): search by identity
+			for (i in 0 until inv.containerSize) {
+				if (inv.getItem(i) === stack) return i
+			}
+
+			// 3. Fallback: equal stack in the same slot range (hotbar / main)
+			for (i in 0 until inv.containerSize) {
+				if (ItemStack.isSameItemSameComponents(inv.getItem(i), stack)) return i
+			}
+
+			return null
+		}
+		ClientScreenInputEvent.MOUSE_CLICKED_PRE.register { client, screen, mouseX, mouseY, button ->
+			if (button != 1) return@register EventResult.pass()
+			if (screen !is AbstractContainerScreen<*>) return@register EventResult.pass()
+
+			val slot = screen.hoveredSlot ?: return@register EventResult.pass()
+			val stack = slot.item
+			if (stack.item !is FilterCardItem) return@register EventResult.pass()
+
+			val player = client.player ?: return@register EventResult.pass()
+			if (player.isSpectator) return@register EventResult.pass()
+
+			// Resolve a real inventory index (works in survival + creative)
+			val inventoryIndex = findPlayerInventoryIndex(player, slot)
+				?: return@register EventResult.pass()
+
+			val target = FilterCardTarget.PlayerSlot(inventoryIndex)
+			TubularStorageNetworkChannel.toServer(OpenFilterCardEditorPacket(target))
+			EventResult.interruptFalse()
+		}
+	}
 }

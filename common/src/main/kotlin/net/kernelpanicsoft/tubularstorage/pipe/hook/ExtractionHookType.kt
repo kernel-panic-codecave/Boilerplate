@@ -5,7 +5,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.SubnetBoundary
@@ -22,23 +22,25 @@ import net.minecraft.world.item.Item
  * self-initiating hook - a [FilterHookType] hook never pulls on its own.
  *
  * Facing an [InterfaceHookType] hook directly is the one case where the neighbor genuinely *is*
- * "a pipe" (another [HookBlockEntity]) and this hook still pulls from it anyway - the subnet
+ * "a pipe" (another [MultipartBlockEntity]) and this hook still pulls from it anyway - the subnet
  * boundary's own active-extract role (`docs/design/m2-sorting-routing.md`), reaching across into
  * whatever that interface's own [InterfaceHookState.stock] currently holds.
  */
 object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "extraction"
 
+	override val id: ResourceLocation get() = ID
+
 	override fun createState(): ExtractionHookState = ExtractionHookState()
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: ExtractionHookState) {
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: ExtractionHookState) {
 		state.ticksSinceExtraction++
 		if (state.ticksSinceExtraction < EXTRACTION_INTERVAL_TICKS) return
 		state.ticksSinceExtraction = 0
 		tryExtract(level, pos, direction, tile, state)
 	}
 
-	private fun tryExtract(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: ExtractionHookState) {
+	private fun tryExtract(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: ExtractionHookState) {
 		// Not a filter on what's pulled (see docs/design/m2-sorting-routing.md) - just the color
 		// tag this hook stamps on whatever it sends out.
 		val color = state.color

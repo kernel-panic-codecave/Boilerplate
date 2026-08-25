@@ -43,7 +43,7 @@ import kotlin.math.roundToInt
  * `docs/design/m2-sorting-routing.md`.
  *
  * Reads [SortingHookMenu.currentRouting]/[SortingHookMenu.currentFilter] once, into local Compose
- * state, rather than observing [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity.hooks]
+ * state, rather than observing [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity.hooks]
  * live - a nested [net.kernelpanicsoft.archie.serialization.NBTHolder] field isn't wired into
  * [net.kernelpanicsoft.archie.gui.blockentity.BlockEntityStateManager] for that the way a
  * top-level `@Sync` field is. Edits update that local state immediately (optimistic UI) and push

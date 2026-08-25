@@ -1,0 +1,7 @@
+{
+	"parent": "tubularstorage:block/filter_hook",
+	"textures": {
+		"0": "tubularstorage:block/filter_hook_on",
+		"particle": "tubularstorage:block/filter_hook_on"
+	}
+}

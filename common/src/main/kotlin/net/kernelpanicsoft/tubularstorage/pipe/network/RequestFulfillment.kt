@@ -4,11 +4,14 @@ import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingCpuManager
+import net.kernelpanicsoft.tubularstorage.crafting.craftingBufferAt
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternOutputIO
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
@@ -18,6 +21,7 @@ import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEnti
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.block.Blocks
 
 /**
  * Resolves a [net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookType]'s standing order (or
@@ -40,9 +44,8 @@ object RequestFulfillment {
 	 * requesting hook's own pipe position, the search origin. Returns how much was actually
 	 * dispatched (`0` if no source had any) - a source can easily hold less than the full [amount]
 	 * requested (a batch still mid-run, say), so this is *not* a "found a source" boolean; a caller
-	 * tracking a larger multi-attempt request (see
-	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.delivered]) needs the real number to
-	 * know how much of its own total is still outstanding. Either way, this is whatever was
+	 * tracking a larger multi-attempt request needs the real number to know how much of its own
+	 * total is still outstanding. Either way, this is whatever was
 	 * dispatched, not confirmed *arrived* - that's asynchronous (in-flight `TravelingItem` for a
 	 * provider hook, a queued `GantryJob` for a warehouse).
 	 *
@@ -76,8 +79,14 @@ object RequestFulfillment {
 	 * without knowing one). A caller that already knows exactly which sub-destination it means (see
 	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.advanceTerminalJobs]'s own same-table self-supply
 	 * step) handles that directly instead of going through here at all.
+	 *
+	 * Serves only the *first* willing [sources] entry per call, returning whatever that one extract
+	 * yielded - a caller chasing a larger total ([request], or a Crafting CPU's raw-material
+	 * claiming, see
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType.claimOutstandingStock])
+	 * keeps calling until this returns `0`.
 	 */
-	private fun fulfillFromProvider(level: ServerLevel, sources: List<ProviderSource>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
+	internal fun fulfillFromProvider(level: ServerLevel, sources: List<ProviderSource>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
 		for (source in sources) {
 			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
 			val storage = source.storage(level) ?: continue
@@ -86,7 +95,7 @@ object RequestFulfillment {
 			val route = PipeRouter.findRouteTo(level, source.hookPos, deliverTo) ?: continue
 			val extracted = storage.extract(stack.resource, available, false)
 			if (extracted <= 0) continue
-			val tile = level.getBlockEntity(source.hookPos) as? HookBlockEntity ?: continue
+			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
 			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace)
 			return extracted
 		}
@@ -112,10 +121,22 @@ object RequestFulfillment {
 	/** Every [PatternProviderHookState] reachable from [from], for [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest]'s own pattern search and [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType]'s step feeding. */
 	fun reachablePatternProviders(level: ServerLevel, from: BlockPos): List<PatternProviderSource> = patternProviderSourcesIn(level, reachablePipes(level, from))
 
+	/** Every distinct reachable Crafting CPU cluster from [from], one entry per cluster leader - a terminal's own entry point for finding somewhere to submit a craft request. A cluster's members are themselves pipe segments (see [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType]), so the reachable set is scanned directly rather than through each pipe's own neighbors. Clusters whose arrangement isn't a valid cuboid ([net.kernelpanicsoft.tubularstorage.crafting.CraftingCpuManager.Cluster.valid]) aren't CPUs and never appear here. */
+	fun reachableCraftingCpus(level: ServerLevel, from: BlockPos): List<CraftingCpuRef> {
+		val leaders = LinkedHashSet<BlockPos>()
+		for (candidatePos in reachablePipes(level, from)) {
+			if (craftingBufferAt(level, candidatePos) == null) continue
+			val cluster = CraftingCpuManager.get(level).clusterOf(level, candidatePos)
+			if (!cluster.valid) continue
+			leaders += cluster.leader
+		}
+		return leaders.map { CraftingCpuRef(it) }
+	}
+
 	private fun providerSources(level: ServerLevel, reachable: Set<BlockPos>): List<ProviderSource> {
 		val sources = mutableListOf<ProviderSource>()
 		for (candidatePos in reachable) {
-			val tile = level.getBlockEntity(candidatePos) as? HookBlockEntity ?: continue
+			val tile = level.getBlockEntity(candidatePos) as? MultipartBlockEntity ?: continue
 			for ((directionName, entry) in tile.hooks) {
 				val hookState = entry as HookHolderState
 				val hookType = HookTypeRegistry.byId(hookState.type)
@@ -141,7 +162,7 @@ object RequestFulfillment {
 	private fun patternProviderSourcesIn(level: ServerLevel, reachable: Set<BlockPos>): List<PatternProviderSource> {
 		val sources = mutableListOf<PatternProviderSource>()
 		for (candidatePos in reachable) {
-			val tile = level.getBlockEntity(candidatePos) as? HookBlockEntity ?: continue
+			val tile = level.getBlockEntity(candidatePos) as? MultipartBlockEntity ?: continue
 			for ((directionName, entry) in tile.hooks) {
 				val state = entry as? PatternProviderHookState ?: continue
 				sources += PatternProviderSource(candidatePos, Direction.valueOf(directionName), state)
@@ -182,15 +203,25 @@ object RequestFulfillment {
 	 * [InterfaceHookState] - which, unlike the other two, isn't pointed at an external neighbor at
 	 * all; its own [InterfaceHookState.stock] *is* the inventory, so [storage] special-cases it
 	 * rather than querying whatever [direction] happens to face (typically the far side of the
-	 * subnet boundary it anchors, not this hook's own stock).
+	 * subnet boundary it anchors, not this hook's own stock). A [PatternProviderHookState] whose own
+	 * target is a real vanilla crafting table is a third special case: the table itself exposes no
+	 * capability at all (it has no inventory of its own), so its `CRAFTING`-kind patterns' own
+	 * assembled results (see [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType.tickVanillaCraftingTable])
+	 * are read from [PatternOutputIO] instead.
 	 */
 	data class ProviderSource(val hookPos: BlockPos, val direction: Direction, val hookState: HookHolderState) {
-		fun storage(level: ServerLevel): CommonStorage<ItemResource>? =
-			(hookState as? InterfaceHookState)?.stock ?: ItemApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
+		fun storage(level: ServerLevel): CommonStorage<ItemResource>? = when {
+			hookState is InterfaceHookState -> hookState.stock
+			hookState is PatternProviderHookState && level.getBlockState(hookPos.relative(direction)).`is`(Blocks.CRAFTING_TABLE) -> PatternOutputIO(hookState)
+			else -> ItemApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
+		}
 	}
 
 	/** A [PatternProviderHookState] at [hookPos] facing [direction] - [targetPos] is whatever it's feeding/draining patterns against. */
 	data class PatternProviderSource(val hookPos: BlockPos, val direction: Direction, val state: PatternProviderHookState) {
 		val targetPos: BlockPos get() = hookPos.relative(direction)
 	}
+
+	/** A reachable Crafting CPU cluster, identified by its own leader's position - see [net.kernelpanicsoft.tubularstorage.crafting.CraftingCpuManager]. */
+	data class CraftingCpuRef(val leaderPos: BlockPos)
 }

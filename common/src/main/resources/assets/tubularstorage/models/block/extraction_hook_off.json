@@ -1,0 +1,7 @@
+{
+	"parent": "tubularstorage:block/extraction_hook",
+	"textures": {
+		"0": "tubularstorage:block/extraction_hook_off",
+		"particle": "tubularstorage:block/extraction_hook_off"
+	}
+}

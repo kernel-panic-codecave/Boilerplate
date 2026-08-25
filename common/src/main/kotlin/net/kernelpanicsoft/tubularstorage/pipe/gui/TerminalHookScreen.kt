@@ -62,3 +62,7 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 class TerminalHookScreen(menu: TerminalHookMenu, playerInventory: Inventory, title: Component) :
 	AbstractTerminalHookScreen<TerminalHookMenu>(menu, playerInventory, title)
+{
+	override val mainTabId: String get() = "terminal"
+	override val mainTabLabel: Component get() = Component.literal("Terminal")
+}

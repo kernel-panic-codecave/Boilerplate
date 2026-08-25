@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.warehouse.client
 
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
+import net.kernelpanicsoft.archie.registries.CustomModelRegistry
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
@@ -288,7 +289,9 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		private val UP_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.UP)
 		private val DOWN_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN)
 
-		val HEAD_MODEL_ID = ModelResourceLocation(TubularStorage.MOD % "gantry_head", "standalone")
+		val HEAD_MODEL_ID = ModelResourceLocation(TubularStorage.MOD % "gantry_head", "standalone").also {
+			CustomModelRegistry.registerBlock(it)
+		}
 
 		/** [GantryVisualState]'s outline box - slightly larger than a full block, centered on the head. */
 		private val OUTLINE_BOX = AABB(-0.6, -0.6, -0.6, 0.6, 0.6, 0.6)

@@ -1,15 +1,19 @@
 package net.kernelpanicsoft.tubularstorage.datagen
 
 import net.kernelpanicsoft.archie.data.client.model.ABlockStateProvider
+import net.kernelpanicsoft.archie.data.client.model.AConfiguredModel
 import net.kernelpanicsoft.archie.data.client.model.AModelFile
 import net.kernelpanicsoft.archie.util.plus
+import net.kernelpanicsoft.tubularstorage.pipe.block.BistateHookModelBlock
+import net.kernelpanicsoft.tubularstorage.pipe.block.ConnectingEncasementModelBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.GlassPipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
-import net.kernelpanicsoft.tubularstorage.registry.Registrars
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.Registrars
 import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
 import net.minecraft.core.Direction
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.properties.BlockStateProperties
 import net.minecraft.world.level.block.state.properties.BooleanProperty
@@ -19,8 +23,13 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
  * Generates every blockstate/block-model/item-model JSON under `assets/tubularstorage` -
  * `pipe`/`glass_pipe`'s connection-driven `"multipart"` bodies, `hook`'s unused placeholder (its
  * block is [net.minecraft.world.level.block.RenderShape.INVISIBLE] - see
- * [net.kernelpanicsoft.tubularstorage.pipe.client.PipeHookBlockEntityRenderer]), the four hook item
- * models, the plain-cube warehouse controller block plus its wand item,
+ * [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartBlockEntityVisual]), one item model per
+ * registered hook type and per registered encasement type plus each type's own part-block
+ * blockstate (see [net.kernelpanicsoft.tubularstorage.pipe.block.PartBlock] - the blockstate
+ * definition its
+ * [getRenderState][net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.getRenderState]
+ * answers select variants from), the plain-cube warehouse controller block
+ * plus its wand item,
  * [net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock]'s own connection-driven
  * `"multipart"` body (a real, player-visible block auto-placed as the gantry frame), and the
  * placeholder `gantry_head` model
@@ -29,9 +38,8 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
  * item purely so it bakes, not because it's player-obtainable - the gantry head is always a
  * dynamic render, never a placed block), the three plain-cube rack block types
  * ([net.kernelpanicsoft.tubularstorage.warehouse.rack.GeneralRackBlockEntity]/[net.kernelpanicsoft.tubularstorage.warehouse.rack.BulkRackBlockEntity]/
- * [net.kernelpanicsoft.tubularstorage.warehouse.rack.UnstackableRackBlockEntity]), and the
- * plain-cube [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]. Replaces what
- * was previously hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
+ * [net.kernelpanicsoft.tubularstorage.warehouse.rack.UnstackableRackBlockEntity]). Replaces what was
+ * previously hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
  * `common/src/main/resources`.
  */
 internal fun ABlockStateProvider.tubularStorageBlockStates() {
@@ -47,7 +55,7 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 		GlassPipeBlock.straightProperty, BlockStateProperties.AXIS, glassPipeStraight)
 	itemModels().getBuilder("glass_pipe").parent(glassPipeCore)
 
-	empty(BlockRegistry.Hook)
+	empty(BlockRegistry.Multipart)
 
 	val warehouseController = blockModels().getExistingFile(modLoc("warehouse_controller"))
 	simpleBlockWithItem(BlockRegistry.WarehouseController, warehouseController)
@@ -61,16 +69,62 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 		itemModels().getBuilder(hookType.path + "_hook").parent(blockModels().getExistingFile(hookType + "_hook"))
 	}
 
+	// Same shape as the hook item models above, over the encasement registry instead - the
+	// `<type path>_encasement` naming is what MultipartBlockEntityVisual's own casing model lookup relies
+	// on, exactly as it relies on `<type path>_hook` for a hook.
+	Registrars.ENCASEMENT_TYPE.ids.filter { it.namespace == mod.modId }.forEach { encasementType ->
+		val part = BuiltInRegistries.BLOCK.get(encasementType + "_part")
+		if (part is ConnectingEncasementModelBlock)
+			itemModels().getBuilder(encasementType.path + "_encasement").parent(blockModels().getExistingFile(encasementType + "_encasement_core"))
+		else
+			itemModels().getBuilder(encasementType.path + "_encasement").parent(blockModels().getExistingFile(encasementType + "_encasement"))
+	}
+
+	// One blockstate per attachment part block - see PartBlock - a single default variant over the
+	// same hand-modeled geometry the item icons above parent, except the crafting buffer's own
+	// assembled multipart body below. This is what makes each hook/encasement
+	// kind renderable as a real BlockState once MultipartBlockEntityVisual bakes
+	// that function its part block renders exactly its `<type path>_hook`/`_encasement` geometry.
+	// The air guard keeps a missing registration (namespace filter drift between here and
+	// BlockRegistry) from silently writing a garbage blockstates/air.json.
+	Registrars.HOOK_TYPE.ids.filter { it.namespace == mod.modId }.forEach { hookType ->
+		val part = BuiltInRegistries.BLOCK.get(hookType + "_part")
+		if (BuiltInRegistries.BLOCK.getKey(part) == hookType + "_part") {
+			if (part is BistateHookModelBlock) {
+				getVariantBuilder(part) {
+					forAllStates { state ->
+						AConfiguredModel.builder {
+							modelFile(
+								if (state.getValue(BistateHookModelBlock.ACTIVE))
+									blockModels().getExistingFile(hookType + "_hook_on")
+								else
+									blockModels().getExistingFile(hookType + "_hook_off")
+							)
+						}.build()
+					}
+				}
+			} else {
+				simpleBlock(part, blockModels().getExistingFile(hookType + "_hook"))
+			}
+		}
+	}
+	Registrars.ENCASEMENT_TYPE.ids.filter { it.namespace == mod.modId }.forEach { encasementType ->
+		val part = BuiltInRegistries.BLOCK.get(encasementType + "_part")
+		if (BuiltInRegistries.BLOCK.getKey(part) == encasementType + "_part") {
+			if (part is ConnectingEncasementModelBlock) {
+				craftingBufferMultipart(part)
+			} else {
+				simpleBlock(part, blockModels().getExistingFile(encasementType + "_encasement"))
+			}
+		}
+	}
+
 	// The three rack block types are plain cubes - a single flat `textures/block/*.png` per type
 	// via `cubeAll`/`simpleBlockWithItem`'s defaults, unlike the warehouse controller's own
 	// hand-modeled Blockbench shape above.
 	simpleBlockWithItem(BlockRegistry.GeneralRack)
 	simpleBlockWithItem(BlockRegistry.BulkRack)
 	simpleBlockWithItem(BlockRegistry.UnstackableRack)
-
-	// Same plain-cube treatment for the assembly table - not a hand-modeled shape like the
-	// warehouse controller, since there's no gantry-style moving geometry to justify one yet.
-	simpleBlockWithItem(BlockRegistry.AssemblyTable)
 
 	// Filter cards are plain items (no block of their own), unlike a hook's block-model-backed
 	// icon above - a flat `item/generated` icon over each one's own `textures/item/*.png` instead.
@@ -81,8 +135,20 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	itemModels().basicItem(ItemRegistry.RegexFilterCard)
 	itemModels().basicItem(ItemRegistry.CombinedFilterCard)
 
-	// Same flat item/generated icon as a filter card - a Pattern is likewise a plain item, no block of its own.
-	itemModels().basicItem(ItemRegistry.Pattern)
+	// Same flat item/generated icon as a filter card - a Pattern is likewise a plain item, no block
+	// of its own. Its `encoded` predicate (registered in ItemRegistry.initClient) swaps the blank
+	// punch-card deck for the punched one once a recipe is written to the stack.
+	itemModels().basicItem(ItemRegistry.Pattern) {
+		override {
+			model(AModelFile(modLoc("item/pattern_encoded")))
+			predicate(modLoc("encoded"), 1f)
+		}
+	}
+	itemModels().basicItem(modLoc("pattern_encoded"))
+
+	// The wrenches - handheld-parented so they render at vanilla's tool angle rather than flat-on.
+	itemModels().basicItem(ItemRegistry.BrassWrench) { parent(AModelFile(mcLoc("item/handheld")))}
+	itemModels().basicItem(ItemRegistry.DiamondWrench) { parent(AModelFile(mcLoc("item/handheld")))}
 }
 
 /**
@@ -155,6 +221,106 @@ private fun ABlockStateProvider.empty(block: Block) {
 		}
 	}
 }
+
+/**
+ * The crafting buffer part's own `"multipart"` body - the one attachment blockstate that assembles
+ * a whole casing out of pieces rather than selecting one variant. The core renders unconditionally;
+ * each face's arm/cap piece is selected by that direction's
+ * [ConnectingEncasementModelBlock.FACES] mode and rotated onto it; edge and corner seam fillers render
+ * only while [ConnectingEncasementModelBlock.FORMED] **and** every direction they bridge is ARM - an
+ * incomplete arrangement shows bare cored arms, and any face without its arm also drops its seam
+ * fillers so the casing keeps a smooth face there.
+ */
+private fun ABlockStateProvider.craftingBufferMultipart(block: ConnectingEncasementModelBlock) {
+	val core = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_core"))
+	val arm = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_arm"))
+	val cap = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_cap"))
+	val edge = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_edge"))
+	val corner = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_corner"))
+
+	getMultipartBuilder(block) {
+		fun seamFiller(directions: List<Direction>) {
+			configure {
+				condition(ConnectingEncasementModelBlock.FORMED, true)
+				for (direction in directions) condition(ConnectingEncasementModelBlock.FACES.getValue(direction), ConnectingEncasementModelBlock.FaceMode.ARM)
+			}
+		}
+
+		part { modelFile(core) }
+
+		for ((direction, property) in ConnectingEncasementModelBlock.FACES) {
+			val rotationX = rotationXFor(direction)
+			val rotationY = rotationYFor(direction)
+			configure { condition(property, ConnectingEncasementModelBlock.FaceMode.ARM) }
+			part {
+				modelFile(arm)
+				rotationX(rotationX)
+				rotationY(rotationY)
+			}
+			configure { condition(property, ConnectingEncasementModelBlock.FaceMode.CAP) }
+			part {
+				modelFile(cap)
+				rotationX(rotationX)
+				rotationY(rotationY)
+			}
+		}
+
+		for ((rotations, directions) in EDGE_ROTATIONS) {
+			seamFiller(directions)
+			part {
+				modelFile(edge)
+				rotationX(rotations.first)
+				rotationY(rotations.second)
+			}
+		}
+
+		for ((rotations, directions) in CORNER_ROTATIONS) {
+			seamFiller(directions)
+			part {
+				modelFile(corner)
+				rotationX(rotations.first)
+				rotationY(rotations.second)
+			}
+		}
+	}
+}
+
+/**
+ * Rotation tables for the seam-filler pieces. Every casing piece model is authored on the north
+ * face with east/up as the reference sides (`edge` hugging the block's north+east margins, `corner`
+ * its north+east+up ones), so each entry names the rotation landing it on the listed direction set.
+ * Derived from vanilla's own composition - `BlockModelRotation` builds
+ * `rotateYXZ(-y, -x, 0)`, i.e. the model rotates around X first, then around Y, both by the negated
+ * JSON angles - and verified against the proven arm rotations above: x=270/y=0 must carry an
+ * authored-north piece onto UP, y=90 onto EAST, and so on. Under that reading the twelve non-dup
+ * entries cover every valid edge pair (twelve) and every valid corner triple (eight - one direction
+ * per axis; triples containing opposite directions aren't corners at all).
+ */
+private val EDGE_ROTATIONS: List<Pair<Pair<Int, Int>, List<Direction>>> = listOf(
+	(0 to 0) to listOf(Direction.NORTH, Direction.EAST),
+	(0 to 90) to listOf(Direction.SOUTH, Direction.EAST),
+	(0 to 180) to listOf(Direction.SOUTH, Direction.WEST),
+	(0 to 270) to listOf(Direction.NORTH, Direction.WEST),
+	(90 to 0) to listOf(Direction.DOWN, Direction.EAST),
+	(90 to 90) to listOf(Direction.DOWN, Direction.SOUTH),
+	(90 to 180) to listOf(Direction.DOWN, Direction.WEST),
+	(90 to 270) to listOf(Direction.DOWN, Direction.NORTH),
+	(270 to 0) to listOf(Direction.UP, Direction.EAST),
+	(270 to 90) to listOf(Direction.UP, Direction.SOUTH),
+	(270 to 180) to listOf(Direction.UP, Direction.WEST),
+	(270 to 270) to listOf(Direction.UP, Direction.NORTH),
+)
+
+private val CORNER_ROTATIONS: List<Pair<Pair<Int, Int>, List<Direction>>> = listOf(
+	(0 to 0) to listOf(Direction.UP, Direction.NORTH, Direction.EAST),
+	(0 to 90) to listOf(Direction.UP, Direction.SOUTH, Direction.EAST),
+	(0 to 180) to listOf(Direction.UP, Direction.SOUTH, Direction.WEST),
+	(0 to 270) to listOf(Direction.UP, Direction.NORTH, Direction.WEST),
+	(90 to 0) to listOf(Direction.DOWN, Direction.NORTH, Direction.EAST),
+	(90 to 90) to listOf(Direction.DOWN, Direction.SOUTH, Direction.EAST),
+	(90 to 180) to listOf(Direction.DOWN, Direction.SOUTH, Direction.WEST),
+	(90 to 270) to listOf(Direction.DOWN, Direction.NORTH, Direction.WEST),
+)
 
 private fun rotationXFor(direction: Direction): Int = when (direction) {
 	Direction.UP -> 270

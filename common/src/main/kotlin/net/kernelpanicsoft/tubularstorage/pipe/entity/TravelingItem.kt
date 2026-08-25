@@ -23,7 +23,7 @@ import net.minecraft.world.item.DyeColor
  *
  * [targetFace] is the specific face of the *destination* block this delivery is meant for, when
  * the caller already knows exactly which one - a
- * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity] can carry up to six independent
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity] can carry up to six independent
  * hooks, and the direction [net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity.tick]'s
  * own final hop would otherwise compute reflects whichever neighboring pipe segment the item
  * happens to arrive from - pipe network topology, not which face the caller actually meant - so

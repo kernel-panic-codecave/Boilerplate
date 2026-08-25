@@ -1,8 +1,8 @@
 package net.kernelpanicsoft.tubularstorage.pipe.item
 
-import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
+import net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionResult
@@ -20,9 +20,9 @@ class PipeItem(pipe: PipeBlock, properties: Properties) : BlockItem(pipe, proper
 		if (level.isClientSide) return result
 		val pos = context.clickedPos
 		val state = level.getBlockState(pos)
-		if (result == InteractionResult.FAIL && state.block.let { it is HookBlock })
+		if (result == InteractionResult.FAIL && state.block.let { it is MultipartBlock })
 		{
-			val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return InteractionResult.PASS
+			val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return InteractionResult.PASS
 			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(block)
 			level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
 			state.updateNeighbourShapes(level, pos, Block.UPDATE_ALL)

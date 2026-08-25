@@ -46,7 +46,8 @@ sealed class FilterCardTarget {
 			HookGhostSlotItemAccess(level, pos, direction, slot)
 
 		override fun write(level: Level, player: Player, resource: ItemResource) {
-			sortingHookStateAt(level, pos, direction)?.filter?.set(slot, resource)
+			sortingHookStateAt(level, pos, direction)?.filter?.set(slot, resource) ?: return
+			markHookStateDirty(level, pos)
 		}
 	}
 

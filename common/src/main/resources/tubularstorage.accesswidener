@@ -1,12 +1,9 @@
 accessWidener	v2	named
-
-# ModelBlockRenderer.AmbientOcclusionFace computes vanilla's real per-corner ambient occlusion
-# (brightness/lightmap per vertex) but is entirely package-private, with no public API exposing it
-# otherwise. WarehouseControllerBlockEntityRenderer needs it directly for the gantry drop rod's
-# manually-clipped bottom segment (see that class's KDoc) - every other segment goes through the
-# ordinary tesselateBlock path, which already gets AO for free.
 accessible	class	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace
 accessible	method	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	<init>	()V
 accessible	method	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	calculate	(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;[FLjava/util/BitSet;Z)V
 accessible	field	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	brightness	[F
 accessible	field	net/minecraft/client/renderer/block/ModelBlockRenderer$AmbientOcclusionFace	lightmap	[I
+accessible  field   net/minecraft/client/gui/screens/inventory/AbstractContainerScreen hoveredSlot Lnet/minecraft/world/inventory/Slot;
+accessible  method  net/minecraft/client/renderer/item/ItemProperties register (Lnet/minecraft/world/item/Item;Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/client/renderer/item/ClampedItemPropertyFunction;)V
+accessible  method  net/minecraft/client/renderer/LevelRenderer renderShape (Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lnet/minecraft/world/phys/shapes/VoxelShape;DDDFFFF)V

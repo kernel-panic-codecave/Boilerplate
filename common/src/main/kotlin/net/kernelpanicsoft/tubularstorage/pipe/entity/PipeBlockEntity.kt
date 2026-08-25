@@ -22,7 +22,7 @@ import net.minecraft.world.level.block.state.BlockState
 /**
  * A plain pipe segment: holds and advances [TravelingItem]s in transit, and participates in the
  * [PipeNetworkManager] network. Carries no hooks - see
- * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity] for the (heavier, hook-
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity] for the (heavier, hook-
  * carrying) variant a plain pipe promotes into the moment it gets its first hook attached. Kept
  * separate rather than folding hooks onto every pipe unconditionally: hooks bring six always-
  * allocated 9-slot filter grids plus a synced map, real per-instance memory/NBT/tick cost a plain
@@ -55,8 +55,6 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	open fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
-		// Idempotent - this is also how a pipe re-registers after a chunk (re)load, there being no
-		// dedicated "block entity now active" hook to call it from instead.
 		PipeNetworkManager.get(serverLevel).ensureRegistered(serverLevel, pos)
 		var hopped = false
 
@@ -79,22 +77,9 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				continue
 			}
 
-			// A route ending at a subnet boundary (see SubnetBoundary) always terminates its own
-			// `path` right at the far hook's own position, which is still, ordinarily, "a pipe" as
-			// far as this hop check is concerned - without the boundary carve-out below, delivery
-			// would keep trying to hop the item into a further pipe segment that was never actually
-			// part of the route, instead of the InterfaceHookType hook's own stock right there.
 			val direction = Direction.fromDelta(nextPos.x - pos.x, nextPos.y - pos.y, nextPos.z - pos.z)
 			val boundary = direction != null && SubnetBoundary.isBoundaryEdge(serverLevel, pos, direction)
 
-			// The same carve-out, generalized: item.path always ends with the route's own actual
-			// destination (whatever findRoute/findRouteTo was asked to reach), regardless of
-			// whether that position also happens to be pipe-shaped - a TerminalHookState.output
-			// exposed directly on the requesting terminal's own block position, say. Without this,
-			// the item hops *into* that final pipe segment as if it were a mid-route waypoint, then
-			// jams on the very next tick once its own path is empty - it was never actually part of
-			// the route past this point. Every non-final hop always has more than one entry left in
-			// its own path, so this can never misfire mid-route.
 			val isFinalHop = item.path.size == 1
 
 			if (isPipe(serverLevel, nextPos) && !boundary && !isFinalHop) {
@@ -111,10 +96,6 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				continue
 			}
 
-			// item.targetFace, when the caller knew exactly which face it meant (see TravelingItem's
-			// own KDoc), wins over the topology-derived direction here - the two can legitimately
-			// differ, and only targetFace actually identifies which of a multi-hook block's own faces
-			// this delivery is for.
 			val storage = ItemApi.BLOCK.find(serverLevel, nextPos, item.targetFace ?: direction?.opposite)
 			if (storage == null) {
 				jam(serverLevel, pos, item)
@@ -131,8 +112,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					hopped = true
 				}
 				inserted > 0 -> {
-					item.stack.shrink(inserted)
-					items[index] = item.copy(progress = 1f)
+					items[index] = item.copy(stack = item.stack.shrink(inserted), progress = 1f)
 					hopped = true
 					index++
 				}

@@ -2,8 +2,8 @@ package net.kernelpanicsoft.tubularstorage.pipe.network
 
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
@@ -28,12 +28,15 @@ import java.util.UUID
  * a [net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookType] hook attached is only valid if
  * the item's [color] and that hook's filter/mode accept it; a candidate reached through a
  * hookless face always accepts, at the baseline priority (0) - except on a
- * [net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity] that also carries a
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity] that also carries a
  * [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType] hook on one of its other
  * faces, where a hookless face is never a candidate: it's the terminal's own well-defined
  * withdrawal destination (see `WarehouseTerminalMenu.adjacentInventory`), reachable only via
  * [findRouteTo]'s targeted routing, not something a default route or extractor's push should ever
- * dump into.
+ * dump into. A Crafting CPU's own storage needs no such carve-out: it rides on a pipe segment
+ * ([net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType]), so [step] walks
+ * *through* it as ordinary transit and never evaluates it as a candidate destination at all,
+ * leaving it reachable only by the [findRouteTo]-targeted claim/feed logic of the job that owns it.
  *
  * A [SubnetBoundary.isBoundaryEdge] never gets the ordinary "keep walking the BFS through it"
  * treatment an ordinary hook-to-hook/pipe-to-pipe connection would: [step] instead evaluates
@@ -77,7 +80,7 @@ object PipeRouter {
 		return route
 	}
 
-	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = level.getBlockState(pos).block.let { (it !is HookBlock && it is PipeBlock) || (it is HookBlock && (level.getBlockEntity(pos) as HookBlockEntity).pipeBlockId != HookBlockEntity.NONE) }
+	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = level.getBlockState(pos).block.let { (it !is MultipartBlock && it is PipeBlock) || (it is MultipartBlock && (level.getBlockEntity(pos) as MultipartBlockEntity).pipeBlockId != MultipartBlockEntity.NONE) }
 
 	/**
 	 * Returns the hop path (pipes, ending with [to]) from [from] to one *specific* destination,
@@ -142,7 +145,7 @@ object PipeRouter {
 		best: Candidate?,
 	): List<BlockPos>? {
 		val (current, path) = queue.removeFirstOrNull() ?: return best?.path
-		val tile = level.getBlockEntity(current) as? HookBlockEntity
+		val tile = level.getBlockEntity(current) as? MultipartBlockEntity
 
 		var nextBest = best
 		for (direction in Direction.entries) {
@@ -183,7 +186,7 @@ object PipeRouter {
 	}
 
 	/** Whether [tile] carries a [TerminalHookType] hook on any of its faces - see [step]'s hookless-face exclusion. */
-	private fun hasTerminal(tile: HookBlockEntity): Boolean {
+	private fun hasTerminal(tile: MultipartBlockEntity): Boolean {
 		for ((_, entry) in tile.hooks) if ((entry as HookHolderState).type == TerminalHookType.ID) return true
 		return false
 	}

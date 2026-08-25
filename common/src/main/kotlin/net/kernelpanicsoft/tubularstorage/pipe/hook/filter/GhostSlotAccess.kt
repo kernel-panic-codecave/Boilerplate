@@ -2,7 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook.filter
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.item.ItemContainerAccess
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.minecraft.core.BlockPos
@@ -10,6 +10,7 @@ import net.minecraft.core.Direction
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Block
 
 /**
  * An [ItemContainerAccess] backed by a ghost slot (see
@@ -28,8 +29,26 @@ interface CommittableItemAccess : ItemContainerAccess {
 
 /** Resolves [SortingHookState]/`null` for [pos]'s hooked face [direction], or `null` if the block/hook/state no longer exists - shared by [HookGhostSlotItemAccess] and [FilterCardTarget]'s own hook case. */
 internal fun sortingHookStateAt(level: Level, pos: BlockPos, direction: Direction): SortingHookState? {
-	val tile = level.getBlockEntity(pos) as? HookBlockEntity ?: return null
+	val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return null
 	return tile.hooks[direction.name] as? HookHolderState as? SortingHookState
+}
+
+/**
+ * Marks [pos]'s own [MultipartBlockEntity] dirty after a direct mutation to one of its nested
+ * [net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap]-held hook states - a nested state's
+ * own field setter has no way to reach the owning block entity itself (see
+ * [net.kernelpanicsoft.archie.serialization.NBTHolderImpl.listField]'s own `thisRef is BlockEntity`
+ * check, which a plain [SortingHookState] never satisfies), so without this follow-up the mutation
+ * only ever exists in memory - never NBT-persisted, never pushed to nearby clients. Mirrors
+ * [net.kernelpanicsoft.tubularstorage.network.UpdateSortingRoutingPacket]'s identical
+ * `tile.hooks.touch()` + `sendBlockUpdated` pattern for [SortingHookState.routing] - a ghost-slot
+ * write needs the exact same one.
+ */
+internal fun markHookStateDirty(level: Level, pos: BlockPos) {
+	val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return
+	tile.hooks.touch()
+	val state = level.getBlockState(pos)
+	level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
 }
 
 /** A [CommittableItemAccess] for one slot of a [SortingHookState.filter] ghost grid - the root of a [FilterCardTarget] chain. */
@@ -48,7 +67,8 @@ class HookGhostSlotItemAccess(
 	override fun stillValid(player: Player): Boolean = sortingHookStateAt(level, pos, direction) != null
 
 	override fun commit() {
-		sortingHookStateAt(level, pos, direction)?.filter?.set(slot, ItemResource.of(cached))
+		sortingHookStateAt(level, pos, direction)?.filter?.set(slot, ItemResource.of(cached)) ?: return
+		markHookStateDirty(level, pos)
 	}
 }
 

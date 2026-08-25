@@ -18,12 +18,17 @@ sealed interface GantryJob {
 	 * [deliverTo] is set (a request being fulfilled, see `RequestFulfillment`, or a warehouse
 	 * terminal withdrawal), the controller ships it back out via a connected pipe (see
 	 * [DeliveryTarget]) once it lands in the buffer, rather than leaving it there indefinitely with
-	 * nothing else to drain it.
+	 * nothing else to drain it. [claimed] marks a job created via
+	 * [WarehouseControllerBlockEntity.claimAndEnqueue] - only those release their own reservation
+	 * ledger entry once picked up, so an ordinary [WarehouseControllerBlockEntity.enqueueRetrieve]
+	 * call (which never touched the ledger in the first place) can't accidentally free someone
+	 * else's real claim.
 	 */
 	data class Retrieve(
 		val slot: WarehouseIndex.RackSlotRef,
 		override val stack: ResourceStack<ItemResource>,
 		val deliverTo: DeliveryTarget? = null,
+		val claimed: Boolean = false,
 	) : GantryJob
 
 	/** Move [resource]/[amount] from the controller's own staging buffer into the rack at [targetPos]/[targetDirection], resolved once up front rather than re-planned on arrival. */

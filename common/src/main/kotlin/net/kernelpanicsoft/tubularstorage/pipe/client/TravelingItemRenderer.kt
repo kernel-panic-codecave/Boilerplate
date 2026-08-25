@@ -18,7 +18,7 @@ import net.minecraft.world.phys.Vec3
  * actually decides its pipe type's contents should be visible
  * ([net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.showsTravelingItems]):
  * [TravelingItemBlockEntityRenderer] for a plain [net.kernelpanicsoft.tubularstorage.pipe.block.GlassPipeBlock],
- * and [PipeHookBlockEntityRenderer] for a [net.kernelpanicsoft.tubularstorage.pipe.block.HookBlock]
+ * and [MultipartTravelingItemRenderer] for a [net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock]
  * promoted from one.
  */
 object TravelingItemRenderer {

@@ -2,7 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook
 
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingHookMenu
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.minecraft.core.Direction
@@ -21,13 +21,15 @@ import net.minecraft.world.item.Item
 object FilterHookType : PipeHookType<FilterHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "filter"
 
+	override val id: ResourceLocation get() = ID
+
 	override fun createState(): FilterHookState = FilterHookState()
 
 	override val hasMenu: Boolean = true
 
 	override val validRoute: Boolean = true
 
-	override fun createMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, direction: Direction): AbstractContainerMenu =
+	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
 		SortingHookMenu(id, inventory, tile, direction)
 
 	override fun asItem(): Item = ItemRegistry.FilterHook

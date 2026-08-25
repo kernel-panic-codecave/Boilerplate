@@ -5,7 +5,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.RequesterHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.pipe.network.SubnetBoundary
@@ -32,6 +32,8 @@ import net.minecraft.world.item.Item
 object RequesterHookType : PipeHookType<RequesterHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "requester"
 
+	override val id: ResourceLocation get() = ID
+
 	override fun createState(): RequesterHookState = RequesterHookState()
 
 	override val hasMenu: Boolean = true
@@ -39,11 +41,11 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 	override fun createMenu(
 		id: Int,
 		inventory: Inventory,
-		tile: HookBlockEntity,
+		tile: MultipartBlockEntity,
 		direction: Direction
 	): AbstractContainerMenu = RequesterHookMenu(id, inventory, tile, direction)
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: RequesterHookState) {
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: RequesterHookState) {
 		state.ticksSinceRequest++
 		if (state.ticksSinceRequest < REQUEST_INTERVAL_TICKS) return
 		state.ticksSinceRequest = 0

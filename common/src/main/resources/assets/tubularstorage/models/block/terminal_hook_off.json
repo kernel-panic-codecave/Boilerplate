@@ -1,0 +1,7 @@
+{
+	"parent": "tubularstorage:block/terminal_hook",
+	"textures": {
+		"0": "tubularstorage:block/terminal_hook_off",
+		"particle": "tubularstorage:block/terminal_hook_off"
+	}
+}

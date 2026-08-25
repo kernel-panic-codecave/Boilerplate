@@ -5,10 +5,10 @@ import net.kernelpanicsoft.tubularstorage.pipe.gui.CraftTreeMenu
 import net.minecraft.client.Minecraft
 
 /**
- * One node of a [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob]'s tree, built by
- * [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.toTree] - [resource]/[amount] is the
- * craft step's own output, [status]/[done]/[progress] its current progress
- * ([net.kernelpanicsoft.tubularstorage.crafting.CraftingJob.stepStatus] for the text; [progress] is
+ * One node of a [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferJob]'s tree, built by
+ * [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferJob.toTree] - [resource]/[amount] is
+ * the craft step's own output, [status]/[done]/[progress] its current progress
+ * ([net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferJob.stepStatus] for the text; [progress] is
  * a coarse `0f..1f` reflecting the same states for every node *except* the root, which instead
  * reports the job's own real `delivered / targetAmount` fraction - the one node with genuinely
  * continuous progress data), [children] the steps producing this step's own crafted (not
@@ -26,11 +26,11 @@ data class CraftJobTreeNode(
 	val children: List<CraftJobTreeNode>,
 )
 
-/** Server -> client: reply to [RequestCraftJobTreePacket] - the requesting player's currently open terminal-family menu's own front-of-queue job tree, or `null` if nothing is in progress. */
+/** Server -> client: reply to [RequestCraftJobTreePacket] - the requesting player's currently open terminal-family menu's own trees, one per in-flight job ([net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferJob.toTree] skips a job whose own target was fully covered straight from stock - nothing to show a tree for), empty if nothing is in progress. */
 @Serializable
-data class CraftJobTreePacket(val root: CraftJobTreeNode?) {
+data class CraftJobTreePacket(val roots: List<CraftJobTreeNode>) {
 	fun handleOnClient() {
 		val menu = Minecraft.getInstance().player?.containerMenu as? CraftTreeMenu ?: return
-		menu.updateCraftTree(root)
+		menu.updateCraftTrees(roots)
 	}
 }

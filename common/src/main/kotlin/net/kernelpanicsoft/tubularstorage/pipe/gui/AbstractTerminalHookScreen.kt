@@ -40,6 +40,9 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 		return middleClickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
 	}
 
+	abstract val mainTabId: String
+	abstract val mainTabLabel: Component
+
 	@Composable
 	fun content()
 	{
@@ -64,8 +67,8 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 						}
 					}
 					TabContainerPanel(contentWidth = contentWidth) {
-						tab(id = "store", title = Component.literal("Store")) { storeTab(viewMode) }
-						tab(id = "tree", title = Component.literal("Tree")) { treeTab() }
+						tab(id = mainTabId, title = mainTabLabel) { mainTab(viewMode) }
+						tab(id = "jobs", title = Component.literal("Jobs")) { treeTab() }
 						additionalTabs()
 					}
 				}
@@ -74,7 +77,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 	}
 
 	@Composable
-	private fun storeTab(viewMode: StoreViewMode)
+	private fun mainTab(viewMode: StoreViewMode)
 	{
 		val layers = LocalLayerManager.current
 
@@ -125,7 +128,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 			}
 		}
 		CraftingTreeView(
-			root = menu.craftTree,
+			roots = menu.craftTrees,
 
 			modifier = Modifier.size(contentWidth, 18 * VISIBLE_ROWS * 2)
 		)

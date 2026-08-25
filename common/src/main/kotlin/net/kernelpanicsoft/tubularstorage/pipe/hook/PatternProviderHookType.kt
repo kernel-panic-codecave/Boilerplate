@@ -7,11 +7,13 @@ import earth.terrarium.common_storage_lib.storage.base.StorageSlot
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
 import net.kernelpanicsoft.tubularstorage.crafting.Pattern
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternProviderHookMenu
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType.tickGenericTarget
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType.tickVanillaCraftingTable
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -20,68 +22,81 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
+import net.minecraft.world.level.block.Blocks
 
 /**
  * Holds encoded [net.kernelpanicsoft.tubularstorage.crafting.PatternItem]s and decides *what* to
- * run against whatever's on its own attached face - "any adjacent inventory," not just an
- * [AssemblyTableBlockEntity], the same way [ProviderHookType]/[ExtractionHookType] already reach
- * into any generic [ItemApi.BLOCK]-exposed inventory.
+ * run against whatever's on its own attached face - "any adjacent inventory," the same way
+ * [ProviderHookType]/[ExtractionHookType] already reach into any generic [ItemApi.BLOCK]-exposed
+ * inventory.
  *
- * An [AssemblyTableBlockEntity] target gets the full buffered/parallel treatment
- * ([tickAssemblyTable]): ingredient delivery aimed at this hook lands in [PatternProviderHookState.patternBuffers]
- * (via [PatternBufferIO], exposed on this hook's own position - see
- * [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.Hook]'s registration), and once a
- * buffer holds a full run's worth, it's atomically moved out and handed to
- * [AssemblyTableBlockEntity.beginBufferedRun] - up to [AssemblyTableBlockEntity.maxParallelRuns]
- * simultaneous runs, not just one, and never touching the table's own [AssemblyTableBlockEntity.grid]
- * at all, so different patterns' ingredients (even ones sharing an input type) can never collide.
+ * A real, placed vanilla crafting table is the special case for a `CRAFTING`-kind pattern,
+ * detected by block state rather than block entity (a crafting table has none of its own)
+ * ([tickVanillaCraftingTable]): resolves instantly, since a pattern's own output was already
+ * assembled once at encode time - see its own KDoc. Ingredient staging
+ * ([PatternProviderHookState.patternBuffers], exposed on this hook's own position via
+ * [PatternBufferIO] - see [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.Multipart]'s
+ * registration) and the assembled result ([PatternProviderHookState.patternOutputBuffers],
+ * exposed via [PatternOutputIO]) both live entirely as virtual hook state, since the table itself
+ * has no inventory to hold either.
  *
- * Any other target (a vanilla furnace, say - something that already processes on its own once fed
- * and was never rebuilt to understand buffers) falls back to the older single-slot behavior
- * ([tickGenericTarget]): ingredient delivery still targets the target's own position directly, and
+ * Any other target (a vanilla furnace, say, or a future crusher - a `PROCESSING`-kind pattern's
+ * own real, self-driving machine) falls back to a single-slot behavior ([tickGenericTarget]):
+ * ingredient delivery targets the target's own position directly, and
  * [PatternProviderHookState.activeSlot] tracks the one pattern presumed in flight, guessed via
- * plain ingredient presence - there's no generic "is this inventory still processing" query the way
- * [AssemblyTableBlockEntity] itself exposes one. [providesItems] reuses the exact same
- * [ProviderHookType]-style pull machinery
+ * plain ingredient presence - there's no generic "is this inventory still processing" query.
+ * [providesItems] reuses the exact same [ProviderHookType]-style pull machinery
  * ([net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment.reachableProviders]) to
  * expose the target's own output as network stock once produced - no separate "pull" logic needed
- * here at all. See `docs/design/m4-crafting-automation.md`.
+ * here at all. A Crafting CPU is what actually feeds/drains either case as part of a job's own
+ * steps - see `docs/design/m4-crafting-automation.md`.
  */
 object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "pattern_provider"
+
+	override val id: ResourceLocation get() = ID
 
 	override fun createState(): PatternProviderHookState = PatternProviderHookState()
 
 	override val hasMenu: Boolean = true
 	override val providesItems: Boolean = true
 
-	override fun createMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, direction: Direction): AbstractContainerMenu =
+	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
 		PatternProviderHookMenu(id, inventory, tile, direction)
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: PatternProviderHookState) {
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: PatternProviderHookState) {
 		val targetPos = pos.relative(direction)
-		val targetTile = level.getBlockEntity(targetPos)
-		if (targetTile is AssemblyTableBlockEntity) {
-			tickAssemblyTable(state, targetTile)
-		} else {
-			tickGenericTarget(level, targetPos, direction, state)
-		}
+		if (level.getBlockState(targetPos).`is`(Blocks.CRAFTING_TABLE)) tickVanillaCraftingTable(state)
+		else tickGenericTarget(level, targetPos, direction, state)
 	}
 
-	/** Starts as many new parallel runs on [table] as its own [AssemblyTableBlockEntity.maxParallelRuns] currently allows room for, one per pattern slot whose own [PatternProviderHookState.patternBuffers] entry already holds a full run's worth. */
-	private fun tickAssemblyTable(state: PatternProviderHookState, table: AssemblyTableBlockEntity) {
+	/**
+	 * A real, placed vanilla crafting table - the special case for a `CRAFTING`-kind pattern (see
+	 * this object's own KDoc). Resolves instantly: a pattern's own [Pattern.outputs] were already
+	 * assembled once, at encode time (see `PatternEncoder`), so running it here is just the same
+	 * generic extract-inputs/insert-outputs conversion every pattern kind already uses - no live
+	 * recipe lookup needed. A `while` loop rather than one run per tick, since "instant" means a
+	 * whole buffered batch converts in one go rather than being spread across ticks. The result
+	 * lands in [PatternProviderHookState.patternOutputBuffers] (via [outputBufferFor]) since a real
+	 * crafting table has no inventory of its own to hold it.
+	 */
+	private fun tickVanillaCraftingTable(state: PatternProviderHookState) {
 		for (index in 0 until state.patterns.size()) {
-			if (table.activeRuns.size >= table.maxParallelRuns()) return
-			val pattern = patternAt(state, index) ?: continue
+			val pattern = patternAt(state, index)?.takeIf { it.kind == PatternKind.CRAFTING } ?: continue
 			val buffer = state.bufferFor(index)
+			val output = state.outputBufferFor(index)
 			val requiredInputs = pattern.requiredInputs()
-			if (requiredInputs.any { (resource, perRun) -> amountIn(buffer, resource) < perRun }) continue
-			for ((resource, perRun) in requiredInputs) buffer.extract(resource, perRun, false)
-			table.beginBufferedRun(pattern)
+			while (
+				requiredInputs.all { (resource, perRun) -> amountIn(buffer, resource) >= perRun } &&
+				pattern.outputs.all { output.insert(it.resource, it.amount, true) >= it.amount }
+			) {
+				for ((resource, perRun) in requiredInputs) buffer.extract(resource, perRun, false)
+				for (out in pattern.outputs) output.insert(out.resource, out.amount, false)
+			}
 		}
 	}
 
-	/** The older, single-run-at-a-time behavior for a target with no buffered/parallel processing of its own - see this object's own KDoc. */
+	/** The single-run-at-a-time behavior for a target with no buffered processing of its own - see this object's own KDoc. */
 	private fun tickGenericTarget(level: ServerLevel, targetPos: BlockPos, direction: Direction, state: PatternProviderHookState) {
 		val active = state.activeSlot
 		if (active != null) {
@@ -100,7 +115,7 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 	}
 
 	private fun patternAt(state: PatternProviderHookState, index: Int): Pattern? {
-		val stack = state.patterns.get(index).getItem()
+		val stack = state.patterns[index].getItem()
 		if (stack.isEmpty) return null
 		return PatternItemData(stack).pattern
 	}
@@ -118,15 +133,14 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 	 * Reads the target's combined [earth.terrarium.common_storage_lib.storage.base.CommonStorage.get]/
 	 * [earth.terrarium.common_storage_lib.storage.base.CommonStorage.size] view rather than
 	 * simulating an [earth.terrarium.common_storage_lib.storage.base.CommonStorage.extract] - a
-	 * directed exposure like [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity.ioStorage]
-	 * only ever `extract`s from its *output* side, so simulating an extract of the *input*
-	 * ingredients sitting in its grid would always read as unavailable.
+	 * directed exposure only ever `extract`s from its *output* side, so simulating an extract of
+	 * the *input* ingredients sitting in its grid would always read as unavailable.
 	 */
 	private fun inputsPresent(level: ServerLevel, targetPos: BlockPos, direction: Direction, pattern: Pattern): Boolean {
 		val storage = ItemApi.BLOCK.find(level, targetPos, direction) ?: return false
 		val totals = HashMap<ItemResource, Long>()
 		for (i in 0 until storage.size()) {
-			val slot = storage.get(i)
+			val slot = storage[i]
 			if (slot.resource.isBlank) continue
 			totals[slot.resource] = (totals[slot.resource] ?: 0L) + slot.amount
 		}
@@ -142,7 +156,7 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 /**
  * Bridges [state]'s own [PatternProviderHookState.patternBuffers] into one [CommonStorage],
  * exposed directly on the pattern-provider hook's own block position (see
- * [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.Hook]'s registration) - what a
+ * [net.kernelpanicsoft.tubularstorage.registry.TileRegistry.Multipart]'s registration) - what a
  * delivery aimed at this hook (rather than its target) actually lands in.
  *
  * [insert] distributes [resource] across every pattern slot whose own [Pattern.requiredInputs]
@@ -158,12 +172,12 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
  * before any slot gets its second.
  *
  * [extract] always reports nothing available - buffers are feed-only staging, never a pull source
- * in their own right (a completed run's real output comes from [AssemblyTableBlockEntity.output]
- * instead, exposed the ordinary way).
+ * in their own right (a completed run's real output comes from the target's own real output for a
+ * `PROCESSING`-kind pattern, or [PatternOutputIO] for a `CRAFTING`-kind one, instead).
  */
 class PatternBufferIO(private val state: PatternProviderHookState) : CommonStorage<ItemResource> {
 	override fun size(): Int = state.patterns.size()
-	override fun get(index: Int): StorageSlot<ItemResource> = state.bufferFor(index).get(0)
+	override fun get(index: Int): StorageSlot<ItemResource> = state.bufferFor(index)[0]
 
 	override fun insert(resource: ItemResource, amount: Long, simulate: Boolean): Long {
 		var remaining = amount
@@ -172,9 +186,10 @@ class PatternBufferIO(private val state: PatternProviderHookState) : CommonStora
 			madeProgress = false
 			for (index in 0 until state.patterns.size()) {
 				if (remaining <= 0) break
-				val stack = state.patterns.get(index).getItem()
+				val stack = state.patterns[index].getItem()
 				if (stack.isEmpty) continue
-				val pattern = PatternItemData(stack).pattern ?: continue
+				val pattern = PatternItemData(stack).pattern
+				if (pattern == Pattern.EMPTY) continue
 				val perRun = pattern.requiredInputs()[resource] ?: continue
 				val buffer = state.bufferFor(index)
 				val cap = perRun * PatternProviderHookState.MAX_BUFFERED_RUNS_PER_PATTERN
@@ -192,4 +207,28 @@ class PatternBufferIO(private val state: PatternProviderHookState) : CommonStora
 	}
 
 	override fun extract(resource: ItemResource, amount: Long, simulate: Boolean): Long = 0
+}
+
+/**
+ * Bridges [state]'s own [PatternProviderHookState.patternOutputBuffers] into one [CommonStorage] -
+ * the symmetric counterpart to [PatternBufferIO], exposing a `CRAFTING`-kind pattern's own
+ * instantly-assembled result (see [PatternProviderHookType.tickVanillaCraftingTable]) as ordinary
+ * pullable network stock, the same way a `PROCESSING`-kind pattern's own real target output
+ * already is. [insert] always reports nothing accepted - the only way anything lands here is
+ * [tickVanillaCraftingTable] itself, direct on [PatternProviderHookState.outputBufferFor].
+ */
+class PatternOutputIO(private val state: PatternProviderHookState) : CommonStorage<ItemResource> {
+	override fun size(): Int = state.patterns.size()
+	override fun get(index: Int): StorageSlot<ItemResource> = state.outputBufferFor(index)[0]
+
+	override fun insert(resource: ItemResource, amount: Long, simulate: Boolean): Long = 0
+
+	override fun extract(resource: ItemResource, amount: Long, simulate: Boolean): Long {
+		var remaining = amount
+		for (index in 0 until state.patterns.size()) {
+			if (remaining <= 0) break
+			remaining -= state.outputBufferFor(index).extract(resource, remaining, simulate)
+		}
+		return amount - remaining
+	}
 }

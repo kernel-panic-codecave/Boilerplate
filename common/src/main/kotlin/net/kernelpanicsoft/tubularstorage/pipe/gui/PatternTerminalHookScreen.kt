@@ -40,7 +40,8 @@ import kotlin.time.Duration.Companion.milliseconds
 class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: Inventory, title: Component) :
 	AbstractTerminalHookScreen<PatternTerminalHookMenu>(menu, playerInventory, title)
 {
-
+	override val mainTabId: String get() = "encode"
+	override val mainTabLabel: Component get() = Component.literal("Encode")
 
 	@Composable
 	override fun additionalContent()

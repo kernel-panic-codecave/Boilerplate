@@ -76,7 +76,7 @@ object PatternEncoder {
 		val pattern = encode(level, kind, grid, patternOutputs) ?: return false
 		val blankSlot = (0 until blankPatterns.size()).firstOrNull { i ->
 			val stack = blankPatterns[i].getItem()
-			stack.item == ItemRegistry.Pattern && PatternItemData(stack).pattern == null
+			stack.item == ItemRegistry.Pattern && PatternItemData(stack).pattern == Pattern.EMPTY
 		} ?: return false
 
 		val encodedStack = ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern }

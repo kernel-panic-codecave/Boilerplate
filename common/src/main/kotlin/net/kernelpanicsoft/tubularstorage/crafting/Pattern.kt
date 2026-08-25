@@ -50,7 +50,7 @@ data class Pattern(
 	val outputs: List<SResourceStack<SItemResource>>,
 	val kind: PatternKind,
 ) {
-	/** [inputs] collapsed into one count per distinct, non-blank resource - what [AssemblyTableBlockEntity] actually needs to check "do I have enough to run this" against. */
+	/** [inputs] collapsed into one count per distinct, non-blank resource - what a step's own execution actually needs to check "do I have enough to run this" against. */
 	fun requiredInputs(): Map<ItemResource, Long> {
 		val required = LinkedHashMap<ItemResource, Long>()
 		for (resource in inputs) {
@@ -61,6 +61,7 @@ data class Pattern(
 	}
 
 	companion object {
+		val EMPTY = Pattern(emptyList(), emptyList(), PatternKind.CRAFTING)
 		const val GRID_SIZE = 9
 	}
 }

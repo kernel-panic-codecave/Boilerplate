@@ -6,7 +6,6 @@ import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
-import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
 import net.kernelpanicsoft.tubularstorage.crafting.InstantCrafting
@@ -28,7 +27,7 @@ import net.kernelpanicsoft.tubularstorage.network.TerminalItemDepositRequestPack
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemWithdrawRequestPacket
 import net.kernelpanicsoft.tubularstorage.network.TerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
@@ -54,7 +53,7 @@ import net.minecraft.world.item.ItemStack
  * already accepts the same non-inheriting-sibling-classes tradeoff over fighting that. See
  * `docs/design/m4-crafting-automation.md`.
  */
-class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, direction: Direction) :
+class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction) :
 	AbstractTerminalHookMenu<CraftingTerminalHookMenu>(GuiRegistry.CraftingTerminalHook, id, inventory, tile, direction), CraftPreviewMenu, CraftTreeMenu {
 
 	override fun registerSlotHandlers() {

@@ -10,7 +10,7 @@ import net.kernelpanicsoft.tubularstorage.crafting.PatternEncoder
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
 import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
 import net.kernelpanicsoft.tubularstorage.network.*
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternTerminalHookState
 import net.kernelpanicsoft.tubularstorage.registry.GuiRegistry
@@ -32,7 +32,7 @@ import net.minecraft.world.entity.player.Inventory
  * for the same reason those two are siblings rather than a hierarchy - see
  * [CraftingTerminalHookMenu]'s own KDoc.
  */
-class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, direction: Direction) :
+class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction) :
 	AbstractTerminalHookMenu<PatternTerminalHookMenu>(GuiRegistry.PatternTerminalHook, id, inventory, tile, direction), CraftPreviewMenu, CraftTreeMenu {
 
 

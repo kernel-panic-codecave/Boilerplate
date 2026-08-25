@@ -6,9 +6,11 @@ import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
-import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
+import net.kernelpanicsoft.tubularstorage.crafting.craftingBufferAt
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
+import net.kernelpanicsoft.tubularstorage.crafting.SubmittedJobRef
 import net.kernelpanicsoft.tubularstorage.network.CraftJobTreeNode
 import net.kernelpanicsoft.tubularstorage.network.CraftJobTreePacket
 import net.kernelpanicsoft.tubularstorage.network.CraftPreviewPacket
@@ -24,7 +26,7 @@ import net.kernelpanicsoft.tubularstorage.network.TerminalItemDepositRequestPack
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.network.TerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemWithdrawRequestPacket
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
@@ -58,14 +60,14 @@ import net.minecraft.world.level.block.entity.BlockEntity
  * something plugged in. A terminal is a self-contained delivery point; nothing external is
  * required.
  */
-abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(type: MenuType<SELF>, id: Int, inventory: Inventory, tile: HookBlockEntity, val direction: Direction) :
-	ComposeBlockContainerMenu<HookBlockEntity, SELF>(type, id, inventory, tile), CraftPreviewMenu, CraftTreeMenu {
+abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(type: MenuType<SELF>, id: Int, inventory: Inventory, tile: MultipartBlockEntity, val direction: Direction) :
+	ComposeBlockContainerMenu<MultipartBlockEntity, SELF>(type, id, inventory, tile), CraftPreviewMenu, CraftTreeMenu {
 
 	/** The most recently received search results - Compose state, so [TerminalHookScreen] recomposes whenever [updateResults] applies a fresh [TerminalSearchResultsPacket]. */
 	var results: List<SResourceStack<SItemResource>> by mutableStateOf(emptyList())
 		protected set
 
-	/** [tile]'s own [HookBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
+	/** [tile]'s own [MultipartBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
 	val craftJobStatus: String get() = tile.craftJobStatus
 
 	override fun registerSlotHandlers() {
@@ -121,7 +123,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	/** Recomputes the aggregated contents of every source reachable from [tile]'s own position and sends it to this menu's own player. */
 	fun sendSearchResults() {
 		val level = level as? ServerLevel ?: return
-		if (tile.pipeBlockId == HookBlockEntity.NONE) return
+		if (tile.pipeBlockId == MultipartBlockEntity.NONE) return
 		val totals = LinkedHashMap<ItemResource, Long>()
 		fun add(resource: ItemResource, amount: Long) {
 			if (resource.isBlank || amount <= 0) return
@@ -176,36 +178,54 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftPreviewPacket(resource, max))
 	}
 
-	/** The most recently received job tree - Compose state, so [TerminalHookScreen]'s Tree tab recomposes whenever [updateCraftTree] applies a fresh [CraftJobTreePacket]. */
-	override var craftTree: CraftJobTreeNode? by mutableStateOf(null)
+	/** Every currently in-flight job's own tree - Compose state, so [TerminalHookScreen]'s Tree tab recomposes whenever [updateCraftTrees] applies a fresh [CraftJobTreePacket]. */
+	override var craftTrees: List<CraftJobTreeNode> by mutableStateOf(emptyList())
 		protected set
 
 	override fun requestCraftTree() {
 		TubularStorageNetworkChannel.toServer(RequestCraftJobTreePacket)
 	}
 
-	override fun updateCraftTree(root: CraftJobTreeNode?) {
-		craftTree = root
+	override fun updateCraftTrees(roots: List<CraftJobTreeNode>) {
+		craftTrees = roots
 	}
 
+	/** Reads each submitted job's own tree straight off whichever Crafting CPU cluster is actually running it - a still-queued job (not yet promoted off that cluster's own backlog) simply has no tree yet, same as [CraftingBufferJob.toTree]'s own `null` for a steps-empty job. */
 	override fun sendCraftTree() {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
-		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftJobTreePacket(state.jobs.firstOrNull()?.toTree()))
+		val roots = state.submittedJobs.mapNotNull { ref ->
+			craftingBufferAt(level, ref.cpuLeaderPos)?.jobStatus(ref.jobId)?.toTree()
+		}
+		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftJobTreePacket(roots))
 	}
 
-	/** Client-side: submits an on-demand crafting request for [stack] - resolved and, if resolvable, executed server-side over subsequent ticks by [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType.tick]. */
+	/** Client-side: submits an on-demand crafting request for [stack] - resolved and, if resolvable, executed server-side by whichever Crafting CPU cluster ends up running it. */
 	fun requestCraft(stack: ResourceStack<ItemResource>) {
 		TubularStorageNetworkChannel.toServer(CraftingRequestPacket(stack.resource, stack.amount))
 	}
 
-	/** Server-side: resolves [resource]/[amount] and, on success, enqueues a [CraftingJob] on [direction]'s [TerminalHookState]; on failure, reports why directly via [HookBlockEntity.craftJobStatus] without ever queuing anything. */
+	/**
+	 * Server-side: resolves [resource]/[amount] and, on success, hands the resulting plan off to
+	 * the least-busy reachable Crafting CPU cluster ([RequestFulfillment.reachableCraftingCpus]),
+	 * recording a [SubmittedJobRef] on [direction]'s [TerminalHookState] so [advanceTerminalJobs]
+	 * can poll it. On failure - unresolvable, cyclic, or no reachable CPU at all - reports why
+	 * directly via [MultipartBlockEntity.craftJobStatus] without ever submitting anything.
+	 */
 	fun submitCraft(resource: ItemResource, amount: Long) {
 		val level = level as? ServerLevel ?: return
 		when (val result = CraftingRequest.resolve(level, tile.blockPos, resource, amount)) {
 			is CraftingResolver.Result.Success -> {
 				val state = tile.hooks[direction.name] as? TerminalHookState ?: return
-				state.jobs += CraftingJob(resource, amount, result.plan.steps)
+				val cpu = RequestFulfillment.reachableCraftingCpus(level, tile.blockPos)
+					.mapNotNull { ref -> craftingBufferAt(level, ref.leaderPos)?.let { ref.leaderPos to it } }
+					.minByOrNull { (_, buffer) -> buffer.backlogDepth() }
+				if (cpu == null) {
+					tile.craftJobStatus = "No reachable Crafting CPU"
+					return
+				}
+				val (leaderPos, buffer) = cpu
+				state.submittedJobs += SubmittedJobRef(leaderPos, buffer.enqueue(result.plan))
 			}
 			is CraftingResolver.Result.Unresolvable -> tile.craftJobStatus = "Cannot craft: missing ${result.resource.cachedStack.hoverName.string}"
 			is CraftingResolver.Result.Cyclic -> tile.craftJobStatus = "Cannot craft: cyclic pattern for ${result.resource.cachedStack.hoverName.string}"
@@ -225,7 +245,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		val route = PipeRouter.findRoute(level, tile.blockPos, stack.resource)
 		if (route != null)
 		{
-			tile.travelingItems += TravelingItem(stack, tile.pendingMenuFace, 0f, route)
+			tile.travelingItems += TravelingItem(stack, direction, 0f, route)
 			if (clearCarried) carried = ItemStack.EMPTY
 			if (clearSlot != null)
 				slots[clearSlot].set(ItemStack.EMPTY)

@@ -285,6 +285,15 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	private val deliveryQueue: ArrayDeque<CarriedStack> = ArrayDeque()
 
 	/**
+	 * Ephemeral, not persisted - how much of each resource is already committed to a
+	 * [claimAndEnqueue] caller (a Crafting CPU reserving a whole plan's worth of stock up front) but
+	 * not yet actually extracted. [index.locations] itself only decrements once [pickUp] really runs
+	 * (which can be many ticks after a retrieval is queued), so without this a second concurrent
+	 * claim against the same live numbers could double-count the same physical items.
+	 */
+	private val claimed: MutableMap<ItemResource, Long> = mutableMapOf()
+
+	/**
 	 * [WarehouseDefragPlanner]'s own output, kept separate from [jobs] so a freshly requested
 	 * retrieve/stow never has to wait behind a whole warehouse's worth of housekeeping moves -
 	 * [startNextBatch] only ever promotes from here into [jobs] one batch at a time, and only once
@@ -294,6 +303,44 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, stack: ResourceStack<ItemResource>, deliverTo: DeliveryTarget? = null) {
 		jobs += GantryJob.Retrieve(slot, stack, deliverTo)
+	}
+
+	/**
+	 * Claims up to [amount] of [resource] against this warehouse's own live [index] - not yet
+	 * reflected there (that only updates once a real extraction happens, in [pickUp]), so a second
+	 * concurrent claim can't double-count what this one already committed to. Walks
+	 * [WarehouseIndex.locations] in order, skipping past whatever [claimed] already accounts for
+	 * before claiming more, enqueuing one [GantryJob.Retrieve] per rack slot it draws from. Returns
+	 * how much was actually claimed (queued, not yet delivered) - possibly less than [amount], or
+	 * `0`, if the index doesn't have that much unclaimed.
+	 */
+	fun claimAndEnqueue(resource: ItemResource, amount: Long, deliverTo: DeliveryTarget): Long {
+		var skip = claimed[resource] ?: 0L
+		var remaining = amount
+		var claimedNow = 0L
+		for (slot in index.locations[resource].orEmpty()) {
+			if (remaining <= 0) break
+			if (skip >= slot.amount) {
+				skip -= slot.amount
+				continue
+			}
+			val availableInSlot = slot.amount - skip
+			skip = 0
+			val take = minOf(availableInSlot, remaining)
+			if (take <= 0) continue
+			jobs += GantryJob.Retrieve(slot, ResourceStack(resource, take), deliverTo, claimed = true)
+			remaining -= take
+			claimedNow += take
+		}
+		if (claimedNow > 0) claimed[resource] = (claimed[resource] ?: 0L) + claimedNow
+		return claimedNow
+	}
+
+	/** Releases a [claimAndEnqueue] reservation once its own job is actually attempted - see [GantryJob.Retrieve.claimed]'s own KDoc for why an ordinary, unclaimed [enqueueRetrieve] job never reaches this. */
+	private fun releaseClaim(resource: ItemResource, amount: Long) {
+		val current = claimed[resource] ?: return
+		val next = current - amount
+		if (next <= 0) claimed.remove(resource) else claimed[resource] = next
 	}
 
 	/** Plans and queues a consolidation pass via [WarehouseDefragPlanner] - see [defragQueue]. Safe to call repeatedly; a resource with nothing left to consolidate just contributes no jobs. */
@@ -505,6 +552,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	private fun pickUp(level: ServerLevel, job: GantryJob): ResourceStack<ItemResource>? = when (job) {
 		is GantryJob.Retrieve -> {
+			if (job.claimed) releaseClaim(job.stack.resource, job.stack.amount)
 			if (!level.hasChunk(job.slot.pos.x shr 4, job.slot.pos.z shr 4)) null
 			else {
 				val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)

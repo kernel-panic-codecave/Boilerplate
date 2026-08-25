@@ -2,7 +2,7 @@ package net.kernelpanicsoft.tubularstorage.crafting
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 
-/** One pattern run planned as part of a [CraftingResolver.Plan], in bottom-up execution order - see [CraftingResolver.Plan.steps]. [resource] is the resource whose demand [runs] was sized against - see [net.kernelpanicsoft.tubularstorage.crafting.CraftingJob], which reports it in job-status text. */
+/** One pattern run planned as part of a [CraftingResolver.Plan], in bottom-up execution order - see [CraftingResolver.Plan.steps]. [resource] is the resource whose demand [runs] was sized against - see [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferJob], which reports it in job-status text. */
 data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ItemResource)
 
 /**
@@ -11,8 +11,9 @@ data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ItemRes
  * double-counting - and cycle-guarded via an in-progress resource set, rejecting an impossible/
  * self-referential pattern chain cleanly instead of recursing forever. Deliberately generic over
  * *how* stock/patterns are looked up ([stockOf]/[patternFor] are plain functions, not tied to
- * [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseIndex]/[AssemblyTableBlockEntity]
- * directly) so the algorithm itself is testable in isolation - see
+ * [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseIndex]/
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState] directly) so the
+ * algorithm itself is testable in isolation - see
  * [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest] for the real warehouse-backed
  * wiring. See `docs/design/m4-crafting-automation.md`.
  *

@@ -2,7 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.hook
 
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookMenu
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
 import net.minecraft.core.BlockPos
@@ -24,14 +24,16 @@ import net.minecraft.world.phys.shapes.VoxelShape
 object PatternTerminalHookType : PipeHookType<PatternTerminalHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "pattern_terminal"
 
+	override val id: ResourceLocation get() = ID
+
 	override fun createState(): PatternTerminalHookState = PatternTerminalHookState()
 
 	override val hasMenu: Boolean = true
 
-	override fun createMenu(id: Int, inventory: Inventory, tile: HookBlockEntity, direction: Direction): AbstractContainerMenu =
+	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
 		PatternTerminalHookMenu(id, inventory, tile, direction)
 
-	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: HookBlockEntity, state: PatternTerminalHookState) {
+	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: PatternTerminalHookState) {
 		advanceTerminalJobs(level, pos, direction, tile, state)
 	}
 

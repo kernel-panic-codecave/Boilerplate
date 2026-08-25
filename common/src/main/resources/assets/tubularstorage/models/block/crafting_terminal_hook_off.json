@@ -1,0 +1,7 @@
+{
+	"parent": "tubularstorage:block/crafting_terminal_hook",
+	"textures": {
+		"0": "tubularstorage:block/crafting_terminal_hook_off",
+		"particle": "tubularstorage:block/crafting_terminal_hook_off"
+	}
+}

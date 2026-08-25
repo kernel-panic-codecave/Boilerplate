@@ -51,6 +51,8 @@ import kotlin.time.Duration.Companion.milliseconds
 class CraftingTerminalHookScreen(menu: CraftingTerminalHookMenu, playerInventory: Inventory, title: Component) :
 	AbstractTerminalHookScreen<CraftingTerminalHookMenu>(menu, playerInventory, title) {
 
+	override val mainTabId: String get() = "crafting"
+	override val mainTabLabel: Component get() = Component.literal("Crafting")
 
 	@Composable
 	override fun additionalContent()

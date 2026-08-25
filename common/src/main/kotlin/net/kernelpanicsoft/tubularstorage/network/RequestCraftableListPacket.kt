@@ -6,7 +6,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu
 
 /**
  * Client -> server: re-fetch the distinct set of resources any reachable
- * [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]'s own patterns can
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState]'s own patterns can
  * produce - the terminal's Craft tab catalog, independent of current stock. Replies with
  * [CraftableListPacket]. No payload; a `data object`, not a plain `object` - see
  * [RequestTerminalSearchResultsPacket]'s identical note.

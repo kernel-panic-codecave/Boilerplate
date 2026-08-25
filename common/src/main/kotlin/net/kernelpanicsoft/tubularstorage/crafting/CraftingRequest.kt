@@ -59,11 +59,22 @@ object CraftingRequest {
 	 * Only the warehouse side is claim-tracked (so another CPU's committed stock stays invisible
 	 * there); provider hooks have no reservation ledger at all, so two concurrent jobs can race
 	 * one dry mid-plan - the same exposure an ordinary withdrawal already lives with.
+	 *
+	 * The simulated extract is capped at [Int.MAX_VALUE], not [Long.MAX_VALUE]: a real
+	 * vanilla-inventory-backed source (any [source.storage][RequestFulfillment.ProviderSource.storage]
+	 * that isn't one of our own [net.kernelpanicsoft.archie.transfer.ArchieItemStorage]s) is reached
+	 * through a NeoForge/Fabric `IItemHandler` capability wrapper whose own `extractItem` takes a
+	 * plain `int` - a caller-side [Long.MAX_VALUE] truncates to `-1` there, which every observed
+	 * implementation treats as "nothing to extract," so this silently reported zero stock for *any*
+	 * provider-backed raw material regardless of what it actually held (confirmed the hard way: a
+	 * plan needing an ingot sitting behind nothing but a provider hook came back `Unresolvable` even
+	 * with a full chest behind it). [Int.MAX_VALUE] survives that same truncation as a large positive
+	 * number instead, and no real inventory holds anywhere near that much anyway.
 	 */
 	private fun stockOf(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, providers: List<RequestFulfillment.ProviderSource>, resource: ItemResource): Long =
 		warehouses.sumOf { warehouse -> warehouse.index.locations[resource]?.sumOf { it.amount } ?: 0L } +
 			providers.sumOf { source ->
 				if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) 0L
-				else source.storage(level)?.extract(resource, Long.MAX_VALUE, true) ?: 0L
+				else source.storage(level)?.extract(resource, Int.MAX_VALUE.toLong(), true) ?: 0L
 			}
 }

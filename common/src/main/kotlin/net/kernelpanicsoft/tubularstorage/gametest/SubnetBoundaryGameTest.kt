@@ -3,7 +3,7 @@ package net.kernelpanicsoft.tubularstorage.gametest
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.FilterHookType
@@ -37,9 +37,9 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity
  */
 @Suppress("unused")
 class SubnetBoundaryGameTest {
-	private fun GameTestHelper.hookAt(pos: BlockPos): HookBlockEntity {
-		setBlock(pos, BlockRegistry.Hook.defaultBlockState())
-		val tile = getBlockEntity(pos) as HookBlockEntity
+	private fun GameTestHelper.hookAt(pos: BlockPos): MultipartBlockEntity {
+		setBlock(pos, BlockRegistry.Multipart.defaultBlockState())
+		val tile = getBlockEntity(pos) as MultipartBlockEntity
 		tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		return tile
 	}

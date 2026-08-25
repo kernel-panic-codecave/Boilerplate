@@ -3,7 +3,7 @@ package net.kernelpanicsoft.tubularstorage.gametest
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
-import net.kernelpanicsoft.tubularstorage.crafting.CraftingJob
+import net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferJob
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingResolver
 import net.kernelpanicsoft.tubularstorage.crafting.Pattern
 import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
@@ -14,12 +14,13 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 
 /**
- * GameTest coverage for [CraftingJob.toTree]/[CraftingJob.stepStatus] - the server-side data feeding
- * [net.kernelpanicsoft.tubularstorage.pipe.gui.CraftingTreeView]'s node graph. Pure-function logic
- * over a hand-built [CraftingJob], matching [CraftingResolverGameTest]'s own approach.
+ * GameTest coverage for [CraftingBufferJob.toTree]/[CraftingBufferJob.stepStatus] - the server-side
+ * data feeding [net.kernelpanicsoft.tubularstorage.pipe.gui.CraftingTreeView]'s node graph.
+ * Pure-function logic over a hand-built [CraftingBufferJob], matching [CraftingResolverGameTest]'s
+ * own approach.
  */
 @Suppress("unused")
-class CraftingJobGameTest {
+class CraftingBufferJobGameTest {
 	private fun pattern(output: ItemStack, vararg inputs: ItemStack): Pattern = Pattern(
 		inputs = inputs.map { ItemResource.of(it) },
 		outputs = listOf(ResourceStack(ItemResource.of(output), output.count.toLong())),
@@ -41,7 +42,7 @@ class CraftingJobGameTest {
 			patternFor = { resource -> if (resource == ironBlock) blockPattern else if (resource == ironIngot) ingotPattern else null },
 		) as CraftingResolver.Result.Success
 
-		val job = CraftingJob(ironBlock, 1, result.plan.steps)
+		val job = CraftingBufferJob("0", ironBlock, 1, result.plan.steps)
 		val tree = job.toTree()
 
 		assertTrue(tree != null) { "Expected a non-null tree for a job with steps" }
@@ -56,7 +57,7 @@ class CraftingJobGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 5)
 	fun GameTestHelper.testToTreeIsNullWhenNothingNeedsCrafting() {
 		val ironBlock = ItemResource.of(ItemStack(Items.IRON_BLOCK))
-		val job = CraftingJob(ironBlock, 1, emptyList())
+		val job = CraftingBufferJob("0", ironBlock, 1, emptyList())
 		assertTrue(job.toTree() == null) { "Expected a job with no craft steps (fulfilled straight from stock) to have no tree" }
 		succeed()
 	}
@@ -73,7 +74,7 @@ class CraftingJobGameTest {
 			patternFor = { if (it == ironBlock) blockPattern else null },
 		) as CraftingResolver.Result.Success
 
-		val job = CraftingJob(ironBlock, 1, result.plan.steps)
+		val job = CraftingBufferJob("0", ironBlock, 1, result.plan.steps)
 		assertTrue(job.stepStatus(0) == "Waiting for a pattern provider") { "Expected an unassigned step to report waiting, got ${job.stepStatus(0)}" }
 
 		job.tableForStep[0] = BlockPos.ZERO

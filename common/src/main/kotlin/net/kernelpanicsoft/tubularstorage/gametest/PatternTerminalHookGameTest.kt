@@ -3,10 +3,11 @@ package net.kernelpanicsoft.tubularstorage.gametest
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.tubularstorage.crafting.Pattern
 import net.kernelpanicsoft.tubularstorage.crafting.PatternEncoder
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
 import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternTerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternTerminalHookType
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
@@ -32,19 +33,19 @@ class PatternTerminalHookGameTest {
 	fun GameTestHelper.testEncodeConsumesABlankFromTheBlankSlotAndDeliversToOutput() {
 		val level = level as ServerLevel
 		val state = PatternTerminalHookType.createState() as PatternTerminalHookState
-		state.blankPatterns.get(0).set(ItemStack(ItemRegistry.Pattern))
+		state.blankPatterns[0].set(ItemStack(ItemRegistry.Pattern))
 
 		val grid = ArchieItemStorage(9)
-		grid.get(0).set(ItemStack(Items.OAK_LOG))
+		grid[0].set(ItemStack(Items.OAK_LOG))
 		val patternOutputs = ArchieItemStorage(9)
 
 		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid, patternOutputs, state.blankPatterns, state.output)
 		assertTrue(encoded) { "Expected encodeAndConsume to succeed with a matching grid and a blank pattern in the blank slot" }
 
-		assertTrue(state.blankPatterns.get(0).getItem().isEmpty) { "Expected the blank pattern stack to have been consumed from the blank slot" }
-		val outputData = (0 until state.output.size()).map { state.output.get(it).getItem() }.map { PatternItemData(it) }.firstOrNull { it.pattern != null }
+		assertTrue(state.blankPatterns[0].getItem().isEmpty) { "Expected the blank pattern stack to have been consumed from the blank slot" }
+		val outputData = (0 until state.output.size()).map { state.output[it].getItem() }.map { PatternItemData(it) }.firstOrNull { it.pattern != Pattern.EMPTY }
 		assertTrue(outputData != null) { "Expected an encoded pattern to land in the terminal's own output slots" }
-		val pattern = outputData!!.pattern!!
+		val pattern = outputData!!.pattern
 		assertTrue(pattern.kind == PatternKind.CRAFTING) { "Expected a CRAFTING-mode encode to produce a CRAFTING pattern, got ${pattern.kind}" }
 		succeed()
 	}
@@ -52,11 +53,11 @@ class PatternTerminalHookGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 40)
 	fun GameTestHelper.testEncodeDoesNothingWithoutABlankInTheBlankSlot() {
 		val level = level as ServerLevel
-		val state = PatternTerminalHookType.createState() as PatternTerminalHookState
+		val state = PatternTerminalHookType.createState()
 		// blankPatterns left empty.
 
 		val grid = ArchieItemStorage(9)
-		grid.get(0).set(ItemStack(Items.OAK_LOG))
+		grid[0].set(ItemStack(Items.OAK_LOG))
 		val patternOutputs = ArchieItemStorage(9)
 
 		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid, patternOutputs, state.blankPatterns, state.output)
@@ -68,10 +69,10 @@ class PatternTerminalHookGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 40)
 	fun GameTestHelper.testGhostStateDefaultsToBlankCraftingMode() {
 		val hookPos = BlockPos(0, 2, 0)
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 
-		val tile = getBlockEntity(hookPos) as HookBlockEntity
-		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() } as PatternTerminalHookState
+		val tile = getBlockEntity(hookPos) as MultipartBlockEntity
+		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() }
 
 		assertTrue(state.patternKind == PatternKind.CRAFTING) { "Expected a fresh pattern terminal to default to CRAFTING mode, got ${state.patternKind}" }
 		assertTrue(state.ghostInputs.all { it.isBlank }) { "Expected a fresh pattern terminal's ghost grid to start empty, got ${state.ghostInputs}" }
@@ -91,11 +92,11 @@ class PatternTerminalHookGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 40)
 	fun GameTestHelper.testBlankPatternInARealSlotSurvivesRepeatedTicking() {
 		val hookPos = BlockPos(0, 2, 0)
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 
-		val tile = getBlockEntity(hookPos) as HookBlockEntity
-		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() } as PatternTerminalHookState
-		state.blankPatterns.get(0).set(ItemStack(ItemRegistry.Pattern))
+		val tile = getBlockEntity(hookPos) as MultipartBlockEntity
+		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() }
+		state.blankPatterns[0].set(ItemStack(ItemRegistry.Pattern))
 
 		runAfterDelay(20) {
 			assertTrue(state.blankPatterns.get(0).getItem().item == ItemRegistry.Pattern) { "Expected the blank pattern to still be there after ticking" }
@@ -106,10 +107,10 @@ class PatternTerminalHookGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 40)
 	fun GameTestHelper.testGhostStateIsMutable() {
 		val hookPos = BlockPos(0, 2, 0)
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 
-		val tile = getBlockEntity(hookPos) as HookBlockEntity
-		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() } as PatternTerminalHookState
+		val tile = getBlockEntity(hookPos) as MultipartBlockEntity
+		val state = tile.hooks.getOrPut(Direction.NORTH.name) { PatternTerminalHookType.createState() }
 
 		state.patternKind = PatternKind.PROCESSING
 		state.ghostInputs[0] = ItemResource.of(ItemStack(Items.DIAMOND))

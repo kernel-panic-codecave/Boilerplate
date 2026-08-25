@@ -3,11 +3,10 @@ package net.kernelpanicsoft.tubularstorage.gametest
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
-import net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity
 import net.kernelpanicsoft.tubularstorage.crafting.Pattern
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
 import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternBufferIO
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType
@@ -28,35 +27,37 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
 
 /**
- * GameTest coverage for [PatternProviderHookType]'s own reactive tick behavior against an
- * [AssemblyTableBlockEntity] target ([PatternProviderHookType.tickAssemblyTable]) - see
+ * GameTest coverage for [PatternProviderHookType]'s own reactive tick behavior against a real,
+ * placed vanilla crafting table ([PatternProviderHookType.tickVanillaCraftingTable]) - see
  * `docs/design/m4-crafting-automation.md`.
  */
 @Suppress("unused")
 class PatternProviderHookGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 40)
-	fun GameTestHelper.testTriggersAssemblyTableOnceBufferHoldsAFullRun() {
+	fun GameTestHelper.testTriggersInstantlyOnceBufferHoldsAFullRun() {
 		val tablePos = BlockPos(0, 2, 0)
 		val hookPos = BlockPos(0, 2, 1)
-		setBlock(tablePos, BlockRegistry.AssemblyTable.defaultBlockState())
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(tablePos, Blocks.CRAFTING_TABLE.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 
-		val hook = getBlockEntity(hookPos) as HookBlockEntity
+		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
 		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
 
 		val pattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
-			kind = PatternKind.PROCESSING,
+			kind = PatternKind.CRAFTING,
 		)
-		hookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
+		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
 
-		val table = getBlockEntity(tablePos) as AssemblyTableBlockEntity
-		hookState.bufferFor(0).get(0).set(ItemStack(Items.OAK_LOG))
+		hookState.bufferFor(0)[0].set(ItemStack(Items.OAK_LOG))
 
+		val planks = ItemResource.of(ItemStack(Items.OAK_PLANKS))
 		succeedWhen {
-			assertTrue(table.activeRuns.any { it.pattern == pattern }) { "Expected the hook to have started a run once its own buffer held the pattern's ingredients, got activeRuns=${table.activeRuns.map { it.pattern }}" }
+			assertTrue(PatternProviderHookType.amountIn(hookState.outputBufferFor(0), planks) == 4L) {
+				"Expected the CRAFTING-kind pattern to have resolved instantly once its own buffer held the log, got ${PatternProviderHookType.amountIn(hookState.outputBufferFor(0), planks)} planks"
+			}
 		}
 	}
 
@@ -64,61 +65,54 @@ class PatternProviderHookGameTest {
 	fun GameTestHelper.testDoesNothingWithoutMatchingIngredientsInTheBuffer() {
 		val tablePos = BlockPos(0, 2, 0)
 		val hookPos = BlockPos(0, 2, 1)
-		setBlock(tablePos, BlockRegistry.AssemblyTable.defaultBlockState())
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(tablePos, Blocks.CRAFTING_TABLE.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 
-		val hook = getBlockEntity(hookPos) as HookBlockEntity
+		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
 		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
 
 		val pattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
-			kind = PatternKind.PROCESSING,
+			kind = PatternKind.CRAFTING,
 		)
-		hookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
-
-		val table = getBlockEntity(tablePos) as AssemblyTableBlockEntity
+		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
 		// Buffer stays empty - nothing for the hook to match against.
 
+		val planks = ItemResource.of(ItemStack(Items.OAK_PLANKS))
 		runAfterDelay(30) {
-			assertTrue(table.activeRuns.isEmpty()) { "Expected an empty buffer to never trigger processing, got activeRuns=${table.activeRuns.map { it.pattern }}" }
+			assertTrue(PatternProviderHookType.amountIn(hookState.outputBufferFor(0), planks) == 0L) { "Expected an empty buffer to never produce anything" }
 			succeed()
 		}
 	}
 
-	/**
-	 * A batch big enough for many runs of the same pattern (a big terminal craft request, say) has
-	 * to actually keep running once earlier runs finish - not stall once
-	 * [AssemblyTableBlockEntity.maxParallelRuns] worth are done just because nothing re-checks the
-	 * buffer afterward.
-	 */
-	@GameTest(template = SMALL, timeoutTicks = 260)
-	fun GameTestHelper.testTriggersMultipleParallelRunsUntilTheBufferRunsOut() {
+	/** A batch big enough for many runs of the same pattern (a big terminal craft request, say) fully converts in one go - the `while` loop keeps going until the buffer itself runs out, not just one run. */
+	@GameTest(template = SMALL, timeoutTicks = 40)
+	fun GameTestHelper.testConvertsAWholeBatchInOneTickNotJustOneRun() {
 		val tablePos = BlockPos(0, 2, 0)
 		val hookPos = BlockPos(0, 2, 1)
-		setBlock(tablePos, BlockRegistry.AssemblyTable.defaultBlockState())
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(tablePos, Blocks.CRAFTING_TABLE.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 
-		val hook = getBlockEntity(hookPos) as HookBlockEntity
+		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
 		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
 
 		val pattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
-			kind = PatternKind.PROCESSING,
+			kind = PatternKind.CRAFTING,
 		)
-		hookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
+		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
+		hookState.bufferFor(0)[0].set(ItemStack(Items.OAK_PLANKS, 64))
 
-		val table = getBlockEntity(tablePos) as AssemblyTableBlockEntity
-		hookState.bufferFor(0).get(0).set(ItemStack(Items.OAK_PLANKS, 64))
-
-		runAfterDelay(250) {
-			var sticksProduced = 0L
-			for (i in 0 until table.output.size()) if (table.output.getResource(i) == ItemResource.of(ItemStack(Items.STICK))) sticksProduced += table.output.getAmount(i)
-			assertTrue(sticksProduced >= 8) { "Expected at least 2 runs (8 sticks) to have completed by now, got $sticksProduced" }
-			succeed()
+		val stick = ItemResource.of(ItemStack(Items.STICK))
+		succeedWhen {
+			// 64 planks -> 32 runs of 2 planks each -> 32*4 = 128 sticks, all in the same tick.
+			assertTrue(PatternProviderHookType.amountIn(hookState.outputBufferFor(0), stick) == 128L) {
+				"Expected all 32 possible runs to convert at once, got ${PatternProviderHookType.amountIn(hookState.outputBufferFor(0), stick)} sticks"
+			}
 		}
 	}
 
@@ -132,34 +126,34 @@ class PatternProviderHookGameTest {
 	fun GameTestHelper.testIsolatedBuffersKeepTwoPatternsWithTheSameInputsApart() {
 		val tablePos = BlockPos(0, 2, 0)
 		val hookPos = BlockPos(0, 2, 1)
-		setBlock(tablePos, BlockRegistry.AssemblyTable.defaultBlockState())
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(tablePos, Blocks.CRAFTING_TABLE.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 
-		val hook = getBlockEntity(hookPos) as HookBlockEntity
+		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
 		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
 
 		val decoyPattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_TRAPDOOR)), 2)),
-			kind = PatternKind.PROCESSING,
+			kind = PatternKind.CRAFTING,
 		)
 		val wantedPattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
-			kind = PatternKind.PROCESSING,
+			kind = PatternKind.CRAFTING,
 		)
-		hookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = decoyPattern })
-		hookState.patterns.get(1).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = wantedPattern })
+		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = decoyPattern })
+		hookState.patterns[1].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = wantedPattern })
 
-		val table = getBlockEntity(tablePos) as AssemblyTableBlockEntity
 		// Only slot 1's own buffer (the wanted pattern) gets fed - slot 0's stays empty.
-		hookState.bufferFor(1).get(0).set(ItemStack(Items.OAK_PLANKS, 2))
+		hookState.bufferFor(1)[0].set(ItemStack(Items.OAK_PLANKS, 2))
 
+		val stick = ItemResource.of(ItemStack(Items.STICK))
+		val trapdoor = ItemResource.of(ItemStack(Items.OAK_TRAPDOOR))
 		succeedWhen {
-			assertTrue(table.activeRuns.any { it.pattern == wantedPattern } && table.activeRuns.none { it.pattern == decoyPattern }) {
-				"Expected only the wanted (sticks) pattern to start, never the decoy (trapdoor) pattern whose own buffer was never fed, got activeRuns=${table.activeRuns.map { it.pattern }}"
-			}
+			assertTrue(PatternProviderHookType.amountIn(hookState.outputBufferFor(1), stick) == 4L) { "Expected the wanted (sticks) pattern to have produced its own output" }
+			assertTrue(PatternProviderHookType.amountIn(hookState.outputBufferFor(0), trapdoor) == 0L) { "Expected the decoy (trapdoor) pattern, whose own buffer was never fed, to never produce anything" }
 		}
 	}
 
@@ -167,9 +161,9 @@ class PatternProviderHookGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 5)
 	fun GameTestHelper.testPatternBufferIODistributesAcrossEveryPatternThatWantsTheResource() {
 		val hookPos = BlockPos(0, 2, 0)
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
-		val hook = getBlockEntity(hookPos) as HookBlockEntity
-		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
+		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
+		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() }
 
 		val sticksPattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
@@ -184,8 +178,8 @@ class PatternProviderHookGameTest {
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.WOODEN_PICKAXE)), 1)),
 			kind = PatternKind.PROCESSING,
 		)
-		hookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
-		hookState.patterns.get(1).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pickaxePattern })
+		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
+		hookState.patterns[1].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pickaxePattern })
 
 		val planks = ItemResource.of(ItemStack(Items.OAK_PLANKS))
 		val io = PatternBufferIO(hookState)
@@ -199,7 +193,7 @@ class PatternProviderHookGameTest {
 
 	/**
 	 * Two separate [PatternProviderHookState]s on different faces of the exact same
-	 * [HookBlockEntity] - a real delivery, [RequestFulfillment.request]'s own `deliverFace` in hand,
+	 * [MultipartBlockEntity] - a real delivery, [RequestFulfillment.request]'s own `deliverFace` in hand,
 	 * has to land in the *specific* face's own buffer it was aimed at rather than whichever
 	 * same-type hook the block happens to expose first. Both patterns deliberately share the same
 	 * input resource (iron ingots) so a delivery leaking into the wrong face's buffer would be
@@ -216,35 +210,35 @@ class PatternProviderHookGameTest {
 
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
-		setBlock(hookPos, BlockRegistry.Hook.defaultBlockState())
-		setBlock(northTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
-		setBlock(southTablePos, BlockRegistry.AssemblyTable.defaultBlockState())
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
+		setBlock(northTablePos, Blocks.CRAFTING_TABLE.defaultBlockState())
+		setBlock(southTablePos, Blocks.CRAFTING_TABLE.defaultBlockState())
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 
-		val hook = getBlockEntity(hookPos) as HookBlockEntity
+		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
 		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		val northState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
-		val southState = hook.hooks.getOrPut(Direction.SOUTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		val northState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() }
+		val southState = hook.hooks.getOrPut(Direction.SOUTH.name) { PatternProviderHookType.createState() }
 
 		val northPattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT))),
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_BLOCK)), 1)),
-			kind = PatternKind.PROCESSING,
+			kind = PatternKind.CRAFTING,
 		)
 		val southPattern = Pattern(
 			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT))),
 			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_TRAPDOOR)), 1)),
-			kind = PatternKind.PROCESSING,
+			kind = PatternKind.CRAFTING,
 		)
-		northState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = northPattern })
-		southState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = southPattern })
+		northState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = northPattern })
+		southState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = southPattern })
 
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.IRON_INGOT, 1))
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
 
 		val ironIngot = ItemResource.of(ItemStack(Items.IRON_INGOT))
-		val northTable = getBlockEntity(northTablePos) as AssemblyTableBlockEntity
+		val ironBlock = ItemResource.of(ItemStack(Items.IRON_BLOCK))
 		var dispatched = false
 
 		succeedWhen {
@@ -257,10 +251,9 @@ class PatternProviderHookGameTest {
 			assertTrue(!southLeaked) { "Expected the ingot aimed at the NORTH face to never leak into the SOUTH face's own buffer, got ${PatternProviderHookType.amountIn(southState.bufferFor(0), ironIngot)}" }
 
 			val northReceived = PatternProviderHookType.amountIn(northState.bufferFor(0), ironIngot) > 0 ||
-				northTable.activeRuns.any { it.pattern == northPattern } ||
-				(0 until northTable.output.size()).any { northTable.output.getResource(it) == ItemResource.of(ItemStack(Items.IRON_BLOCK)) && northTable.output.getAmount(it) > 0 }
+				PatternProviderHookType.amountIn(northState.outputBufferFor(0), ironBlock) > 0
 			assertTrue(northReceived) {
-				"Expected the ingot to actually reach the NORTH face's own buffer/run/output, got ${PatternProviderHookType.amountIn(northState.bufferFor(0), ironIngot)} buffered and activeRuns=${northTable.activeRuns.map { it.pattern }}"
+				"Expected the ingot to actually reach the NORTH face's own buffer/output, got ${PatternProviderHookType.amountIn(northState.bufferFor(0), ironIngot)} buffered"
 			}
 		}
 	}

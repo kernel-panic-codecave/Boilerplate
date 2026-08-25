@@ -14,9 +14,9 @@ import net.minecraft.world.item.Items
 
 /**
  * GameTest coverage for [PatternEncoder] - a pure query over a plain [ArchieItemStorage] grid/
- * pattern-outputs pair, not tied to [net.kernelpanicsoft.tubularstorage.crafting.AssemblyTableBlockEntity]
- * (see `docs/design/m4-crafting-automation.md`), so these construct storages directly rather than
- * placing a real block.
+ * pattern-outputs pair, not tied to any real placed block (see
+ * `docs/design/m4-crafting-automation.md`), so these construct storages directly rather than
+ * placing one.
  */
 @Suppress("unused")
 class PatternEncoderGameTest {
@@ -81,7 +81,7 @@ class PatternEncoderGameTest {
 	fun GameTestHelper.testEncodingAsProcessingWithNoOutputsDoesNothing() {
 		val grid = ArchieItemStorage(Pattern.GRID_SIZE)
 		val patternOutputs = ArchieItemStorage(Pattern.GRID_SIZE)
-		grid.get(0).set(ItemStack(Items.DIAMOND))
+		grid[0].set(ItemStack(Items.DIAMOND))
 
 		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
 
@@ -93,7 +93,7 @@ class PatternEncoderGameTest {
 	fun GameTestHelper.testEncodingAnEmptyGridDoesNothing() {
 		val grid = ArchieItemStorage(Pattern.GRID_SIZE)
 		val patternOutputs = ArchieItemStorage(Pattern.GRID_SIZE)
-		patternOutputs.get(0).set(ItemStack(Items.NETHER_STAR))
+		patternOutputs[0].set(ItemStack(Items.NETHER_STAR))
 
 		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
 

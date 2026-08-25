@@ -4,7 +4,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.tubularstorage.pipe.entity.FilterMode
-import net.kernelpanicsoft.tubularstorage.pipe.entity.HookBlockEntity
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.RequesterHookState
@@ -223,14 +223,14 @@ class WarehouseGameTest {
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
 		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
-		setBlock(requesterHookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(requesterHookPos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(rackPos), absolutePos(controllerPos))
 
-		val requester = getBlockEntity(requesterHookPos) as HookBlockEntity
+		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
 		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
@@ -250,19 +250,19 @@ class WarehouseGameTest {
 		val defaultHookPos = BlockPos(0, 2, 2)
 		val controllerPos = BlockPos(0, 2, 3)
 		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
-		setBlock(extractorPos, BlockRegistry.Hook.defaultBlockState())
-		setBlock(defaultHookPos, BlockRegistry.Hook.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Multipart.defaultBlockState())
+		setBlock(defaultHookPos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
-		val extractor = getBlockEntity(extractorPos) as HookBlockEntity
+		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
 
 		// The warehouse claims the network's default route the same way any other destination
 		// would - a sorting hook on the pipe facing it, at the reserved sentinel priority. No
 		// warehouse-specific mechanism needed.
-		val defaultHook = getBlockEntity(defaultHookPos) as HookBlockEntity
+		val defaultHook = getBlockEntity(defaultHookPos) as MultipartBlockEntity
 		defaultHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val defaultState = defaultHook.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
 		defaultState.routing = RoutingModule(mode = FilterMode.BLACKLIST, priority = RoutingModule.DEFAULT_ROUTE_PRIORITY)

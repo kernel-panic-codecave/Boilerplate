@@ -18,7 +18,7 @@ class PatternItemGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 5)
 	fun GameTestHelper.testFreshPatternStackIsBlank() {
 		val stack = ItemStack(ItemRegistry.Pattern)
-		assertTrue(PatternItemData(stack).pattern == null) { "Expected a fresh pattern item to have no encoded pattern" }
+		assertTrue(PatternItemData(stack).pattern == Pattern.EMPTY) { "Expected a fresh pattern item to have no encoded pattern" }
 		succeed()
 	}
 

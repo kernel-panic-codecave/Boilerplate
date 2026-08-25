@@ -85,15 +85,6 @@ dependencies {
 	implementation(libs.kotlin.neoforge)
 	modApi(libs.archie.neoforge)
 	modImplementation(libs.flywheel.neoforge)
-	// compose.runtime's own transitive deps, pulled in transitively via archie.neoforge - already
-	// embedded in archie-core-neoforge's own jar for a real deployed environment, but Loom's dev-run
-	// GAMELIBRARY discovery doesn't walk a dependency's transitive deps the way production JarJar
-	// packaging does, so each needs its own explicit declaration here too, or runClientNeoForge
-	// crashes the moment Compose touches one of them (e.g. Recomposer needing
-	// androidx.collection.MutableScatterSet) - see CLAUDE.md's NeoForge + Kotlin classloading caveat.
-	runtimeLibrary(libs.androidx.annotation)
-	runtimeLibrary(libs.androidx.collection)
-	runtimeLibrary(libs.okio)
 
 	modImplementation(libs.clothConfig.neoforge)
 
@@ -102,6 +93,10 @@ dependencies {
 
 	modCompileOnly(libs.archie.datagen.neoforge)
 	modLocalRuntime(libs.archie.datagen.neoforge)
+
+	runtimeLibrary(libs.okio)
+	runtimeLibrary(libs.androidx.annotation)
+	runtimeLibrary(libs.androidx.collection)
 
 	modLocalRuntime("curse.maven:nbtedit-678133:6125444")
 

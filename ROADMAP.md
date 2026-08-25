@@ -50,4 +50,4 @@ Don't rebuild what Archie already provides:
 - **GUI state syncing**: `BlockEntityStateManager`/`ItemStateManager`.
 - **Dev/gametest context detection**: `AGameTestPlatform`/`Platform.isDevelopmentEnvironment()` —
   used to gate M1+'s eventual datagen/gametest code at runtime instead of splitting it into
-  separate Gradle modules (see `CLAUDE.md`).
+  separate Gradle modules (see `AGENTS.md`).

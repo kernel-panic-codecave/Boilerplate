@@ -23,6 +23,7 @@ loom {
 	mods {
 		maybeCreate("main").apply {
 			sourceSet(sourceSets.main.get())
+			sourceSet(project(":tubularstorage-common").sourceSets.main.get())
 		}
 	}
 

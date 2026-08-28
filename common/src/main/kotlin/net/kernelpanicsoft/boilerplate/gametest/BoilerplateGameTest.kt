@@ -90,7 +90,8 @@ internal object BoilerplateGameTest : AGameTestEventObject(Boilerplate.MOD) {
 	override fun AGametestEvents.ArchieGameTestBuilder.handler() = boilerplateGameTests()
 }
 
-private fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
+/** Broken out of [BoilerplateGameTest] itself so [net.kernelpanicsoft.boilerplate.junit.GameTests] (the JUnit bridge, `src/test`) can reference it directly - the same DSL builder both [AGameTestEventObject.handler] and [net.kernelpanicsoft.archie.gametest.junit.GameTestRunner.tests] expect. */
+internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 	server {
 		register<PipeNetworkGameTest>()
 		register<PressurePipeNetworkGameTest>()

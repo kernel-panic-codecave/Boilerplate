@@ -35,6 +35,9 @@ okio = "3.9.0"
 
 shadow = "9.6.1"
 
+junit = "5.11.4"
+junit-platform-launcher = "1.11.4"
+
 [libraries]
 kotlin-fabric = { module = "net.fabricmc:fabric-language-kotlin", version.ref = "kotlin-fabric" }
 kotlin-neoforge = { module = "dev.nyon:KotlinLangForge", version.ref = "kotlin-neoforge" }
@@ -73,6 +76,10 @@ clothConfig-neoforge = { module = "me.shedaniel.cloth:cloth-config-neoforge", ve
 androidx-annotation = { module = "androidx.annotation:annotation-jvm", version.ref = "androidx-annotation" }
 androidx-collection = { module = "androidx.collection:collection-jvm", version.ref = "androidx-collection" }
 okio = { module = "com.squareup.okio:okio-jvm", version.ref = "okio" }
+
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-platform-launcher" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

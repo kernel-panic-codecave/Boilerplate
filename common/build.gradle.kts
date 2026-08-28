@@ -5,6 +5,14 @@ architectury {
 // See boilerplate.accesswidener's own header comment for what this unlocks and why.
 loom {
 	accessWidenerPath = file("src/main/resources/boilerplate.accesswidener")
+
+	// Without this, `test` has no mod* configurations of its own (Loom only wires them up for
+	// source sets it's told about) - modTestImplementation below would otherwise resolve
+	// archie-gametest-common's raw, un-remapped (intermediary-named) published jar instead of one
+	// remapped to match this project's own mappings, which crashed the JUnit bridge at runtime
+	// with a NoClassDefFoundError for a class_NNNN-named Minecraft class the moment it tried to
+	// reflect over @GameTest-annotated methods.
+	createRemapConfigurations(sourceSets.test.get())
 }
 
 // Generated blockstate/model JSON (see BoilerplateBlockStateProvider, "gradlew runDatagen")
@@ -29,18 +37,30 @@ dependencies {
 	modApi(libs.archie.common)
 	modApi(libs.flywheel.common)
 
-	// Compile-time only - see the matching comment in fabric/build.gradle.kts. GameTest classes
-	// referencing these types must only ever run behind an AGameTestPlatform.isGameTest check, so
-	// that in production - where archie-gametest-common is never on the runtime classpath - the
-	// JVM never actually resolves them.
 	modCompileOnly(libs.archie.gametest.common)
-
-	// Compile-time only, same reasoning as archie-gametest-common above - datagen classes must
-	// only ever run behind an ADataGeneratorPlatform.isDataGen check.
 	modCompileOnly(libs.archie.datagen.common)
 
+	"modTestImplementation"(libs.archie.gametest.common)
+	testImplementation(libs.junit.jupiter.api)
+	testImplementation(kotlin("reflect"))
+	testRuntimeOnly(libs.junit.jupiter.engine)
+	testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks {
 	base.archivesName.set(base.archivesName.get() + "-common")
+
+	test {
+		useJUnitPlatform()
+		// See GameTestRunner's own KDoc - opt-in since it shells out to Gradle and boots a full
+		// Minecraft process per loader:side matrix entry. Override either at the CLI directly
+		// (-Darchie.junit.gametest.matrix=...) or here.
+		systemProperty("archie.junit.gametest", System.getProperty("archie.junit.gametest") ?: "false")
+		systemProperty(
+			"archie.junit.gametest.matrix",
+			System.getProperty("archie.junit.gametest.matrix") ?: "fabric:server,neoforge:server",
+		)
+		systemProperty("archie.junit.gametest.timeoutMinutes", System.getProperty("archie.junit.gametest.timeoutMinutes") ?: "20")
+		systemProperty("archie.junit.gametest.root", rootProject.rootDir.absolutePath)
+	}
 }

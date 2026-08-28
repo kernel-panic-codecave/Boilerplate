@@ -1,16 +1,22 @@
 package net.kernelpanicsoft.tubularstorage.pipe.hook
 
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.serialization.ArchieStorageMap
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.crafting.Pattern
 import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
+import net.kernelpanicsoft.tubularstorage.pipe.attachment.FallbackItemStorageExposer
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 
 /**
  * Holds up to [SLOT_COUNT] [net.kernelpanicsoft.tubularstorage.crafting.PatternItem] stacks - see
  * [PatternProviderHookType].
  */
-class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID) {
+class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID), FallbackItemStorageExposer {
 	val patterns: ArchieItemStorage by itemField(SLOT_COUNT)
+
+	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> = PatternBufferIO(this)
 
 	/**
 	 * Index into [patterns] the attached target is currently feeding/processing, or `null` if idle

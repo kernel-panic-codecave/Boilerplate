@@ -4,6 +4,7 @@ import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.pipe.encasement.EncasementHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 
 /**
  * Burns a fuel item out of its own [fuel] slot to fill [pressure], then (via
@@ -11,8 +12,10 @@ import net.kernelpanicsoft.tubularstorage.pipe.encasement.EncasementHolderState
  * equalization pass, the same one a tank participates in) pushes surplus outward across the
  * pressure network - see [CompressorEncasementType.tick] and `docs/design/m5-pressure-power.md`.
  */
-class CompressorEncasementState : EncasementHolderState(CompressorEncasementType.ID) {
+class CompressorEncasementState : EncasementHolderState(CompressorEncasementType.ID), PressureStorageExposer {
 	val pressure: ArchieEnergyStorage by energyField(CAPACITY)
+
+	override fun exposedPressureStorage(tile: MultipartBlockEntity): ArchieEnergyStorage = pressure
 
 	/** The one fuel slot this compressor burns from - furnace-analog. */
 	val fuel: ArchieItemStorage by itemField(1)

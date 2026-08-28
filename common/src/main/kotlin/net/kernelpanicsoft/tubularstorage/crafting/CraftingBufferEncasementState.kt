@@ -4,6 +4,7 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.storage.base.StorageSlot
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.tubularstorage.pipe.attachment.ItemStorageExposer
 import net.kernelpanicsoft.tubularstorage.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
@@ -21,7 +22,7 @@ import net.minecraft.world.level.BlockGetter
  * [CraftingBufferJob] itself has: [localStorage]'s real contents are what survives a reload, and a
  * job with nothing left to show for itself afterward is treated as already finished.
  */
-class CraftingBufferEncasementState : EncasementHolderState(CraftingBufferEncasementType.ID), PressureConsumer {
+class CraftingBufferEncasementState : EncasementHolderState(CraftingBufferEncasementType.ID), PressureConsumer, ItemStorageExposer {
 
 	val localStorage: ArchieItemStorage by itemField(LOCAL_SLOTS)
 
@@ -35,7 +36,9 @@ class CraftingBufferEncasementState : EncasementHolderState(CraftingBufferEncase
 	internal var activeJob: CraftingBufferJob? = null
 	private var nextJobId: Int = 0
 
-	/** This member's own cluster's combined storage - every member's [localStorage] concatenated, in cluster order. Falls back to just this member's own if [tile] isn't in a real [ServerLevel] yet, or the cluster's arrangement isn't a valid cuboid (see [CraftingCpuManager]) - a CPU that didn't form has no pool to concatenate. */
+	/** This member's own cluster's combined storage - every member's [localStorage] concatenated, in cluster order. Falls back to just this member's own if [tile] isn't in a real [ServerLevel] yet, or the cluster's arrangement isn't a valid cuboid (see [CraftingCpuManager]) - a CPU that didn't form has no pool to concatenate. Also this state's own [ItemStorageExposer] answer. */
+	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> = combinedStorage(tile)
+
 	fun combinedStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> {
 		val level = tile.level as? ServerLevel ?: return CraftingCpuStorage(listOf(localStorage))
 		val cluster = CraftingCpuManager.get(level).clusterOf(level, tile.blockPos)

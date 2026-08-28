@@ -1,7 +1,11 @@
 package net.kernelpanicsoft.tubularstorage.pipe.hook
 
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.crafting.SubmittedJobRef
+import net.kernelpanicsoft.tubularstorage.pipe.attachment.FallbackItemStorageExposer
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -11,7 +15,7 @@ import net.minecraft.resources.ResourceLocation
  * [net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookState] can extend this class
  * and inherit [submittedJobs]/[output] wholesale rather than duplicating them.
  */
-open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : HookHolderState(type) {
+open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : HookHolderState(type), FallbackItemStorageExposer {
 	/** Jobs submitted through this face, oldest first, wherever they actually run - a Crafting CPU cluster owns execution now, this is just a pointer to it - see [advanceTerminalJobs]. */
 	val submittedJobs: MutableList<SubmittedJobRef> = mutableListOf()
 
@@ -25,6 +29,8 @@ open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : Hoo
 	 * finished crafting job never lands here - see [advanceTerminalJobs]'s own KDoc.
 	 */
 	val output: ArchieItemStorage by itemField(SLOT_COUNT)
+
+	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> = output
 
 	companion object {
 		const val SLOT_COUNT = 9

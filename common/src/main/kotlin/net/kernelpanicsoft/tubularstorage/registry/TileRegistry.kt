@@ -3,34 +3,27 @@ package net.kernelpanicsoft.tubularstorage.registry
 import dev.architectury.registry.client.rendering.BlockEntityRendererRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
-import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.archie.transfer.exposeEnergyStorage
 import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.archie.util.blockEntityType
 import net.kernelpanicsoft.tubularstorage.TubularStorage
-import net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementState
+import net.kernelpanicsoft.tubularstorage.pipe.attachment.FallbackItemStorageExposer
+import net.kernelpanicsoft.tubularstorage.pipe.attachment.ItemStorageExposer
 import net.kernelpanicsoft.tubularstorage.pipe.client.MultipartBlockEntityVisual
 import net.kernelpanicsoft.tubularstorage.pipe.client.MultipartTravelingItemRenderer
 import net.kernelpanicsoft.tubularstorage.pipe.client.TravelingItemBlockEntityRenderer
 import net.kernelpanicsoft.tubularstorage.pipe.entity.GlassPipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
-import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternBufferIO
-import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
-import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
-import net.kernelpanicsoft.tubularstorage.power.CompressorEncasementState
-import net.kernelpanicsoft.tubularstorage.power.PressureTankEncasementState
+import net.kernelpanicsoft.tubularstorage.power.*
 import net.kernelpanicsoft.tubularstorage.power.entity.CreativePressureSourceBlockEntity
-import net.kernelpanicsoft.tubularstorage.power.exposePressureStorage
-import net.kernelpanicsoft.tubularstorage.registry.TileRegistry.patternBufferOf
-import net.kernelpanicsoft.tubularstorage.registry.TileRegistry.terminalOutputOf
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerBlockEntityRenderer
 import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerVisual
 import net.kernelpanicsoft.tubularstorage.warehouse.rack.BulkRackBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.rack.GeneralRackBlockEntity
 import net.kernelpanicsoft.tubularstorage.warehouse.rack.UnstackableRackBlockEntity
-import net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeRackStorage
+import net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeCommonItemStorage
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
 
@@ -43,62 +36,57 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 	}
 
 	/**
-	 * One [MultipartBlockEntity] can carry up to six independent hooks, so a query with a real [direction]
-	 * (the caller knows exactly which face it means - see
+	 * One [MultipartBlockEntity] can carry up to six independent hooks, so a query with a real
+	 * [direction] (the caller knows exactly which face it means - see
 	 * [net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem.targetFace]'s own KDoc for how
-	 * that survives delivery) always checks that specific face first, for every hook type that can
-	 * legitimately repeat across faces of the same block: [InterfaceHookState.stock],
-	 * [PatternBufferIO] (over a [PatternProviderHookState]), and [TerminalHookState.output].
-	 * [InterfaceHookState] stops there - a direction-less query (no face to check against) resolves
-	 * to `null` rather than guessing, since guessing wrong there means silently crossing a subnet
-	 * boundary meant to stay isolated. [PatternBufferIO]/[TerminalHookState.output], by contrast,
-	 * fall back to [patternBufferOf]/[terminalOutputOf]'s own first-match-on-any-face search when
-	 * the query's own [direction] is `null` or doesn't land on a matching hook - the direction
-	 * [exposeRackStorage] passes is ordinarily whichever neighboring pipe segment an item is
-	 * arriving *from* (pipe topology, unrelated to which face actually carries the hook in
-	 * question), so most callers still don't have a specific face to offer; the fallback keeps
-	 * those working exactly as before; only a caller that resolved [PatternProviderSource]/[TerminalHookState]
-	 * up front and threaded its own [direction] all the way through (a Crafting CPU job step's own
-	 * delivery, a terminal withdrawing to itself) gets genuinely disambiguated when two same-type
-	 * hooks share a block. [PatternBufferIO] itself isn't an [ArchieItemStorage], so this uses
-	 * [exposeRackStorage] rather than Archie's own `exposeItemStorage`, whose signature is fixed to
-	 * that one concrete type - see [BulkRack]/[UnstackableRack]'s identical note.
+	 * that survives delivery) always checks that specific face's own hook first - any
+	 * [net.kernelpanicsoft.tubularstorage.pipe.attachment.ItemStorageExposer] hook or encasement
+	 * state answers here without this selector needing to know its concrete type; see that
+	 * interface's own KDoc for how a new exposing type opts in. A face-less match falls through to
+	 * the whole tile's own encasement, then to any
+	 * [net.kernelpanicsoft.tubularstorage.pipe.attachment.FallbackItemStorageExposer] hook on any
+	 * face (first match) - the direction [exposeCommonItemStorage] passes is ordinarily whichever
+	 * neighboring pipe segment an item is arriving *from* (pipe topology, unrelated to which face
+	 * actually carries the hook in question), so most callers still don't have a specific face to
+	 * offer; the fallback keeps those working. Only
+	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState] opts out of the fallback -
+	 * see [FallbackItemStorageExposer]'s own KDoc for why (guessing wrong there means silently
+	 * crossing a subnet boundary meant to stay isolated).
 	 *
-	 * A [CraftingBufferEncasementState] wrapping the whole segment (see
-	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType]) sits between those
-	 * two tiers: after a hook matched on the query's own [direction], but ahead of the face-less
-	 * fallbacks. An encasement has no face to mismatch on, so it's the one unambiguous answer for a
-	 * direction-less query, and a job's own pull-back (always targeted at the cluster's own position)
-	 * must not be diverted into a pattern buffer that merely happens to share the segment.
+	 * The encasement check sits between those two hook tiers deliberately: after a hook matched on
+	 * the query's own [direction], but ahead of the face-less hook fallback. An encasement has no
+	 * face to mismatch on, so it's the one unambiguous answer for a direction-less query, and (for
+	 * the Crafting CPU case specifically) a job's own pull-back must not be diverted into a pattern
+	 * buffer that merely happens to share the segment.
+	 *
+	 * [exposePressureStorage] is the equivalent lookup for
+	 * [net.kernelpanicsoft.tubularstorage.power.PressureStorageExposer] encasements (the tank/
+	 * compressor) - simpler, since only the whole-segment encasement can ever expose pressure, no
+	 * per-hook/fallback tiers needed.
 	 */
 	val Multipart: BlockEntityType<MultipartBlockEntity> by register("hook") {
 		blockEntityType(::MultipartBlockEntity) {
 			add(BlockRegistry.Multipart)
 		}
 	}.apply {
-		exposeRackStorage { tile, direction ->
+		exposeCommonItemStorage { tile, direction ->
 			val hookAtFace = direction?.let { tile.hooks[it.name] }
-			(hookAtFace as? InterfaceHookState)?.stock
-				?: (hookAtFace as? PatternProviderHookState)?.let { PatternBufferIO(it) }
-				?: (hookAtFace as? TerminalHookState)?.output
-				?: (tile.encasement.value as? CraftingBufferEncasementState)?.combinedStorage(tile)
-				?: patternBufferOf(tile)
-				?: terminalOutputOf(tile)
+			(hookAtFace as? ItemStorageExposer)?.exposedItemStorage(tile)
+				?: (tile.encasement.value as? ItemStorageExposer)?.exposedItemStorage(tile)
+				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackItemStorageExposer)?.exposedItemStorage(tile) }
 		}
-		exposePressureStorage { tile ->
-			(tile.encasement.value as? PressureTankEncasementState)?.pressure
-				?: (tile.encasement.value as? CompressorEncasementState)?.pressure
+		exposePressureStorage { tile, direction ->
+			val hookAtFace = direction?.let { tile.hooks[it.name] }
+			(hookAtFace as? PressureStorageExposer)?.exposedPressureStorage(tile)
+				?: (tile.encasement.value as? PressureStorageExposer)?.exposedPressureStorage(tile)
+				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackPressureStorageExposer)?.exposedPressureStorage(tile) }
 		}
-	}
-
-	private fun patternBufferOf(tile: MultipartBlockEntity): PatternBufferIO? {
-		for ((_, entry) in tile.hooks) (entry as? PatternProviderHookState)?.let { return PatternBufferIO(it) }
-		return null
-	}
-
-	private fun terminalOutputOf(tile: MultipartBlockEntity): ArchieItemStorage? {
-		for ((_, entry) in tile.hooks) (entry as? TerminalHookState)?.let { return it.output }
-		return null
+		exposeEnergyStorage { tile, direction ->
+			val hookAtFace = direction?.let { tile.hooks[it.name] }
+			(hookAtFace as? EnergyStorageExposer)?.exposedEnergyStorage(tile)
+				?: (tile.encasement.value as? EnergyStorageExposer)?.exposedEnergyStorage(tile)
+				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackEnergyStorageExposer)?.exposedEnergyStorage(tile) }
+		}
 	}
 
 	val GlassPipe: BlockEntityType<GlassPipeBlockEntity> by register("glass_pipe") {
@@ -127,19 +115,19 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 		}
 	}.apply { exposeItemStorage(GeneralRackBlockEntity::storage) }
 
-	/** Custom [net.kernelpanicsoft.tubularstorage.warehouse.rack.UncappedItemStorage], not an [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] - exposed via [exposeRackStorage] rather than Archie's own `exposeItemStorage`, which is fixed to that one concrete type. */
+	/** Custom [net.kernelpanicsoft.tubularstorage.warehouse.rack.UncappedItemStorage], not an [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] - exposed via [exposeCommonItemStorage] rather than Archie's own `exposeItemStorage`, which is fixed to that one concrete type. */
 	val BulkRack: BlockEntityType<BulkRackBlockEntity> by register("bulk_rack") {
 		blockEntityType(::BulkRackBlockEntity) {
 			add(BlockRegistry.BulkRack)
 		}
-	}.apply { exposeRackStorage(BulkRackBlockEntity::storage) }
+	}.apply { exposeCommonItemStorage(BulkRackBlockEntity::storage) }
 
-	/** See [BulkRack]'s identical [exposeRackStorage] note. */
+	/** See [BulkRack]'s identical [exposeCommonItemStorage] note. */
 	val UnstackableRack: BlockEntityType<UnstackableRackBlockEntity> by register("unstackable_rack") {
 		blockEntityType(::UnstackableRackBlockEntity) {
 			add(BlockRegistry.UnstackableRack)
 		}
-	}.apply { exposeRackStorage(UnstackableRackBlockEntity::storage) }
+	}.apply { exposeCommonItemStorage(UnstackableRackBlockEntity::storage) }
 
 	/**
 	 * Its own [BlockEntityType] registration (rather than reusing [Pipe]'s), even though both

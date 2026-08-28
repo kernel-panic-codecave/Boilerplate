@@ -129,7 +129,7 @@ class RackGameTest {
 	 * pre-existing contents in all three rack types on the initial bind scan, the same way it
 	 * already does for a vanilla chest ([WarehouseGameTest.testControllerIndexesRacksInsideBoundsOnly]) -
 	 * no rack-type-specific code path exists to have this, so this is really a check that
-	 * [net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeRackStorage] actually wires
+	 * [net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeCommonItemStorage] actually wires
 	 * [BulkRackBlockEntity]/[UnstackableRackBlockEntity] into [ItemApi.BLOCK] correctly (
 	 * [GeneralRackBlockEntity] uses Archie's own `exposeItemStorage` and was never really in doubt).
 	 */

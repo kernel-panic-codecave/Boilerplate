@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.power
 
 import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.tubularstorage.pipe.encasement.EncasementHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 
 /**
  * Holds a fixed-capacity [pressure] buffer - one endpoint on the pressure network, equalized
@@ -11,8 +12,10 @@ import net.kernelpanicsoft.tubularstorage.pipe.encasement.EncasementHolderState
  * equalization pass - see `docs/design/m5-pressure-power.md`. Purely passive: not itself a
  * [PressureConsumer], since a tank isn't an active tick operation.
  */
-class PressureTankEncasementState : EncasementHolderState(PressureTankEncasementType.ID) {
+class PressureTankEncasementState : EncasementHolderState(PressureTankEncasementType.ID), PressureStorageExposer {
 	val pressure: ArchieEnergyStorage by energyField(CAPACITY)
+
+	override fun exposedPressureStorage(tile: MultipartBlockEntity): ArchieEnergyStorage = pressure
 
 	companion object {
 		/** A single flat tier for now - exact balance numbers are explicitly deferred to playtesting, see `docs/design/m5-pressure-power.md`. */

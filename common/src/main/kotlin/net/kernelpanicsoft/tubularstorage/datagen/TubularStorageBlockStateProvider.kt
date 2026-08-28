@@ -21,12 +21,15 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
 
 /**
  * Generates every blockstate/block-model/item-model JSON under `assets/tubularstorage` -
- * `pipe`/`glass_pipe`'s connection-driven `"multipart"` bodies, `hook`'s unused placeholder (its
- * block is [net.minecraft.world.level.block.RenderShape.INVISIBLE] - see
- * [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartBlockEntityVisual]), one item model per
- * registered hook type and per registered encasement type plus each type's own part-block
- * blockstate (see [net.kernelpanicsoft.tubularstorage.pipe.block.PartBlock] - the blockstate
- * definition its
+ * `pipe`/`glass_pipe`/`pressure_pipe`'s connection-driven `"multipart"` bodies, `hook`'s unused
+ * placeholder (its block is [net.minecraft.world.level.block.RenderShape.INVISIBLE] - see
+ * [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartBlockEntityVisual], which draws a
+ * promoted segment's pipe body/casing dynamically regardless of which pipe type - item or
+ * pressure - it was promoted from), one item model per registered hook type and per registered
+ * encasement type (item and pressure alike - one shared registry, see
+ * [net.kernelpanicsoft.tubularstorage.registry.EncasementTypeRegistry]) plus each type's own
+ * part-block blockstate (see [net.kernelpanicsoft.tubularstorage.pipe.block.PartBlock] - the
+ * blockstate definition its
  * [getRenderState][net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.getRenderState]
  * answers select variants from), the plain-cube warehouse controller block
  * plus its wand item,
@@ -65,6 +68,17 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 	val gantryRailArm = blockModels().getExistingFile(modLoc("gantry_rail_arm"))
 	sixWayMultipart(BlockRegistry.GantryRail, GantryRailBlock.propertiesByDirection, gantryRailCore, gantryRailArm)
 	itemModels().getBuilder("gantry_rail").parent(gantryRailCore)
+
+	// PressurePipe renders its own connection-driven body exactly like Pipe above - the plain,
+	// unpromoted form. A promoted pressure segment (the moment it carries an encasement) is just
+	// BlockRegistry.Multipart - the same empty() placeholder above already covers it, since
+	// MultipartBlockEntityVisual draws its pipe body/casing dynamically through Flywheel
+	// regardless of which underlying pipe type it was promoted from.
+	val pressurePipeCore = blockModels().getExistingFile(modLoc("pressure_pipe_core"))
+	val pressurePipeArm = blockModels().getExistingFile(modLoc("pressure_pipe_arm"))
+	sixWayMultipart(BlockRegistry.PressurePipe, PipeBlock.propertiesByDirection, pressurePipeCore, pressurePipeArm)
+	itemModels().getBuilder("pressure_pipe").parent(pressurePipeCore)
+
 	Registrars.HOOK_TYPE.ids.filter { it.namespace == mod.modId }.forEach { hookType ->
 		itemModels().getBuilder(hookType.path + "_hook").parent(blockModels().getExistingFile(hookType + "_hook"))
 	}
@@ -112,19 +126,22 @@ internal fun ABlockStateProvider.tubularStorageBlockStates() {
 		val part = BuiltInRegistries.BLOCK.get(encasementType + "_part")
 		if (BuiltInRegistries.BLOCK.getKey(part) == encasementType + "_part") {
 			if (part is ConnectingEncasementModelBlock) {
-				craftingBufferMultipart(part)
+				connectingEncasementMultipart(part, encasementType.path + "_encasement")
 			} else {
 				simpleBlock(part, blockModels().getExistingFile(encasementType + "_encasement"))
 			}
 		}
 	}
 
-	// The three rack block types are plain cubes - a single flat `textures/block/*.png` per type
-	// via `cubeAll`/`simpleBlockWithItem`'s defaults, unlike the warehouse controller's own
-	// hand-modeled Blockbench shape above.
-	simpleBlockWithItem(BlockRegistry.GeneralRack)
-	simpleBlockWithItem(BlockRegistry.BulkRack)
-	simpleBlockWithItem(BlockRegistry.UnstackableRack)
+	// The three rack block types each get their own hand-modeled shape (shelving/crates, a
+	// riveted storage tank, a display case) matching their own functional distinction - same
+	// hand-authored-model-plus-simpleBlockWithItem pattern the warehouse controller above uses.
+	simpleBlockWithItem(BlockRegistry.GeneralRack, blockModels().getExistingFile(modLoc("general_rack")))
+	simpleBlockWithItem(BlockRegistry.BulkRack, blockModels().getExistingFile(modLoc("bulk_rack")))
+	simpleBlockWithItem(BlockRegistry.UnstackableRack, blockModels().getExistingFile(modLoc("unstackable_rack")))
+
+	// Same plain-cube default as the racks above - creative/testing-only, so real art is low priority.
+	simpleBlockWithItem(BlockRegistry.CreativePressureSource)
 
 	// Filter cards are plain items (no block of their own), unlike a hook's block-model-backed
 	// icon above - a flat `item/generated` icon over each one's own `textures/item/*.png` instead.
@@ -223,20 +240,24 @@ private fun ABlockStateProvider.empty(block: Block) {
 }
 
 /**
- * The crafting buffer part's own `"multipart"` body - the one attachment blockstate that assembles
- * a whole casing out of pieces rather than selecting one variant. The core renders unconditionally;
- * each face's arm/cap piece is selected by that direction's
+ * A [ConnectingEncasementModelBlock] part's own `"multipart"` body - the one attachment blockstate
+ * that assembles a whole casing out of pieces rather than selecting one variant. Shared by every
+ * kind registered over that block class (see its own KDoc): [modelPrefix] names which model set to
+ * pull `_core`/`_arm`/`_cap`/`_edge`/`_corner` from (`"crafting_buffer_encasement"` for
+ * [BlockRegistry.CraftingBufferPart], `"compressor_encasement"`/`"pressure_tank_encasement"` for
+ * [BlockRegistry.CompressorPart]/[BlockRegistry.PressureTankPart]). The core renders
+ * unconditionally; each face's arm/cap piece is selected by that direction's
  * [ConnectingEncasementModelBlock.FACES] mode and rotated onto it; edge and corner seam fillers render
  * only while [ConnectingEncasementModelBlock.FORMED] **and** every direction they bridge is ARM - an
  * incomplete arrangement shows bare cored arms, and any face without its arm also drops its seam
  * fillers so the casing keeps a smooth face there.
  */
-private fun ABlockStateProvider.craftingBufferMultipart(block: ConnectingEncasementModelBlock) {
-	val core = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_core"))
-	val arm = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_arm"))
-	val cap = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_cap"))
-	val edge = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_edge"))
-	val corner = blockModels().getExistingFile(modLoc("crafting_buffer_encasement_corner"))
+private fun ABlockStateProvider.connectingEncasementMultipart(block: ConnectingEncasementModelBlock, modelPrefix: String) {
+	val core = blockModels().getExistingFile(modLoc(modelPrefix + "_core"))
+	val arm = blockModels().getExistingFile(modLoc(modelPrefix + "_arm"))
+	val cap = blockModels().getExistingFile(modLoc(modelPrefix + "_cap"))
+	val edge = blockModels().getExistingFile(modLoc(modelPrefix + "_edge"))
+	val corner = blockModels().getExistingFile(modLoc(modelPrefix + "_corner"))
 
 	getMultipartBuilder(block) {
 		fun seamFiller(directions: List<Direction>) {

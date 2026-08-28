@@ -24,13 +24,12 @@ import dev.engine_room.flywheel.lib.task.SimplePlan
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.archie.util.div
+import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.util.itemStack
-import net.kernelpanicsoft.tubularstorage.warehouse.GantryClientCache
-import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
-import net.kernelpanicsoft.tubularstorage.warehouse.GantryVisualState
-import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
-import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseScale
+import net.kernelpanicsoft.tubularstorage.warehouse.*
+import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerVisual.Companion.buildClippedRodMesh
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.renderer.texture.OverlayTexture
@@ -67,11 +66,8 @@ class WarehouseControllerVisual(
 	private var carriedItemsCacheKey: List<ResourceStack<ItemResource>> = emptyList()
 
 	companion object {
-		val HEAD_MODEL_RL: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
-			TubularStorage.MOD_ID,
-			"block/gantry_head"
-		)
-		val HEAD_PARTIAL_MODEL = PartialModel.of(HEAD_MODEL_RL)
+		val HEAD_MODEL_RL: ResourceLocation = TubularStorage.MOD % "block" / "gantry_head"
+		val HEAD_PARTIAL_MODEL: PartialModel = PartialModel.of(HEAD_MODEL_RL)
 
 		/**
 		 * A wireframe box slightly larger than a full block, centered on the head (same local-space

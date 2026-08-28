@@ -2,15 +2,9 @@ package net.kernelpanicsoft.tubularstorage.warehouse.client
 
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
-import net.kernelpanicsoft.archie.registries.CustomModelRegistry
-import net.kernelpanicsoft.archie.util.rem
-import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
-import net.kernelpanicsoft.tubularstorage.warehouse.GantryClientCache
-import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
-import net.kernelpanicsoft.tubularstorage.warehouse.GantryVisualState
-import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
-import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseScale
+import net.kernelpanicsoft.tubularstorage.util.itemStack
+import net.kernelpanicsoft.tubularstorage.warehouse.*
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
@@ -19,10 +13,8 @@ import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.client.resources.model.BakedModel
-import net.minecraft.client.resources.model.ModelResourceLocation
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.util.FastColor
 import net.minecraft.util.RandomSource
 import net.minecraft.world.item.ItemDisplayContext
@@ -31,13 +23,12 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
-import net.kernelpanicsoft.tubularstorage.util.itemStack
 import org.joml.Vector3f
-import java.util.BitSet
+import java.util.*
 import kotlin.math.cos
 import kotlin.math.floor
-import kotlin.math.sin
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
  * Renders the *moving* half of a warehouse gantry, styled after BuildCraft's Quarry: the static
@@ -91,7 +82,7 @@ import kotlin.math.roundToInt
 class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvider.Context) : BlockEntityRenderer<WarehouseControllerBlockEntity> {
 	private val blockModelShaper = context.blockRenderDispatcher.blockModelShaper
 	private val modelRenderer = context.blockRenderDispatcher.modelRenderer
-	private val headModel = blockModelShaper.modelManager.getModel(HEAD_MODEL_ID)
+	private val headModel = WarehouseControllerVisual.HEAD_PARTIAL_MODEL.get()
 	private val itemRenderer = context.itemRenderer
 
 	private val modelCache = HashMap<BlockState, BakedModel>()
@@ -288,10 +279,6 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		private val SOUTH_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.SOUTH)
 		private val UP_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.UP)
 		private val DOWN_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN)
-
-		val HEAD_MODEL_ID = ModelResourceLocation(TubularStorage.MOD % "gantry_head", "standalone").also {
-			CustomModelRegistry.registerBlock(it)
-		}
 
 		/** [GantryVisualState]'s outline box - slightly larger than a full block, centered on the head. */
 		private val OUTLINE_BOX = AABB(-0.6, -0.6, -0.6, 0.6, 0.6, 0.6)

@@ -52,10 +52,7 @@ tasks {
 
 	test {
 		useJUnitPlatform()
-		// See GameTestRunner's own KDoc - opt-in since it shells out to Gradle and boots a full
-		// Minecraft process per loader:side matrix entry. Override either at the CLI directly
-		// (-Darchie.junit.gametest.matrix=...) or here.
-		systemProperty("archie.junit.gametest", System.getProperty("archie.junit.gametest") ?: "false")
+		systemProperty("archie.junit.gametest", System.getProperty("archie.junit.gametest") ?: "true")
 		systemProperty(
 			"archie.junit.gametest.matrix",
 			System.getProperty("archie.junit.gametest.matrix") ?: "fabric:server,neoforge:server",

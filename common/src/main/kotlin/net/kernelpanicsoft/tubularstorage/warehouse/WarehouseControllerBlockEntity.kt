@@ -14,6 +14,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
+import net.kernelpanicsoft.tubularstorage.power.PressureLine
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
@@ -375,15 +376,28 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	/**
-	 * `1.0` (unaffected) until M5 gives this hook a real [ArchieEnergyStorage] to draw from - see
-	 * `docs/design/m5-pressure-power.md`. [NO_PRESSURE_LINE] is a throwaway, always-empty stand-in
-	 * only good enough to satisfy [onPressureTick]'s signature until then; the default
-	 * implementation never actually reads it.
+	 * Draws from whichever pressure line [PressureLine.find] resolves adjacent to this controller,
+	 * or [NO_PRESSURE_LINE] (an always-empty stand-in, `1.0`x/unaffected) if none is reachable -
+	 * see `docs/design/m5-pressure-power.md`.
 	 */
-	private fun pressureSpeedMultiplier(): Double = onPressureTick(NO_PRESSURE_LINE)
+	private fun pressureSpeedMultiplier(): Double = onPressureTick((level as? ServerLevel)?.let { PressureLine.find(it, blockPos) } ?: NO_PRESSURE_LINE)
 
 	/** [scaleClass]'s own [WarehouseScale.baseSpeedPerTick], scaled by [pressureSpeedMultiplier] - the rate [tick] actually advances [gantry] by while it's moving. */
 	private fun effectiveGantrySpeed(): Double = scaleClass.baseSpeedPerTick * pressureSpeedMultiplier()
+
+	/**
+	 * Whether this controller currently has enough reachable pressure to move its gantry at all - a
+	 * simulate-only peek (`extract(..., simulate = true)`, no real draw), unlike
+	 * [pressureSpeedMultiplier]'s own actual extraction during [tick]. [RequestFulfillment.fulfillFromWarehouse]/
+	 * [net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu.sendSearchResults] use this to
+	 * keep from ever queuing a retrieve job this controller can't make any progress on - one, previously,
+	 * just sat hard-gated at `0.0` speed indefinitely once queued.
+	 */
+	fun hasPressure(): Boolean {
+		if (basePressureCost <= 0) return true
+		val line = (level as? ServerLevel)?.let { PressureLine.find(it, blockPos) } ?: return false
+		return line.extract(maxPressureDraw, true) >= basePressureCost
+	}
 
 	override val basePressureCost: Long get() = scaleClass.basePressureCost
 	override val maxPressureDraw: Long get() = scaleClass.maxPressureDraw
@@ -701,7 +715,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		private const val MAX_FRAME_TIME_NS = 1_000_000L
 		private const val RACK_SEARCH_LIMIT = 256
 
-		/** Stand-in [ArchieEnergyStorage] for [onPressureTick] calls until M5 gives this hook a real one - see [pressureSpeedMultiplier]. */
+		/** Zero-capacity stand-in for [onPressureTick] when [PressureLine.find] finds nothing reachable - correctly reads as "can't even cover basePressureCost" (see [pressureSpeedMultiplier]), gantry speed hard-gated to `0.0` rather than a real line's own shortfall. */
 		private val NO_PRESSURE_LINE = ArchieEnergyStorage(0)
 
 		fun tick(level: Level, pos: BlockPos, state: BlockState, tile: WarehouseControllerBlockEntity) = tile.tick(level, pos, state)

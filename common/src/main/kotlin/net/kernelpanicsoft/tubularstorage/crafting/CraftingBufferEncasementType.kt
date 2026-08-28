@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.crafting
 
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType.advanceSteps
@@ -12,14 +13,17 @@ import net.kernelpanicsoft.tubularstorage.crafting.gui.CraftingBufferMenu
 import net.kernelpanicsoft.tubularstorage.pipe.block.ConnectingEncasementModelBlock
 import net.kernelpanicsoft.tubularstorage.pipe.block.ConnectingEncasementModelBlock.FaceMode
 import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
+import net.kernelpanicsoft.tubularstorage.pipe.encasement.CasingGeometry
 import net.kernelpanicsoft.tubularstorage.pipe.encasement.PipeEncasementType
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.tubularstorage.power.PressureLine
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.kernelpanicsoft.tubularstorage.warehouse.DeliveryTarget
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
@@ -40,7 +44,7 @@ import net.minecraft.world.phys.shapes.VoxelShape
  * Wraps a pipe segment into one member of a Crafting CPU multiblock - adjacent encased segments
  * cluster together (see [CraftingCpuManager]) into one shared-capacity job runner, the same way more
  * crafting storage blocks in AE2 grow one CPU's own capacity rather than adding a second CPU. Only
- * the cluster's own leader (deterministic, see [CraftingCpuManager.Cluster.leader]) actually drives
+ * the cluster's own leader (deterministic, see [net.kernelpanicsoft.tubularstorage.pipe.encasement.AbstractMultiblockManager.Cluster.leader]) actually drives
  * job execution on [tick]; a non-leader member still holds its own share of
  * [CraftingBufferEncasementState.localStorage] but does nothing else.
  *
@@ -67,6 +71,9 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 
 	override val id: ResourceLocation get() = ID
 
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
 	override fun createState(): CraftingBufferEncasementState = CraftingBufferEncasementState()
 
 	override val hasMenu: Boolean = true
@@ -77,21 +84,24 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 	override fun asItem(): Item = ItemRegistry.CraftingBufferEncasement
 
 	/**
-	 * The casing's own geometry - [CraftingBufferCasingGeometry.FRAME]'s open frame plus each
-	 * face's ring/cap piece per its current mode, and on a [CraftingBufferEncasementState.formed]
-	 * cluster the edge/corner seam fillers between adjacent arms. What a face shows is derived
-	 * exactly like the render state derives it ([faceModeFor]), so collision and targeting cover
-	 * precisely what the model draws - including the pieces that protrude past
+	 * The casing's own geometry - [GEOMETRY]'s open frame plus each face's ring/cap piece per its
+	 * current mode, and on a [CraftingBufferEncasementState.formed] cluster the edge/corner seam
+	 * fillers between adjacent arms. What a face shows is derived exactly like the render state
+	 * derives it ([faceModeFor]), so collision and targeting cover precisely what the model draws -
+	 * including the pieces that protrude past
 	 * [net.kernelpanicsoft.tubularstorage.pipe.encasement.PipeEncasementType.DEFAULT_CORE_SHAPE]'s
 	 * housing, which clicks used to fall straight through.
 	 */
 	override fun casingShape(level: BlockGetter, pos: BlockPos, tile: MultipartBlockEntity?, state: CraftingBufferEncasementState): VoxelShape {
 		if (level !is Level) return super.casingShape(level, pos, tile, state)
-		return CraftingBufferCasingGeometry.forFaceModes(
+		return GEOMETRY.forFaceModes(
 			ConnectingEncasementModelBlock.FACES.keys.associateWith { faceModeFor(level, pos, it, tile) },
 			state.formed,
 		)
 	}
+
+	/** Matches [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock]'s 6x6 cross-section - see [CasingGeometry]'s own KDoc, and [net.kernelpanicsoft.tubularstorage.power.pressureCasingShape]'s narrower sibling instance. */
+	private val GEOMETRY = CasingGeometry(0.3125)
 
 	/**
 	 * Drives the part block's full variant set off this member's own state and surroundings:
@@ -214,8 +224,18 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 		// it lands somewhere else still willing to accept it (a machine's own now-empty inventory,
 		// say - just as valid an "accepting destination" as the warehouse it was meant to reach).
 		if (!job.done) {
-			claimOutstandingStock(level, pos, job)
-			if (job.steps.isEmpty()) advanceStockOnly(tile, state, job) else advanceSteps(level, pos, tile, state, job)
+			// Pressure is a hard gate on real work (claim/feed/pull), not merely a speed bonus - an
+			// active job costs real pressure (CraftingBufferEncasementState.basePressureCost), and
+			// none reachable means the whole CPU simply doesn't advance this tick, same as a hook
+			// without enough of its own. Computed once here (onPressureTick draws for real) and
+			// threaded into advanceSteps rather than recomputed there, so this doesn't double-draw.
+			val multiplier = state.onPressureTick(PressureLine.find(level, pos) ?: NO_PRESSURE_LINE)
+			if (multiplier <= 0.0) {
+				job.status = "Insufficient pressure…"
+			} else {
+				claimOutstandingStock(level, pos, job)
+				if (job.steps.isEmpty()) advanceStockOnly(tile, state, job) else advanceSteps(level, pos, tile, state, job, multiplier)
+			}
 		}
 
 		if (job.done && drainEverything(level, pos, tile, state)) state.activeJob = null
@@ -259,7 +279,7 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 		if (amount >= job.targetAmount) job.done = true
 	}
 
-	private fun advanceSteps(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingBufferEncasementState, job: CraftingBufferJob) {
+	private fun advanceSteps(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingBufferEncasementState, job: CraftingBufferJob, pressureMultiplier: Double) {
 		for ((index, step) in job.steps.withIndex()) {
 			var tablePos = job.tableForStep[index]
 			if (tablePos == null) {
@@ -292,7 +312,8 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 		}
 
 		job.ticksSincePull++
-		if (job.ticksSincePull < PULL_INTERVAL_TICKS) {
+		val effectivePullInterval = (PULL_INTERVAL_TICKS / pressureMultiplier).toInt().coerceAtLeast(1)
+		if (job.ticksSincePull < effectivePullInterval) {
 			val fedSteps = job.steps.indices.count { i -> job.steps[i].pattern.requiredInputs().keys.all { r -> job.isInputFed(i, r) } }
 			job.status = "Crafting ($fedSteps/${job.steps.size} step(s) fed)…"
 		} else {
@@ -390,6 +411,9 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 		return Direction.fromDelta(next.x - pos.x, next.y - pos.y, next.z - pos.z)?.opposite ?: Direction.DOWN
 	}
 
-	/** Ticks between retries of a step's own output pull-back, once its inputs are fully fed - matches every other polling hook in this subsystem. */
+	/** Ticks between retries of a step's own output pull-back, once its inputs are fully fed - matches every other polling hook in this subsystem. Scaled by [CraftingBufferEncasementState]'s own [net.kernelpanicsoft.tubularstorage.power.PressureConsumer.onPressureTick] multiplier (see [advanceSteps]) - more available pressure pulls back sooner, per `docs/design/m5-pressure-power.md`. */
 	private const val PULL_INTERVAL_TICKS = 40
+
+	/** Throwaway, always-empty stand-in for [advanceJob]'s own [PressureLine.find] call when nothing is reachable - same role as [net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity]'s identical constant. */
+	private val NO_PRESSURE_LINE = ArchieEnergyStorage(0)
 }

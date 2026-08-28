@@ -25,12 +25,12 @@ configurations {
 }
 
 loom {
-	accessWidenerPath.set(project(":tubularstorage-common").loom.accessWidenerPath)
+	accessWidenerPath.set(project(":boilerplate-common").loom.accessWidenerPath)
 
 	mods {
 		maybeCreate("main").apply {
 			sourceSet(sourceSets.main.get())
-			sourceSet(project(":tubularstorage-common").sourceSets.main.get())
+			sourceSet(project(":boilerplate-common").sourceSets.main.get())
 		}
 	}
 
@@ -52,7 +52,7 @@ loom {
 			property("neoforge.gameTestServer", "true")
 			property("archie.gametest.side", "server")
 			property("archie.gametest", "true")
-			property("archie.gametest.modid", "tubularstorage")
+			property("archie.gametest.modid", "boilerplate")
 		}
 		create("gametestClient") {
 			client()
@@ -60,9 +60,9 @@ loom {
 			property("neoforge.enableGameTest", "true")
 			property("archie.gametest.side", "client")
 			property("archie.gametest", "true")
-			property("archie.gametest.modid", "tubularstorage")
+			property("archie.gametest.modid", "boilerplate")
 		}
-		// "gradlew runDatagen" - see TubularStorageBlockStateProvider. Writes to common's own
+		// "gradlew runDatagen" - see BoilerplateBlockStateProvider. Writes to common's own
 		// src/main/generated (wired in as an extra resources root there), not src/main/resources
 		// directly - Minecraft's datagen cache deletes anything in its output directory it didn't
 		// just write, which would otherwise destroy the hand-placed textures/gametest structures
@@ -73,7 +73,7 @@ loom {
 			property("archie.datagen", "true")
 			property("archie.datagen.client", "true")
 			property("archie.datagen.server", "true")
-			programArgs("--all", "--mod", "tubularstorage")
+			programArgs("--all", "--mod", "boilerplate")
 			programArgs("--output", file("../common/src/main/generated").absolutePath)
 		}
 	}
@@ -100,8 +100,8 @@ dependencies {
 
 	modLocalRuntime("curse.maven:nbtedit-678133:6125444")
 
-	"common"(project(":tubularstorage-common", "namedElements")) { isTransitive = false }
-	"shadowCommon"(project(":tubularstorage-common", "transformProductionNeoForge")) { isTransitive = false }
+	"common"(project(":boilerplate-common", "namedElements")) { isTransitive = false }
+	"shadowCommon"(project(":boilerplate-common", "transformProductionNeoForge")) { isTransitive = false }
 }
 
 modResources {
@@ -112,11 +112,11 @@ tasks {
 	base.archivesName.set(base.archivesName.get() + "-neoforge")
 
 	processResources {
-		from(project(":tubularstorage-common").sourceSets.main.get().resources) {
-			include("assets/tubularstorage/**")
-			include("data/tubularstorage/**")
-			include("tubularstorage.accesswidener")
-			include("tubularstorage-common.mixins.json")
+		from(project(":boilerplate-common").sourceSets.main.get().resources) {
+			include("assets/boilerplate/**")
+			include("data/boilerplate/**")
+			include("boilerplate.accesswidener")
+			include("boilerplate-common.mixins.json")
 		}
 		dependsOn(processTestResources)
 	}
@@ -142,11 +142,11 @@ tasks {
 
 	jar {
 		duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-		from(project(":tubularstorage-common").sourceSets.main.get().output)
+		from(project(":boilerplate-common").sourceSets.main.get().output)
 	}
 
 	sourcesJar {
-		val commonSources = project(":tubularstorage-common").tasks.sourcesJar
+		val commonSources = project(":boilerplate-common").tasks.sourcesJar
 		dependsOn(commonSources)
 		duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 		from(commonSources.get().archiveFile.map { zipTree(it) })

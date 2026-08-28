@@ -1,0 +1,85 @@
+{
+  "texture_size": [
+    16,
+    16
+  ],
+  "parent": "minecraft:block/block",
+  "textures": {
+    "0": "boilerplate:block/compressor_encasement_corner",
+    "particle": "#0"
+  },
+  "elements": [
+    {
+      "name": "corner",
+      "from": [
+        14,
+        14,
+        0
+      ],
+      "to": [
+        16,
+        16,
+        2
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            2.0
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            0.0,
+            2.0,
+            2.0,
+            4.0
+          ],
+          "texture": "#0",
+          "cullface": "up"
+        },
+        "north": {
+          "uv": [
+            2.0,
+            0.0,
+            4.0,
+            2.0
+          ],
+          "texture": "#0",
+          "cullface": "north"
+        },
+        "south": {
+          "uv": [
+            2.0,
+            2.0,
+            4.0,
+            4.0
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            4.0,
+            2.0,
+            6.0
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            4.0,
+            0.0,
+            6.0,
+            2.0
+          ],
+          "texture": "#0",
+          "cullface": "east"
+        }
+      }
+    }
+  ]
+}

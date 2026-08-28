@@ -1,0 +1,14 @@
+package net.kernelpanicsoft.boilerplate.network
+
+import kotlinx.serialization.Serializable
+import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
+import net.minecraft.client.Minecraft
+
+/** Server -> client: reply to [RequestCraftPreviewPacket] - [resource] is currently craftable up to [maxCraftable]. Applied to whichever [AbstractTerminalHookMenu] the receiving player currently has open, if any. */
+@Serializable
+data class CraftPreviewPacket(val resource: SItemResource, val maxCraftable: Long) {
+	fun handleOnClient() {
+		val menu = Minecraft.getInstance().player?.containerMenu as? AbstractTerminalHookMenu<*> ?: return
+		menu.updateCraftPreview(resource, maxCraftable)
+	}
+}

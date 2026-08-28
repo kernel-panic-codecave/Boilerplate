@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "boilerplate:block/unstackable_rack"
+    }
+  }
+}

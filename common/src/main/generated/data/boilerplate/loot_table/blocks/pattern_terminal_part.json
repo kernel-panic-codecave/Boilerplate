@@ -1,0 +1,4 @@
+{
+  "type": "minecraft:block",
+  "random_sequence": "boilerplate:blocks/pattern_terminal_part"
+}

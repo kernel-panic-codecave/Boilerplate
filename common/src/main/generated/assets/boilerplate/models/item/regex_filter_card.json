@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "boilerplate:item/regex_filter_card"
+  }
+}

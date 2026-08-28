@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/terminal_hook",
+	"textures": {
+		"0": "boilerplate:block/terminal_hook_on",
+		"particle": "boilerplate:block/terminal_hook_on"
+	}
+}

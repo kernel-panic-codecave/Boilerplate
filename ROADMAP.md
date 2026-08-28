@@ -1,6 +1,6 @@
 # Roadmap
 
-A first-draft milestone breakdown for Tubular Storage — a steampunk pneumatic-tube logistics and
+A first-draft milestone breakdown for Boilerplate — a steampunk pneumatic-tube logistics and
 storage mod aiming for AE2/Refined Storage-level feature completeness. This is a starting point to
 revise once each milestone's actual design work begins, not a committed spec.
 
@@ -45,7 +45,7 @@ wireless/remote terminal access, VFX/SFX for the pneumatic-tube feel.
 Don't rebuild what Archie already provides:
 
 - **Config**: `ConfigContainer`/`CategorySpec`/`DataSpec` (see Archie's `Archie.kt` `Config`
-  object) for Tubular Storage's own config, instead of a bespoke config system.
+  object) for Boilerplate's own config, instead of a bespoke config system.
 - **Networking**: `NetworkChannel` for `@Serializable` packet definitions and registration.
 - **GUI state syncing**: `BlockEntityStateManager`/`ItemStateManager`.
 - **Dev/gametest context detection**: `AGameTestPlatform`/`Platform.isDevelopmentEnvironment()` —

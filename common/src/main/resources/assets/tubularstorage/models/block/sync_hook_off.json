@@ -1,7 +1,0 @@
-{
-	"parent": "tubularstorage:block/sync_hook",
-	"textures": {
-		"0": "tubularstorage:block/sync_hook_off",
-		"particle": "tubularstorage:block/sync_hook_off"
-	}
-}

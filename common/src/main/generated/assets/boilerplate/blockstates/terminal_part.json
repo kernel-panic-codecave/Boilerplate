@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "active=false": {
+      "model": "boilerplate:block/terminal_hook_off"
+    },
+    "active=true": {
+      "model": "boilerplate:block/terminal_hook_on"
+    }
+  }
+}

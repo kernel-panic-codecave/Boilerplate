@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/interface_hook",
+	"textures": {
+		"0": "boilerplate:block/interface_hook_off",
+		"particle": "boilerplate:block/interface_hook_off"
+	}
+}

@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/extraction_hook",
+	"textures": {
+		"0": "boilerplate:block/extraction_hook_off",
+		"particle": "boilerplate:block/extraction_hook_off"
+	}
+}

@@ -38,9 +38,9 @@ subprojects {
 		silentMojangMappingsLicense()
 	}
 
-	// Tubular Storage links against Archie's full published artifact, which transitively pulls
+	// Boilerplate links against Archie's full published artifact, which transitively pulls
 	// in everything Archie itself integrates with (REI, cloth-config, modmenu, catalogue,
-	// common-storage-lib, Compose's own deps, ...) even though Tubular Storage doesn't use most
+	// common-storage-lib, Compose's own deps, ...) even though Boilerplate doesn't use most
 	// of those directly yet. This repo list mirrors Archie's own root build.gradle.kts exactly,
 	// for that reason - trim it once dependencies are pinned down and it's clear what's actually
 	// needed.
@@ -117,8 +117,8 @@ allprojects {
 	apply(plugin = "architectury-plugin")
 
 	version = "mod_version".prop ?: "0.1.0-SNAPSHOT"
-	group = "mod_group".prop ?: "net.kernelpanicsoft.tubularstorage"
-	base.archivesName = "tubularstorage"
+	group = "mod_group".prop ?: "net.kernelpanicsoft.boilerplate"
+	base.archivesName = "boilerplate"
 
 	tasks.withType<JavaCompile>().configureEach {
 		options.encoding = "UTF-8"
@@ -140,12 +140,12 @@ fusioner {
 	outputDirectory = "build/artifacts"
 
 	fabric {
-		projectName = "tubularstorage-fabric"
+		projectName = "boilerplate-fabric"
 		inputTaskName = "remapJar"
 	}
 
 	neoforge {
-		projectName = "tubularstorage-neoforge"
+		projectName = "boilerplate-neoforge"
 		inputTaskName = "remapJar"
 	}
 }

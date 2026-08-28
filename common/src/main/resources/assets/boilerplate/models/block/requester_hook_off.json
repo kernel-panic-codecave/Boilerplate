@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/requester_hook",
+	"textures": {
+		"0": "boilerplate:block/requester_hook_off",
+		"particle": "boilerplate:block/requester_hook_off"
+	}
+}

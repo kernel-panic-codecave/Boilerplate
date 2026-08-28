@@ -1,4 +1,4 @@
-# Tubular Storage — Design Docs
+# Boilerplate — Design Docs
 
 Implementation-level design for `ROADMAP.md`'s milestones. Each milestone gets its own file; this one covers the foundations shared across all of them so the per-milestone docs aren't repeating themselves.
 
@@ -13,12 +13,12 @@ All of this is grounded in Archie's and `earth.terrarium.common_storage_lib`'s (
 
 ## Package layout
 
-Under `common/src/main/kotlin/net/kernelpanicsoft/tubularstorage/`:
+Under `common/src/main/kotlin/net/kernelpanicsoft/boilerplate/`:
 
 ```
 registry/    BlockRegistry, ItemRegistry, TileRegistry, GuiRegistry, SoundRegistry, ParticleRegistry
 config/      Config.kt
-network/     TubularStorageNetworkChannel + packet data classes
+network/     BoilerplateNetworkChannel + packet data classes
 pipe/        network/ (graph+routing, incl. shared AbstractPipeNetwork(Manager) base), block/, entity/
 warehouse/   controller, index, gantry, terminal
 crafting/    pattern, resolver, provider/assembly blocks
@@ -54,28 +54,28 @@ Correct pattern: fetch the property **exactly once** per use (into a local `val`
 One `ADeferredRegistryHolder<T>` singleton per registrable type, mirroring Archie's own `test/` example mod exactly:
 
 ```kotlin
-object BlockRegistry : ADeferredRegistryHolder<Block>(TubularStorage.MOD, Registries.BLOCK) {
+object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registries.BLOCK) {
     val SomePipe by register("some_pipe") { PipeBlock(blockProperties(Blocks.IRON_BLOCK) { }) }
 }
-object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registries.ITEM) { /* ... */ }
-object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage.MOD, Registries.BLOCK_ENTITY_TYPE) { /* ... */ }
-object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(TubularStorage.MOD, Registries.MENU) {
+object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.ITEM) { /* ... */ }
+object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MOD, Registries.BLOCK_ENTITY_TYPE) { /* ... */ }
+object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(Boilerplate.MOD, Registries.MENU) {
     override fun initClient() { MenuRegistry.registerScreenFactory(SomeMenu, ::SomeScreen) }
 }
 ```
 
-Later: `SoundRegistry`, `ParticleRegistry` (both `ADeferredRegistryHolder`, same pattern). All `.init()` calls happen from `TubularStorage.init()`; `GuiRegistry.initClient()` (and any other registry needing client-side registration) is called from `TubularStorage.initClient()`.
+Later: `SoundRegistry`, `ParticleRegistry` (both `ADeferredRegistryHolder`, same pattern). All `.init()` calls happen from `Boilerplate.init()`; `GuiRegistry.initClient()` (and any other registry needing client-side registration) is called from `Boilerplate.initClient()`.
 
 ## CSL storage adapter pattern
 
 Used identically by every milestone that touches item/fluid/pressure storage — don't deviate from this per-milestone:
 
-- **Reading/writing a neighboring block** (vanilla chest, another mod's machine, another Tubular Storage machine) always goes through CSL's lookup:
+- **Reading/writing a neighboring block** (vanilla chest, another mod's machine, another Boilerplate machine) always goes through CSL's lookup:
   ```kotlin
   val storage: CommonStorage<ItemResource>? = ItemApi.BLOCK.find(level, pos, state, blockEntity, direction)
   ```
   This is what makes pipes/gantry/patterns interoperate with vanilla and third-party inventories for free — CSL's Fabric backend bridges to `ItemStorage.SIDED` (Fabric Transfer API), its NeoForge backend bridges to `Capabilities.ItemHandler.BLOCK` (`IItemHandler`), both transparently.
-- **A Tubular Storage block's own buffer** is always declared via `NBTHolder.itemField(size)` — this yields an `ArchieItemStorage`, which is already an NBT-persisted `CommonStorage<ItemResource>` (Archie ships this, no need to hand-roll a `CommonStorage` implementation for our own machines). The pressure/energy analogue is `NBTHolder.energyField(capacity)` → `ArchieEnergyStorage : ValueStorage`. Both are exposed outward *once*, at block-entity-type registration time:
+- **A Boilerplate block's own buffer** is always declared via `NBTHolder.itemField(size)` — this yields an `ArchieItemStorage`, which is already an NBT-persisted `CommonStorage<ItemResource>` (Archie ships this, no need to hand-roll a `CommonStorage` implementation for our own machines). The pressure/energy analogue is `NBTHolder.energyField(capacity)` → `ArchieEnergyStorage : ValueStorage`. Both are exposed outward *once*, at block-entity-type registration time:
   ```kotlin
   TileRegistry.SomeTile.exposeItemStorage { tile -> tile.buffer }       // ArchieCapabilityExposure
   TileRegistry.PressureTank.exposeEnergyStorage { tile -> tile.pressure }
@@ -87,13 +87,13 @@ Used identically by every milestone that touches item/fluid/pressure storage —
 
 Every block with a screen follows the same chain: `TileRegistry` entry → `GuiRegistry` `MenuType` via `MenuRegistry.ofExtended` → a `ComposeBlockContainerMenu<T, SELF>` subclass implementing `registerSlotHandlers()` (binding `handler("group_name", tile.someArchieItemStorage)`) → a paired `ComposeContainerScreen` registered in `GuiRegistry.initClient()`.
 
-Any field that needs to reach the client (progress bars, filter state, search results, job status) is declared `@Sync` on the `NBTBlockEntity` and read client-side via `observeProperty("fieldName", default)` inside a composable — writes auto-push a packet through Archie's `BlockEntityStateManager`, no manual networking required. This is used for essentially all GUI state throughout every milestone. Bespoke `TubularStorageNetworkChannel` packets are reserved for things that are genuinely *actions*, not block-entity state: crafting request submission, warehouse withdraw request, mid-flight pipe-item/gantry position sync.
+Any field that needs to reach the client (progress bars, filter state, search results, job status) is declared `@Sync` on the `NBTBlockEntity` and read client-side via `observeProperty("fieldName", default)` inside a composable — writes auto-push a packet through Archie's `BlockEntityStateManager`, no manual networking required. This is used for essentially all GUI state throughout every milestone. Bespoke `BoilerplateNetworkChannel` packets are reserved for things that are genuinely *actions*, not block-entity state: crafting request submission, warehouse withdraw request, mid-flight pipe-item/gantry position sync.
 
-Theming: ship theme JSONs under `assets/tubularstorage/archie_themes/<type>/<composable>.json` (Archie's reload listeners scan all namespaces automatically — no per-mod registration needed) and wrap composable trees in `Theme(namespace = "tubularstorage") { }`.
+Theming: ship theme JSONs under `assets/boilerplate/archie_themes/<type>/<composable>.json` (Archie's reload listeners scan all namespaces automatically — no per-mod registration needed) and wrap composable trees in `Theme(namespace = "boilerplate") { }`.
 
 ## Dev-only code (datagen / gametest)
 
-No separate Gradle subprojects (see `../../AGENTS.md`). `datagen`/`gametest` packages live inside `common`, invoked from `TubularStorage.initCommon()` gated behind `Platform.isDevelopmentEnvironment()`/Archie's `AGameTestPlatform`. Gametests should validate at minimum: pipe network merge/split correctness (M1), gantry pick/place round-trips (M3), and crafting DAG resolution against cyclic/impossible patterns (M4).
+No separate Gradle subprojects (see `../../AGENTS.md`). `datagen`/`gametest` packages live inside `common`, invoked from `Boilerplate.initCommon()` gated behind `Platform.isDevelopmentEnvironment()`/Archie's `AGameTestPlatform`. Gametests should validate at minimum: pipe network merge/split correctness (M1), gantry pick/place round-trips (M3), and crafting DAG resolution against cyclic/impossible patterns (M4).
 
 ## Cross-cutting: the `PressureConsumer` hook
 

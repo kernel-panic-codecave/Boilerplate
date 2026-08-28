@@ -1,0 +1,350 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_core"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_arm",
+        "x": 90
+      },
+      "when": {
+        "down": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_cap",
+        "x": 90
+      },
+      "when": {
+        "down": "cap"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_arm",
+        "x": 270
+      },
+      "when": {
+        "up": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_cap",
+        "x": 270
+      },
+      "when": {
+        "up": "cap"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_arm"
+      },
+      "when": {
+        "north": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_cap"
+      },
+      "when": {
+        "north": "cap"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_arm",
+        "y": 180
+      },
+      "when": {
+        "south": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_cap",
+        "y": 180
+      },
+      "when": {
+        "south": "cap"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_arm",
+        "y": 270
+      },
+      "when": {
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_cap",
+        "y": 270
+      },
+      "when": {
+        "west": "cap"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_arm",
+        "y": 90
+      },
+      "when": {
+        "east": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_cap",
+        "y": 90
+      },
+      "when": {
+        "east": "cap"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge"
+      },
+      "when": {
+        "east": "arm",
+        "formed": "true",
+        "north": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "y": 90
+      },
+      "when": {
+        "east": "arm",
+        "formed": "true",
+        "south": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "y": 180
+      },
+      "when": {
+        "formed": "true",
+        "south": "arm",
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "y": 270
+      },
+      "when": {
+        "formed": "true",
+        "north": "arm",
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 90
+      },
+      "when": {
+        "down": "arm",
+        "east": "arm",
+        "formed": "true"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 90,
+        "y": 90
+      },
+      "when": {
+        "down": "arm",
+        "formed": "true",
+        "south": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 90,
+        "y": 180
+      },
+      "when": {
+        "down": "arm",
+        "formed": "true",
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 90,
+        "y": 270
+      },
+      "when": {
+        "down": "arm",
+        "formed": "true",
+        "north": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 270
+      },
+      "when": {
+        "east": "arm",
+        "formed": "true",
+        "up": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 270,
+        "y": 90
+      },
+      "when": {
+        "formed": "true",
+        "south": "arm",
+        "up": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 270,
+        "y": 180
+      },
+      "when": {
+        "formed": "true",
+        "up": "arm",
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_edge",
+        "x": 270,
+        "y": 270
+      },
+      "when": {
+        "formed": "true",
+        "north": "arm",
+        "up": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner"
+      },
+      "when": {
+        "east": "arm",
+        "formed": "true",
+        "north": "arm",
+        "up": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner",
+        "y": 90
+      },
+      "when": {
+        "east": "arm",
+        "formed": "true",
+        "south": "arm",
+        "up": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner",
+        "y": 180
+      },
+      "when": {
+        "formed": "true",
+        "south": "arm",
+        "up": "arm",
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner",
+        "y": 270
+      },
+      "when": {
+        "formed": "true",
+        "north": "arm",
+        "up": "arm",
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner",
+        "x": 90
+      },
+      "when": {
+        "down": "arm",
+        "east": "arm",
+        "formed": "true",
+        "north": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner",
+        "x": 90,
+        "y": 90
+      },
+      "when": {
+        "down": "arm",
+        "east": "arm",
+        "formed": "true",
+        "south": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner",
+        "x": 90,
+        "y": 180
+      },
+      "when": {
+        "down": "arm",
+        "formed": "true",
+        "south": "arm",
+        "west": "arm"
+      }
+    },
+    {
+      "apply": {
+        "model": "boilerplate:block/compressor_encasement_corner",
+        "x": 90,
+        "y": 270
+      },
+      "when": {
+        "down": "arm",
+        "formed": "true",
+        "north": "arm",
+        "west": "arm"
+      }
+    }
+  ]
+}

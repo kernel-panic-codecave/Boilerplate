@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/crafting_terminal_hook",
+	"textures": {
+		"0": "boilerplate:block/crafting_terminal_hook_on",
+		"particle": "boilerplate:block/crafting_terminal_hook_on"
+	}
+}

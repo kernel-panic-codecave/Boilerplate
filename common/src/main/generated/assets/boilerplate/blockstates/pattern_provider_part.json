@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "active=false": {
+      "model": "boilerplate:block/pattern_provider_hook_off"
+    },
+    "active=true": {
+      "model": "boilerplate:block/pattern_provider_hook_on"
+    }
+  }
+}

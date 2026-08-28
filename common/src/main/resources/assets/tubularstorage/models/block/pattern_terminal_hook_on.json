@@ -1,7 +1,0 @@
-{
-	"parent": "tubularstorage:block/pattern_terminal_hook",
-	"textures": {
-		"0": "tubularstorage:block/pattern_terminal_hook_on",
-		"particle": "tubularstorage:block/pattern_terminal_hook_on"
-	}
-}

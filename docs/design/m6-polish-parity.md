@@ -4,7 +4,7 @@ See [README.md](README.md) for shared conventions.
 
 ## REI integration
 
-`compat/rei/TubularStorageREIPlugin : REIClientPlugin`, registered per-loader — REI plugin discovery is a loader-level service-loader hook that Architectury doesn't unify, so this needs one thin registration shim in `fabric` and `neoforge` each, not a single common-module registration. Recipe-fill from REI into crafting-terminal requests (M4), and warehouse-terminal search (M3) surfaced through REI's usage/working-station hooks.
+`compat/rei/BoilerplateREIPlugin : REIClientPlugin`, registered per-loader — REI plugin discovery is a loader-level service-loader hook that Architectury doesn't unify, so this needs one thin registration shim in `fabric` and `neoforge` each, not a single common-module registration. Recipe-fill from REI into crafting-terminal requests (M4), and warehouse-terminal search (M3) surfaced through REI's usage/working-station hooks.
 
 Must runtime-guard on REI actually being present. Verify REI's dependency scope in `build.gradle.kts` once this milestone starts — it's currently pulled in transitively via Archie's full artifact, which does not guarantee it's available at a scope this module can safely reference; may need its own explicit `modCompileOnly`/`modLocalRuntime` declaration.
 

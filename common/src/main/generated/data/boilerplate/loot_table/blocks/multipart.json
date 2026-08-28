@@ -1,0 +1,134 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "pipe"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    },
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "encasement"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    },
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "hook_down"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    },
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "hook_up"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    },
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "hook_north"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    },
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "hook_south"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    },
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "hook_west"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    },
+    {
+      "bonus_rolls": 0.0,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "functions": [
+            {
+              "function": "boilerplate:multipart_contents",
+              "part": "hook_east"
+            }
+          ],
+          "name": "boilerplate:pipe"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "random_sequence": "boilerplate:blocks/multipart"
+}

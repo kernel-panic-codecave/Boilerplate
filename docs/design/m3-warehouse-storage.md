@@ -22,7 +22,7 @@ Only the parts that change every tick stay a client-only dynamic render (`Wareho
 
 ## Rack scanning & index
 
-Any block inside the bound volume that exposes `ItemApi.BLOCK` storage — vanilla chest/barrel/shulker, another mod's inventory, or Tubular Storage's own machines — is automatically a "rack." This is what satisfies "no proprietary storage-cell skin": CSL's uniform `CommonStorage<ItemResource>` view means the index doesn't care what the block actually is.
+Any block inside the bound volume that exposes `ItemApi.BLOCK` storage — vanilla chest/barrel/shulker, another mod's inventory, or Boilerplate's own machines — is automatically a "rack." This is what satisfies "no proprietary storage-cell skin": CSL's uniform `CommonStorage<ItemResource>` view means the index doesn't care what the block actually is.
 
 ```kotlin
 class WarehouseIndex {

@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/pattern_provider_hook",
+	"textures": {
+		"0": "boilerplate:block/pattern_provider_hook_off",
+		"particle": "boilerplate:block/pattern_provider_hook_off"
+	}
+}

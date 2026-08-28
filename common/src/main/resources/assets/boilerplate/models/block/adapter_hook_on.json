@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/adapter_hook",
+	"textures": {
+		"0": "boilerplate:block/adapter_hook_on",
+		"particle": "boilerplate:block/adapter_hook_on"
+	}
+}

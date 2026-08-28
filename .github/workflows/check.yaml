@@ -23,7 +23,7 @@ jobs:
         loader: [fabric, neoforge]
         # No client/server split yet - there's no gametest matrix to gate on until gametest code
         # exists (see ROADMAP.md/CLAUDE.md). Re-add a `side: [server, client]` axis alongside a
-        # `-Dtubularstorage.junit.gametest.matrix=...` flag once it does (see Archie's check.yaml
+        # `-Dboilerplate.junit.gametest.matrix=...` flag once it does (see Archie's check.yaml
         # for the pattern), instead of running the same `check` twice for nothing.
     runs-on: ubuntu-latest
     timeout-minutes: 40

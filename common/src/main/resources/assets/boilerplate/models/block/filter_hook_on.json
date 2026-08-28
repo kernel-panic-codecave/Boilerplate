@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/filter_hook",
+	"textures": {
+		"0": "boilerplate:block/filter_hook_on",
+		"particle": "boilerplate:block/filter_hook_on"
+	}
+}

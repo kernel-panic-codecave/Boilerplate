@@ -1,0 +1,7 @@
+{
+	"parent": "boilerplate:block/sync_hook",
+	"textures": {
+		"0": "boilerplate:block/sync_hook_on",
+		"particle": "boilerplate:block/sync_hook_on"
+	}
+}

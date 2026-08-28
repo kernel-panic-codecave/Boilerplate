@@ -15,7 +15,7 @@
   "environment": "*",
   "mixins": [
     {
-      "config": "tubularstorage-common.mixins.json",
+      "config": "boilerplate-common.mixins.json",
       "environment": "*"
     }
   ],
@@ -23,13 +23,13 @@
     "main": [
       {
         "adapter": "kotlin",
-        "value": "net.kernelpanicsoft.tubularstorage.TubularStorageFabric"
+        "value": "net.kernelpanicsoft.boilerplate.BoilerplateFabric"
       }
     ],
     "client": [
       {
         "adapter": "kotlin",
-        "value": "net.kernelpanicsoft.tubularstorage.TubularStorageFabric"
+        "value": "net.kernelpanicsoft.boilerplate.BoilerplateFabric"
       }
     ]
   },

@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "active=false": {
+      "model": "boilerplate:block/sync_hook_off"
+    },
+    "active=true": {
+      "model": "boilerplate:block/sync_hook_on"
+    }
+  }
+}

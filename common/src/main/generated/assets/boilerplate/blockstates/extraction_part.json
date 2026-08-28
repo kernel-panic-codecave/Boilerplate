@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "active=false": {
+      "model": "boilerplate:block/extraction_hook_off"
+    },
+    "active=true": {
+      "model": "boilerplate:block/extraction_hook_on"
+    }
+  }
+}

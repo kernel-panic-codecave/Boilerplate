@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "active=false": {
+      "model": "boilerplate:block/requester_hook_off"
+    },
+    "active=true": {
+      "model": "boilerplate:block/requester_hook_on"
+    }
+  }
+}

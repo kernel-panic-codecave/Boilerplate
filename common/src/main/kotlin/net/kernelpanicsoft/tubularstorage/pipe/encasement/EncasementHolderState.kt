@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.tubularstorage.pipe.encasement
 
+import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.tubularstorage.pipe.attachment.AttachmentHolderState
 import net.kernelpanicsoft.tubularstorage.registry.EncasementTypeRegistry
 import net.minecraft.resources.ResourceLocation
@@ -18,4 +19,18 @@ import net.minecraft.resources.ResourceLocation
  */
 abstract class EncasementHolderState(defaultType: ResourceLocation) : AttachmentHolderState(defaultType) {
 	val fromRegistry get() = EncasementTypeRegistry.byId(type)
+
+	/**
+	 * Whether this member's own cluster currently forms a valid
+	 * [AbstractMultiblockManager.Cluster.valid] structure - a cuboid of any shape for
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType]
+	 * ([net.kernelpanicsoft.tubularstorage.crafting.CraftingCpuManager]'s own rule), a compressor
+	 * bank/auxiliary tank for [net.kernelpanicsoft.tubularstorage.power.CompressorEncasementType]/
+	 * [net.kernelpanicsoft.tubularstorage.power.PressureTankEncasementType]. Lives here rather than
+	 * per-type since [net.kernelpanicsoft.tubularstorage.pipe.block.ConnectingEncasementModelBlock.FORMED]
+	 * gates the same edge/corner seam-filler rendering for every encasement kind that uses that
+	 * block class - not every [EncasementHolderState] subclass needs whole-cluster validity, so a
+	 * type that never sets this simply leaves it at its default `false`.
+	 */
+	var formed: Boolean by field(Boolean.serializer()) { false }
 }

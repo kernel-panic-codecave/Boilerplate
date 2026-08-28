@@ -10,7 +10,7 @@ import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.block.Block
 
-class PipeItem(pipe: PipeBlock, properties: Properties) : BlockItem(pipe, properties)
+class PipeItem(val pipeBlock: PipeBlock, properties: Properties) : BlockItem(pipeBlock, properties)
 {
 	override fun place(context: BlockPlaceContext): InteractionResult?
 	{

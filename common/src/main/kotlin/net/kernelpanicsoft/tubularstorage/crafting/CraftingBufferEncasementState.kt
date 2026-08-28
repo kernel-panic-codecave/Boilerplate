@@ -3,10 +3,10 @@ package net.kernelpanicsoft.tubularstorage.crafting
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.storage.base.StorageSlot
-import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.tubularstorage.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.BlockGetter
@@ -21,24 +21,21 @@ import net.minecraft.world.level.BlockGetter
  * [CraftingBufferJob] itself has: [localStorage]'s real contents are what survives a reload, and a
  * job with nothing left to show for itself afterward is treated as already finished.
  */
-class CraftingBufferEncasementState : EncasementHolderState(CraftingBufferEncasementType.ID) {
+class CraftingBufferEncasementState : EncasementHolderState(CraftingBufferEncasementType.ID), PressureConsumer {
 
 	val localStorage: ArchieItemStorage by itemField(LOCAL_SLOTS)
 
-	/**
-	 * Whether this member's own cluster currently fills its bounding box exactly
-	 * ([CraftingCpuManager.Cluster.valid]) - recomputed server-side for every member a cluster
-	 * change could have flipped ([CraftingBufferEncasementType.onAttached]'s refresh) and synced to
-	 * clients, whose render-state reads it to gate the casing's edge/corner pieces: those need
-	 * whole-cluster knowledge no single client-side neighborhood probe can reconstruct cheaply.
-	 */
-	var formed: Boolean by field(Boolean.serializer()) { false }
+	// formed: Boolean - see EncasementHolderState.formed. Recomputed server-side for every member
+	// a cluster change could have flipped (CraftingBufferEncasementType.onAttached's refresh) and
+	// synced to clients, whose render-state reads it to gate the casing's edge/corner pieces:
+	// those need whole-cluster knowledge no single client-side neighborhood probe can reconstruct
+	// cheaply.
 
 	internal val backlog: ArrayDeque<CraftingBufferJob> = ArrayDeque()
 	internal var activeJob: CraftingBufferJob? = null
 	private var nextJobId: Int = 0
 
-	/** This member's own cluster's combined storage - every member's [localStorage] concatenated, in cluster order. Falls back to just this member's own if [tile] isn't in a real [ServerLevel] yet, or the cluster's arrangement isn't a valid cuboid (see [CraftingCpuManager.Cluster.valid]) - a CPU that didn't form has no pool to concatenate. */
+	/** This member's own cluster's combined storage - every member's [localStorage] concatenated, in cluster order. Falls back to just this member's own if [tile] isn't in a real [ServerLevel] yet, or the cluster's arrangement isn't a valid cuboid (see [CraftingCpuManager]) - a CPU that didn't form has no pool to concatenate. */
 	fun combinedStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> {
 		val level = tile.level as? ServerLevel ?: return CraftingCpuStorage(listOf(localStorage))
 		val cluster = CraftingCpuManager.get(level).clusterOf(level, tile.blockPos)
@@ -80,9 +77,18 @@ class CraftingBufferEncasementState : EncasementHolderState(CraftingBufferEncase
 		return backlog.removeAll { it.id == id }
 	}
 
+	/** Nonzero only while [activeJob] is running - an idle leader draining leftovers ([CraftingBufferEncasementType.drainEverything]) isn't doing work pressure should scale, so it costs nothing. */
+	override val basePressureCost: Long get() = if (activeJob != null) BASE_PRESSURE_COST else 0
+
+	/** See [basePressureCost]. */
+	override val maxPressureDraw: Long get() = if (activeJob != null) MAX_PRESSURE_DRAW else 0
+
 	companion object {
 		/** [localStorage]'s own slot count - the unit a cluster's combined capacity grows by per encased segment. */
 		private const val LOCAL_SLOTS = 9
+
+		private const val BASE_PRESSURE_COST = 10L
+		private const val MAX_PRESSURE_DRAW = 20L
 	}
 }
 

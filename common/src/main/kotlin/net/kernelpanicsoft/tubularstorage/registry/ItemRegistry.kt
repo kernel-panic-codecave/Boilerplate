@@ -21,6 +21,8 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.filter.*
 import net.kernelpanicsoft.tubularstorage.pipe.item.EncasementItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.PipeItem
+import net.kernelpanicsoft.tubularstorage.power.CompressorEncasementType
+import net.kernelpanicsoft.tubularstorage.power.PressureTankEncasementType
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseWandItem
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.client.renderer.item.ItemProperties
@@ -79,6 +81,10 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = PatternTerminalHookType.ID)
 	}
 
+	val AdapterHook by register("adapter_hook") {
+		HookItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, hookId = AdapterHookType.ID)
+	}
+
 	val WarehouseController by register("warehouse_controller") {
 		BlockItem(BlockRegistry.WarehouseController, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
@@ -97,6 +103,23 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(TubularStorage.MOD, Registri
 
 	val UnstackableRack by register("unstackable_rack") {
 		BlockItem(BlockRegistry.UnstackableRack, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	}
+
+	val PressurePipe by register("pressure_pipe") {
+		PipeItem(BlockRegistry.PressurePipe, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	}
+
+	val PressureTankEncasement by register("pressure_tank_encasement") {
+		EncasementItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, encasementId = PressureTankEncasementType.ID)
+	}
+
+	val CompressorEncasement by register("compressor_encasement") {
+		EncasementItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, encasementId = CompressorEncasementType.ID)
+	}
+
+	/** Never crafted - reachable only via the creative inventory/`/give`, matching [BlockRegistry.CreativePressureSource]'s own never-craftable role. */
+	val CreativePressureSource by register("creative_pressure_source") {
+		BlockItem(BlockRegistry.CreativePressureSource, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
 
 	/** Named `<encasement type path>_encasement`, mirroring how each [HookItem] above is named `<hook type path>_hook` - the datagen'd item model and [net.kernelpanicsoft.tubularstorage.pipe.client.MultipartBlockEntityVisual]'s own model lookup both rely on that convention. */

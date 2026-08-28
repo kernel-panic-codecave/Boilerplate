@@ -1,13 +1,13 @@
 package net.kernelpanicsoft.tubularstorage
 
 import dev.nyon.klf.MOD_BUS
-import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerVisual
-import net.minecraft.client.resources.model.ModelResourceLocation
+import net.kernelpanicsoft.tubularstorage.power.NeoForgePressureLookup
+import net.kernelpanicsoft.tubularstorage.power.PressureApi
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLConstructModEvent
-import net.neoforged.neoforge.client.event.ModelEvent
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent
 
 /**
  * NeoForge entrypoint for the mod, registered via the `@Mod` annotation.
@@ -18,6 +18,8 @@ import net.neoforged.neoforge.client.event.ModelEvent
 @Mod(TubularStorage.MOD_ID)
 object TubularStorageNeoForge {
 	init {
+		PressureApi.init(NeoForgePressureLookup)
+
 		MOD_BUS.addListener<FMLConstructModEvent> {
 			TubularStorage.init()
 		}
@@ -27,12 +29,8 @@ object TubularStorageNeoForge {
 		MOD_BUS.addListener<FMLCommonSetupEvent> {
 			TubularStorage.initCommon()
 		}
-		MOD_BUS.addListener<ModelEvent.RegisterAdditional> { event ->
-			val modelLoc = ModelResourceLocation(
-				WarehouseControllerVisual.HEAD_MODEL_RL,
-				"standalone"
-			)
-			event.register(modelLoc)
+		MOD_BUS.addListener<RegisterCapabilitiesEvent> { event ->
+			NeoForgePressureLookup.registerCapabilities(event)
 		}
 	}
 }

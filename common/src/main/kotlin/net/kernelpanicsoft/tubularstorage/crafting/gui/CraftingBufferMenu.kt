@@ -22,7 +22,7 @@ import net.minecraft.world.entity.player.Inventory
 /**
  * Shows one Crafting CPU member's own local buffer slots ([CraftingBufferEncasementState.localStorage])
  * alongside this member's own cluster's currently active job and backlog. The job/backlog live only
- * on the cluster's own leader ([CraftingCpuManager.Cluster.leader]) - see
+ * on the cluster's own leader ([net.kernelpanicsoft.tubularstorage.pipe.encasement.AbstractMultiblockManager.Cluster.leader]) - see
  * [CraftingBufferEncasementState]'s own KDoc - so [sendStatus]/[cancelJob] always resolve [tile]'s
  * own cluster first rather than reading [tile] directly, regardless of which member was actually
  * opened.

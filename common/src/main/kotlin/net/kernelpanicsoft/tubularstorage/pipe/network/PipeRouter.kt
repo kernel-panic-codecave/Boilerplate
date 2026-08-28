@@ -2,9 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.network
 
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType
@@ -20,7 +18,7 @@ import java.util.UUID
  * Resolves a route from a pipe position to the best network-reachable inventory that will accept
  * a resource, via unweighted BFS. Routes are cached per
  * `(networkId, network.version, resource, color, exclude)` and invalidated automatically whenever
- * the network's topology or routing modules change (both bump [PipeNetwork.version]).
+ * the network's topology or routing modules change (both bump [ItemPipeNetwork.version]).
  *
  * Unlike M1, candidates aren't accepted on first hit: the whole reachable space is explored so
  * that a sorting hook's [net.kernelpanicsoft.tubularstorage.pipe.entity.RoutingModule.priority]
@@ -80,7 +78,8 @@ object PipeRouter {
 		return route
 	}
 
-	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = level.getBlockState(pos).block.let { (it !is MultipartBlock && it is PipeBlock) || (it is MultipartBlock && (level.getBlockEntity(pos) as MultipartBlockEntity).pipeBlockId != MultipartBlockEntity.NONE) }
+	/** Whether [pos] carries [ItemNetworkType] - a real block-state check, not registry bookkeeping, so it stays correct through a bare [net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock]'s promotion/demotion without any extra invalidation call. */
+	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = ItemNetworkType in networkTypesAt(level, pos)
 
 	/**
 	 * Returns the hop path (pipes, ending with [to]) from [from] to one *specific* destination,

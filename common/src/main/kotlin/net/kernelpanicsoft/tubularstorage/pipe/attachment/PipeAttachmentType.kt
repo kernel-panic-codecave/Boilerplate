@@ -2,6 +2,7 @@ package net.kernelpanicsoft.tubularstorage.pipe.attachment
 
 import net.kernelpanicsoft.archie.util.plus
 import net.kernelpanicsoft.tubularstorage.pipe.block.PartBlock
+import net.kernelpanicsoft.tubularstorage.pipe.network.NetworkType
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
@@ -25,6 +26,15 @@ abstract class PipeAttachmentType<S : AttachmentHolderState> : ItemLike
 
 	/** This type's own registry id - the same key it is registered under. */
 	abstract val id: ResourceLocation
+
+	/**
+	 * The [NetworkType]s a segment may carry this attachment under - checked against that
+	 * segment's own [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.primaryNetworkType]
+	 * at attach time (see [net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock.clickBlockWithItem]).
+	 * Required on every concrete type rather than defaulting to "always compatible", so a new
+	 * attachment kind has to state which pipe kind it belongs on.
+	 */
+	abstract val compatibleNetworkTypes: Set<NetworkType>
 
 	/**
 	 * The id of this type's own hidden model-carrier block - see [PartBlock]. Derived from [id]

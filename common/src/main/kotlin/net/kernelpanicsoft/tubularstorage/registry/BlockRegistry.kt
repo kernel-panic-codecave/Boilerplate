@@ -5,6 +5,8 @@ import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.blockProperties
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.block.*
+import net.kernelpanicsoft.tubularstorage.power.block.CreativePressureSourceBlock
+import net.kernelpanicsoft.tubularstorage.power.block.PressurePipeBlock
 import net.kernelpanicsoft.tubularstorage.warehouse.GantryRailBlock
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlock
 import net.kernelpanicsoft.tubularstorage.warehouse.rack.BulkRackBlock
@@ -78,6 +80,10 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(TubularStorage.MOD, Regist
 		BistateHookModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
 	}
 
+	val AdapterHook by register("adapter_part") {
+		BistateHookModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
+	}
+
 	val CraftingBufferPart: ConnectingEncasementModelBlock by register("crafting_buffer_part") {
 		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
 	}
@@ -105,6 +111,24 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(TubularStorage.MOD, Regist
 		UnstackableRackBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
 	}
 
+	val PressurePipe: PressurePipeBlock by register("pressure_pipe") {
+		PressurePipeBlock(blockProperties(Blocks.COPPER_BLOCK) {
+			noOcclusion()
+			requiresCorrectToolForDrops()
+		})
+	}
+
+	val CompressorPart: ConnectingEncasementModelBlock by register("compressor_part") {
+		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
+	}
+
+	val PressureTankPart: ConnectingEncasementModelBlock by register("pressure_tank_part") {
+		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
+	}
+
+	val CreativePressureSource: CreativePressureSourceBlock by register("creative_pressure_source") {
+		CreativePressureSourceBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
+	}
 
 	override fun initClient() {
 		RenderTypeRegistry.register(RenderType.cutout(), GantryRail)

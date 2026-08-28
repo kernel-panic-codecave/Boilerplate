@@ -18,6 +18,10 @@ import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternBufferIO
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
+import net.kernelpanicsoft.tubularstorage.power.CompressorEncasementState
+import net.kernelpanicsoft.tubularstorage.power.PressureTankEncasementState
+import net.kernelpanicsoft.tubularstorage.power.entity.CreativePressureSourceBlockEntity
+import net.kernelpanicsoft.tubularstorage.power.exposePressureStorage
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry.patternBufferOf
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry.terminalOutputOf
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseControllerBlockEntity
@@ -30,7 +34,7 @@ import net.kernelpanicsoft.tubularstorage.warehouse.rack.exposeRackStorage
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
 
-/** Registers Tubular Storage's block entity types. Only [Multipart]/[GlassPipe]/[WarehouseController] get renderers - a plain [Pipe] never carries hooks or renders its contents. */
+/** Registers Tubular Storage's block entity types. Only [Multipart]/[GlassPipe]/[WarehouseController] get renderers - a plain [Pipe]/[PressurePipe] never carries hooks or an encasement, so it renders through its own static blockstate instead. [Multipart] is the one promoted-segment type, shared by every underlying pipe kind (item or pressure) - see [net.kernelpanicsoft.tubularstorage.pipe.block.MultipartBlock]. */
 object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage.MOD, Registries.BLOCK_ENTITY_TYPE) {
 	val Pipe: BlockEntityType<PipeBlockEntity> by register("pipe") {
 		blockEntityType(::PipeBlockEntity) {
@@ -80,6 +84,10 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 				?: (tile.encasement.value as? CraftingBufferEncasementState)?.combinedStorage(tile)
 				?: patternBufferOf(tile)
 				?: terminalOutputOf(tile)
+		}
+		exposePressureStorage { tile ->
+			(tile.encasement.value as? PressureTankEncasementState)?.pressure
+				?: (tile.encasement.value as? CompressorEncasementState)?.pressure
 		}
 	}
 
@@ -132,6 +140,28 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(TubularStorage
 			add(BlockRegistry.UnstackableRack)
 		}
 	}.apply { exposeRackStorage(UnstackableRackBlockEntity::storage) }
+
+	/**
+	 * Its own [BlockEntityType] registration (rather than reusing [Pipe]'s), even though both
+	 * instantiate the same [PipeBlockEntity] class - vanilla's "valid blocks" set is per-
+	 * [BlockEntityType], not per-class, and this keeps the two pipe kinds independently
+	 * queryable/addressable. An explicit factory lambda rather than a bare `::PipeBlockEntity`
+	 * reference: that resolves to [PipeBlockEntity]'s own 2-arg secondary constructor, which is
+	 * hardcoded to [Pipe] - this type needs the 3-arg primary constructor instead, naming itself.
+	 */
+	val PressurePipe: BlockEntityType<PipeBlockEntity> by register("pressure_pipe") {
+		blockEntityType({ pos, state -> PipeBlockEntity(PressurePipe, pos, state) }) {
+			add(BlockRegistry.PressurePipe)
+		}
+	}
+
+	val CreativePressureSource: BlockEntityType<CreativePressureSourceBlockEntity> by register("creative_pressure_source") {
+		blockEntityType(::CreativePressureSourceBlockEntity) {
+			add(BlockRegistry.CreativePressureSource)
+		}
+	}.apply {
+		exposePressureStorage { tile -> tile.pressure }
+	}
 
 	override fun initClient() {
 		SimpleBlockEntityVisualizer.builder(Multipart)

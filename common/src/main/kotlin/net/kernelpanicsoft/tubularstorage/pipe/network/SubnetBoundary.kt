@@ -1,7 +1,5 @@
 package net.kernelpanicsoft.tubularstorage.pipe.network
 
-import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.InterfaceHookType
 import net.minecraft.core.BlockPos
@@ -24,8 +22,8 @@ import net.minecraft.server.level.ServerLevel
  */
 object SubnetBoundary {
 	fun isBoundaryEdge(level: ServerLevel, pos: BlockPos, direction: Direction): Boolean {
-		val ownHook = hookAt(level, pos, direction) ?: return false
-		val neighborHook = hookAt(level, pos.relative(direction), direction.opposite) ?: return false
+		val ownHook = hookFacing(level, pos, direction) ?: return false
+		val neighborHook = hookFacing(level, pos.relative(direction), direction.opposite) ?: return false
 		return ownHook.type == InterfaceHookType.ID || neighborHook.type == InterfaceHookType.ID
 	}
 
@@ -37,8 +35,5 @@ object SubnetBoundary {
 	 * just [isBoundaryEdge]'s yes/no.
 	 */
 	fun interfaceAt(level: ServerLevel, pos: BlockPos, direction: Direction): InterfaceHookState? =
-		hookAt(level, pos, direction) as? InterfaceHookState
-
-	private fun hookAt(level: ServerLevel, pos: BlockPos, direction: Direction): HookHolderState? =
-		(level.getBlockEntity(pos) as? MultipartBlockEntity)?.hooks?.get(direction.name) as? HookHolderState
+		hookFacing(level, pos, direction) as? InterfaceHookState
 }

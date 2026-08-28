@@ -1,4 +1,4 @@
-package net.kernelpanicsoft.tubularstorage.crafting
+package net.kernelpanicsoft.tubularstorage.pipe.encasement
 
 import net.kernelpanicsoft.tubularstorage.pipe.block.ConnectingEncasementModelBlock.FaceMode
 import net.minecraft.core.Direction
@@ -6,26 +6,36 @@ import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 
 /**
- * Collision/targeting geometry for [CraftingBufferEncasementType]'s casing, matching the part
- * model set (`crafting_buffer_encasement_{core,arm,cap,edge,corner}.json`) element for element: an
- * open frame around the pipe hole (the core model's eight corner cubes and twelve edge rails), a
- * 2px ring flange bridging each ARM face to its neighboring member (the arm model's four walls), a
- * 6x6 plug plate over each CAP face's dead-end pipe hole (the cap model), and - on a formed
- * cluster, exactly like the render state gates them - the `_edge`/`_corner` seam fillers spanning
- * the outer 2px margins between adjacent arms.
+ * Collision/targeting geometry for a [net.kernelpanicsoft.tubularstorage.pipe.block.ConnectingEncasementModelBlock]
+ * casing, matching its part model set (`<prefix>_encasement_{core,arm,cap,edge,corner}.json`)
+ * element for element: an open frame around the pipe hole (the core model's eight corner cubes and
+ * twelve edge rails), a 2px ring flange bridging each ARM face to its neighboring member (the arm
+ * model's four walls), a plug plate over each CAP face's dead-end pipe hole (the cap model), and -
+ * on a formed cluster, exactly like the render state gates them - the `_edge`/`_corner` seam fillers
+ * spanning the outer 2px margins between adjacent arms.
  *
- * Every piece is static; only the assembled union varies, and that is memoized by packed mode bits
- * plus the formed flag - shape queries run many times per frame against every aimed-at or
- * colliding segment.
+ * [holeMargin] is the one thing that differs between casing kinds - how far in from each face the
+ * pipe hole's own opening starts (0.3125 for the crafting buffer's 6x6 hole matching
+ * [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock]'s cross-section, 0.375 for the pressure
+ * tank/compressor's narrower 4x4 hole matching `PressurePipeBlock`'s own). Everything else - the
+ * outer 2px margin the edge/corner fillers live in, the rotation tables, the ring/cap piece shapes
+ * relative to that margin - is identical between kinds, since only the hole itself, not the casing's
+ * outer silhouette, changes size.
+ *
+ * Every piece is static per instance; only the assembled union varies, and that is memoized by
+ * packed mode bits plus the formed flag - shape queries run many times per frame against every
+ * aimed-at or colliding segment. One instance per casing kind (not a shared singleton), since both
+ * the memoization cache and the piece shapes themselves are keyed to this instance's own
+ * [holeMargin].
  */
-internal object CraftingBufferCasingGeometry {
+class CasingGeometry(holeMargin: Double) {
 
-	private const val LOW_MIN = 0.125
-	private const val LOW_MAX = 0.3125
-	private const val MID_MIN = 0.3125
-	private const val MID_MAX = 0.6875
-	private const val HIGH_MIN = 0.6875
-	private const val HIGH_MAX = 0.875
+	private val LOW_MIN = 0.125
+	private val LOW_MAX = holeMargin
+	private val MID_MIN = holeMargin
+	private val MID_MAX = 1.0 - holeMargin
+	private val HIGH_MIN = 1.0 - holeMargin
+	private val HIGH_MAX = 0.875
 
 	private val CORNERS: List<Pair<Double, Double>> = listOf(LOW_MIN to LOW_MAX, HIGH_MIN to HIGH_MAX)
 
@@ -38,10 +48,10 @@ internal object CraftingBufferCasingGeometry {
 	/** The cap model's plug plate (authored facing north), rotated onto each direction. */
 	private val CAPS: Map<Direction, VoxelShape> = Direction.entries.associateWith { buildCap(it) }
 
-	/** The edge model's seam filler (authored along the north+east vertical margins): the outer 2px strip between two adjacent arms, full block height of the casing's own band. */
+	/** The edge model's seam filler (authored along the north+east vertical margins): the outer 2px strip between two adjacent arms, full block height of the casing's own band. Independent of [holeMargin] - it lives entirely in the outer 2px margin, which never changes. */
 	private val EDGE_BOX = doubleArrayOf(HIGH_MAX, LOW_MIN, 0.0, 1.0, HIGH_MAX, 0.125)
 
-	/** The corner model's seam filler (authored at the north+east+up corner): the outer 2px post where three mutually-adjacent arms meet. */
+	/** The corner model's seam filler (authored at the north+east+up corner): the outer 2px post where three mutually-adjacent arms meet. See [EDGE_BOX]'s identical note. */
 	private val CORNER_BOX = doubleArrayOf(HIGH_MAX, HIGH_MAX, 0.0, 1.0, 1.0, 0.125)
 
 	/**
@@ -152,13 +162,13 @@ internal object CraftingBufferCasingGeometry {
 			faceBox(direction, 0.0, 0.125, HIGH_MIN, HIGH_MAX, MID_MIN, MID_MAX),
 		)
 
-	/** The cap model's plate: 6x6 centered over the pipe hole, spanning 2px..4px in from the face. */
+	/** The cap model's plate: centered over the pipe hole, spanning 2px..4px in from the face. */
 	private fun buildCap(direction: Direction): VoxelShape =
 		faceBox(direction, 0.125, 0.25, MID_MIN, MID_MAX, MID_MIN, MID_MAX)
 
 	/**
-	 * Carries one authored-north box onto its target faces via [BlockModelRotation]'s own
-	 * composition (`rotateYXZ(-y, -x, 0)` - around X first, then around Y, both negated): quarter
+	 * Carries one authored-north box onto its target faces via [net.minecraft.client.resources.model.BlockModelRotation]'s
+	 * own composition (`rotateYXZ(-y, -x, 0)` - around X first, then around Y, both negated): quarter
 	 * turns about X cycle north→down→south→up, quarter turns about Y cycle north→east→south→west,
 	 * both about the block center. The same transform the datagen tables were verified against, so
 	 * a box lands exactly where its model counterpart renders.

@@ -6,8 +6,12 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.item.EncasementItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
-import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
+import net.kernelpanicsoft.tubularstorage.pipe.network.NetworkType
+import net.kernelpanicsoft.tubularstorage.pipe.network.adapterBridges
+import net.kernelpanicsoft.tubularstorage.pipe.network.primaryNetworkTypeAt
+import net.kernelpanicsoft.tubularstorage.pipe.network.underlyingPipeBlockAt
 import net.kernelpanicsoft.tubularstorage.registry.BlockRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -66,6 +70,30 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	 */
 	open val isTranslucent: Boolean = false
 
+	/**
+	 * The one [NetworkType] governing which [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType]
+	 * this pipe type may carry - checked against an attachment's own
+	 * [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]
+	 * at attach time (see [MultipartBlock.clickBlockWithItem]). [GlassPipeBlock] inherits this
+	 * unchanged; [PressurePipeBlock] overrides it to [NetworkTypeRegistry.Pressure].
+	 */
+	open val primaryNetworkType: NetworkType get() = NetworkTypeRegistry.Item
+
+	/**
+	 * Every other [NetworkType] this pipe type also conducts (registers into, see
+	 * [PipeBlockEntity.tick]) without accepting that type's own attachments - a plain item pipe
+	 * conducts pressure alongside items, so a dedicated [PressurePipeBlock] run is only needed
+	 * where a branch wants pressure with no item transport at all. [PressurePipeBlock] overrides
+	 * this back to empty (nothing needs an item pipe's own attachments to also flow through it).
+	 */
+	open val secondaryNetworkTypes: Set<NetworkType> get() = setOf(NetworkTypeRegistry.Pressure)
+
+	/** This pipe type's own core cross-section - see [CORE_SHAPE] for the default every pipe but [PressurePipeBlock] uses. */
+	open val coreShape: VoxelShape get() = CORE_SHAPE
+
+	/** This pipe type's own per-direction arm reach - see [armShapes] for the default. */
+	open val armShapesByDirection: Map<Direction, VoxelShape> get() = armShapes
+
 	init {
 		registerDefaultState(propertiesByDirection.values.fold(stateDefinition.any()) { state, property -> state.setValue(property, false) })
 	}
@@ -93,12 +121,45 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 			result.setValue(propertiesByDirection.getValue(direction), canConnect(level, pos, direction))
 		}
 
+	/**
+	 * A pipe forms a visible connecting arm toward a neighbor sharing its own [primaryNetworkType]
+	 * (an item pipe toward another item pipe, a pressure pipe toward another pressure pipe -
+	 * [primaryNetworkTypeAt] resolves a promoted [MultipartBlock] through its own
+	 * [MultipartBlockEntity.pipeBlockId]) - deliberately *not* "any neighbor whose full network set
+	 * includes mine": an item pipe's own [secondaryNetworkTypes] already carries pressure, but a
+	 * dedicated [PressurePipeBlock] butting against it would show a visible cross-section mismatch
+	 * (6x6 vs 4x4) without an [net.kernelpanicsoft.tubularstorage.pipe.hook.AdapterHookType]
+	 * collar - see that hook's own KDoc. Falls back to [externalConnectionExists] for a neighbor
+	 * that isn't a pipe at all.
+	 *
+	 * Resolved via [underlyingPipeBlockAt] rather than reading [primaryNetworkType]/
+	 * [externalConnectionExists] straight off `this`: `this` is [MultipartBlock] itself for every
+	 * promoted segment regardless of which pipe type it was promoted from, so reading those
+	 * properties directly would always answer as an item pipe (`MultipartBlock` never overrides
+	 * either) - correct by coincidence for a promoted item segment, wrong for a promoted
+	 * [PressurePipeBlock] one, which would then neither connect to its own pressure neighbors nor
+	 * probe [net.kernelpanicsoft.tubularstorage.power.PressureApi] for an external one.
+	 *
+	 * [adapterBridges] is checked next, ahead of [externalConnectionExists]: an
+	 * [net.kernelpanicsoft.tubularstorage.pipe.hook.AdapterHookType] hook is what turns an otherwise-
+	 * mismatched-primary edge (a dedicated [PressurePipeBlock] butting against an item pipe) into a
+	 * genuinely connected one - without this, [net.kernelpanicsoft.tubularstorage.power.network.PressureNetworkBoundary]
+	 * already merges the two sides' pressure networks at that edge, but the pressure pipe's own
+	 * visible arm (and the item pipe's, though a hook already covers that face's own body render
+	 * either way) never forms toward it.
+	 */
 	private fun canConnect(level: LevelAccessor, pos: BlockPos, direction: Direction): Boolean {
 		val neighborPos = pos.relative(direction)
-		if (PipeRouter.isPipe(level, neighborPos)) return true
+		val ownPipeBlock = underlyingPipeBlockAt(level, pos) ?: this
+		if (primaryNetworkTypeAt(level, neighborPos) == ownPipeBlock.primaryNetworkType) return true
+		if (adapterBridges(level, pos, direction)) return true
 		val realLevel = level as? Level ?: return false
-		return ItemApi.BLOCK.find(realLevel, neighborPos, direction.opposite) != null
+		return ownPipeBlock.externalConnectionExists(realLevel, neighborPos, direction.opposite)
 	}
+
+	/** The external (non-pipe) capability this pipe type auto-connects to - [ItemApi] for a plain item pipe; [PressurePipeBlock] overrides this to [net.kernelpanicsoft.tubularstorage.power.PressureApi] instead. */
+	protected open fun externalConnectionExists(level: Level, pos: BlockPos, direction: Direction): Boolean =
+		ItemApi.BLOCK.find(level, pos, direction) != null
 
 	/**
 	 * The segment's body piece - what remains once hooks and arms are accounted for: a wrapped
@@ -112,11 +173,12 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		val encasementState = tile?.encasement?.value
 		encasementState?.fromRegistry?.let { return it.casingShape(level, pos, tile, encasementState) }
 		if (tile != null && tile.pipeBlockId == MultipartBlockEntity.NONE) return Shapes.empty()
-		return CORE_SHAPE
+		return (underlyingPipeBlockAt(level, pos) ?: this).coreShape
 	}
 
 	protected fun buildFullShape(state: BlockState, level: BlockGetter, pos: BlockPos): VoxelShape {
 		var shape = bodyShapeFor(level, pos)
+		val ownArmShapes = (underlyingPipeBlockAt(level, pos) ?: this).armShapesByDirection
 
 		for ((direction, hookShape) in attachmentShapes(state, level, pos)) {
 			shape = Shapes.or(shape, hookShape)
@@ -124,7 +186,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 
 		for ((direction, property) in propertiesByDirection) {
 			if (state.getValue(property)) {
-				shape = Shapes.or(shape, armShapes.getValue(direction))
+				shape = Shapes.or(shape, ownArmShapes.getValue(direction))
 			}
 		}
 
@@ -142,8 +204,9 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		}
 		if (tile.encasement.value != null) return shapes
 
+		val ownArmShapes = (underlyingPipeBlockAt(level, pos) ?: this).armShapesByDirection
 		for ((direction, property) in propertiesByDirection) {
-			if (state.getValue(property)) shapes.add(direction to armShapes.getValue(direction))
+			if (state.getValue(property)) shapes.add(direction to ownArmShapes.getValue(direction))
 		}
 		return shapes
 	}
@@ -287,7 +350,6 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 
 		return BlockRegistry.Multipart.clickBlockWithItem(stack, level.getBlockState(pos), level, pos, player, hand, hitResult)
 	}
-
 
 	companion object {
 

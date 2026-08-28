@@ -10,6 +10,9 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.item.EncasementItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.HookItem
 import net.kernelpanicsoft.tubularstorage.pipe.item.PipeItem
+import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
+import net.kernelpanicsoft.tubularstorage.pipe.network.primaryNetworkTypeAt
+import net.kernelpanicsoft.tubularstorage.power.network.PressurePipeNetworkManager
 import net.kernelpanicsoft.tubularstorage.registry.EncasementTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TagsRegistry
@@ -110,9 +113,15 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 
 	/**
 	 * Right-clicking a face with a [HookItem] attaches that hook to it (unless that face already
-	 * carries one), and an [EncasementItem] wraps the whole segment instead. Detaching either is the
-	 * wrench's job - see [register], which owns that interaction, since vanilla never delivers
-	 * sneak-clicks carrying an item to blocks in the first place.
+	 * carries one), and an [EncasementItem] wraps the whole segment instead - either only if the
+	 * underlying pipe's own [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.primaryNetworkType]
+	 * is one of the attachment's [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]
+	 * (a pipe-less segment, with no primary type resolved yet, accepts anything). A [PipeItem]
+	 * against a pipe-less segment instead names its own [PipeItem.pipeBlock] - gated the other way
+	 * round, against an *already-encased* segment's own `compatibleNetworkTypes`, since there's no
+	 * primary type of its own yet to check. Detaching either is the wrench's job - see [register],
+	 * which owns that interaction, since vanilla never delivers sneak-clicks carrying an item to
+	 * blocks in the first place.
 	 */
 	override fun useItemOn(
 		stack: ItemStack,
@@ -141,14 +150,18 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 		if (pipeItem != null)
 		{
 			if (tile.pipeBlockId != MultipartBlockEntity.NONE) return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION
+			val encasementType = tile.encasement.value?.fromRegistry
+			if (encasementType != null && pipeItem.pipeBlock.primaryNetworkType !in encasementType.compatibleNetworkTypes) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			if (level.isClientSide) return ItemInteractionResult.SUCCESS
-			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(pipeItem.block)
+			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(pipeItem.pipeBlock)
 		}
 		else if (encasementItem != null)
 		{
 			if (level.isClientSide) return ItemInteractionResult.SUCCESS
 			if (tile.encasement.value != null) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			val encasementType = EncasementTypeRegistry.byId(encasementItem.encasementId) ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			val primary = primaryNetworkTypeAt(level, pos)
+			if (primary != null && primary !in encasementType.compatibleNetworkTypes) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			val encasementState = encasementType.createState()
 			tile.encasement.value = encasementState
 			(level as? ServerLevel)?.let { encasementType.onAttached(it, pos, tile, encasementState) }
@@ -159,7 +172,10 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 			val direction = armFor(level, state, pos, hitResult, player) ?: hitResult.direction
 			if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			val hookType = HookTypeRegistry.byId(hookItem.hookId) ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			val primary = primaryNetworkTypeAt(level, pos)
+			if (primary != null && primary !in hookType.compatibleNetworkTypes) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			tile.hooks.getOrPut(direction.name) { hookType.createState() }
+			resyncNetworkMembership(level, pos)
 		}
 		else return if (stack.item is BlockItem) ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION else ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 		level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
@@ -172,10 +188,13 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 	/**
 	 * Sneak-right-clicking with any wrench ([TagsRegistry.Items.TOOLS_WRENCH]) detaches whatever the
 	 * hit targets - [armFor]'s face hook, or on such a hit against an encased segment the whole
-	 * casing - rolling its type's detach loot table either way. The one removal path that leaves the
-	 * segment standing; breaking the block takes everything down with it instead. Reached only
-	 * through [register]'s right-click listener, and only on the server - the client passes its own
-	 * leg through untouched so vanilla's interaction flow stays intact.
+	 * casing - rolling its type's detach loot table either way. Hitting a part with nothing to
+	 * detach there instead (the bare core with no encasement, or a connected arm with no hook)
+	 * falls to [removeJustThePipe] - the pipe itself is the one thing left to remove at that spot.
+	 * The one removal path that leaves the segment standing; breaking the block takes everything
+	 * down with it instead. Reached only through [register]'s right-click listener, and only on the
+	 * server - the client passes its own leg through untouched so vanilla's interaction flow stays
+	 * intact.
 	 */
 	internal fun detachWithWrench(
 		state: BlockState,
@@ -203,11 +222,12 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 
 		val direction = arm ?: hitResult.direction
 		val hookState = tile.hooks[direction.name]
-			?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			?: return removeJustThePipe(state, level, pos, player, tile)
 		val hookType = HookTypeRegistry.byId(hookState.type)
-			?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			?: return removeJustThePipe(state, level, pos, player, tile)
 		if (level.isClientSide) return ItemInteractionResult.SUCCESS
 		tile.hooks.remove(direction.name)
+		resyncNetworkMembership(level, pos)
 		if (!player.abilities.instabuild && level is ServerLevel) {
 			dropDetachLoot(level, pos, state, tile, hookType, player)
 		}
@@ -216,9 +236,69 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 	}
 
 	/**
+	 * Forces [pos] to be re-evaluated for network membership on both [PipeNetworkManager] and
+	 * [PressurePipeNetworkManager] - `onRemoved(pos)` unregisters it (and schedules the rest of its
+	 * former network for a rebuild), so the very next tick's own automatic
+	 * [net.kernelpanicsoft.tubularstorage.pipe.entity.PipeBlockEntity.tick] registration call
+	 * ([net.kernelpanicsoft.tubularstorage.pipe.network.AbstractPipeNetworkManager.ensureRegistered])
+	 * re-walks [pos]'s neighbors from scratch rather than being a no-op against its already-known
+	 * network id.
+	 *
+	 * Needed because [AbstractPipeNetworkManager.ensureRegistered] is deliberately idempotent - once
+	 * [pos] is registered, it never re-examines its own edges again on its own, so a hook attach/
+	 * detach that changes [SubnetBoundary.isBoundaryEdge]/[PressureNetworkBoundary.isBoundaryEdge]'s
+	 * result for one of [pos]'s edges (attaching or removing an [InterfaceHookType] or
+	 * [AdapterHookType] hook, chiefly) would otherwise never actually take effect until something
+	 * *else* forced a rebuild nearby (breaking and replacing an adjacent pipe, say) - confirmed the
+	 * hard way: an Adapter hook placed *after* both sides of a pressure-pipe/item-pipe junction were
+	 * already registered into separate networks never bridged them, even though
+	 * [PressureNetworkBoundary.isBoundaryEdge] itself correctly said the edge was bridged from that
+	 * point on - the stale topology just never got told to look again.
+	 */
+	private fun resyncNetworkMembership(level: Level, pos: BlockPos) {
+		val serverLevel = level as? ServerLevel ?: return
+		PipeNetworkManager.get(serverLevel).onRemoved(pos)
+		PressurePipeNetworkManager.get(serverLevel).onRemoved(pos)
+	}
+
+	/**
+	 * [detachWithWrench]'s fallback once the hit part carries neither an attached hook nor an
+	 * encasement - removes just the pipe this segment stands in for instead: dropping it like a
+	 * normal break would (respecting creative mode), then resetting
+	 * [MultipartBlockEntity.pipeBlockId] back to [MultipartBlockEntity.NONE], leaving every hook and
+	 * the encasement (if any) standing untouched. A no-op
+	 * ([ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION]) if there's no pipe here to remove
+	 * either (a segment that never got one placed against it).
+	 *
+	 * The segment's own block/entity never actually goes away here (unlike breaking) - only an
+	 * internal field flips - so nothing else notices this position stopped being a pipe on its own;
+	 * [net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter.isPipe] reads exactly that field.
+	 * Both [PipeNetworkManager] and [PressurePipeNetworkManager] have to be told explicitly, the
+	 * same eviction path a real removal would have triggered automatically.
+	 */
+	private fun removeJustThePipe(state: BlockState, level: Level, pos: BlockPos, player: Player, tile: MultipartBlockEntity): ItemInteractionResult {
+		if (tile.pipeBlockId == MultipartBlockEntity.NONE) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+		if (level.isClientSide) return ItemInteractionResult.SUCCESS
+
+		val pipeBlock = BuiltInRegistries.BLOCK.get(tile.pipeBlockId)
+		if (!player.abilities.instabuild) {
+			Block.dropResources(pipeBlock.defaultBlockState(), level, pos, tile, player, player.mainHandItem)
+		}
+		tile.pipeBlockId = MultipartBlockEntity.NONE
+		resyncNetworkMembership(level, pos)
+
+		level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
+		state.updateNeighbourShapes(level, pos, Block.UPDATE_ALL)
+		resendSegment(level, pos)
+		level.playSound(null, pos, state.soundType.breakSound, SoundSource.BLOCKS, 1f, 1f)
+		return ItemInteractionResult.SUCCESS
+	}
+
+	/**
 	 * Empty-hand right-click opens the targeted part's menu: that face's hook's GUI (if it has one),
 	 * or - on a hit landing on no hook and no arm ([armFor] returning `null`) of an encased segment -
-	 * the casing's own. Detaching either is the wrench's job; see [detachWithWrench].
+	 * the casing's own. Detaching either (or, with nothing to detach, the pipe itself) is the
+	 * wrench's job - see [detachWithWrench].
 	 */
 	override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {
 		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return InteractionResult.PASS
@@ -413,8 +493,11 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 		 * never delivers sneak-clicks carrying an item to blocks at all - both sides skip straight
 		 * past block interaction whenever either hand holds something, so no block-side override can
 		 * ever see one. Sneak-right-clicking while holding anything tagged `c:tools/wrench` detaches
-		 * whatever part of the targeted segment the crosshair resolves to
-		 * ([MultipartBlock.detachWithWrench]).
+		 * whatever part of a targeted [MultipartBlock] segment the crosshair resolves to
+		 * ([MultipartBlock.detachWithWrench], which itself falls to [MultipartBlock.removeJustThePipe]
+		 * once neither a hook nor an encasement is found there) - or, aimed at a bare (unpromoted)
+		 * [PipeBlock] instead, removes it outright via [removeBarePipe], the same way breaking it
+		 * would, since a bare pipe has nothing else "just the pipe" could mean to leave standing.
 		 *
 		 * The whole interaction runs server-side only, deliberately: this event fires on the client
 		 * too, and consuming it there cancels Fabric's interaction flow before the click packet is
@@ -434,12 +517,31 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 				val hit = rayTraceFromPlayer(player) ?: return@register EventResult.pass()
 				val pos = hit.blockPos
 				val state = level.getBlockState(pos)
-				val multipart = state.block as? MultipartBlock ?: return@register EventResult.pass()
-				val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return@register EventResult.pass()
+				val block = state.block as? PipeBlock ?: return@register EventResult.pass()
 
-				val result = multipart.detachWithWrench(state, level, pos, player, hit, tile)
+				val result = if (block is MultipartBlock) {
+					val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return@register EventResult.pass()
+					block.detachWithWrench(state, level, pos, player, hit, tile)
+				} else {
+					removeBarePipe(state, level, pos, player)
+				}
 				if (result.consumesAction()) EventResult.interruptFalse() else EventResult.pass()
 			}
+		}
+
+		/**
+		 * [register]'s branch for a bare (unpromoted) [PipeBlock]/`GlassPipeBlock` - sneak-right-
+		 * clicking it with a wrench drops it like a normal break would (respecting creative mode) and
+		 * removes the block, the whole-block counterpart of [MultipartBlock.removeJustThePipe] for a
+		 * segment with nothing else on it to leave standing.
+		 */
+		private fun removeBarePipe(state: BlockState, level: Level, pos: BlockPos, player: Player): ItemInteractionResult {
+			if (!player.abilities.instabuild) {
+				Block.dropResources(state, level, pos, level.getBlockEntity(pos), player, player.mainHandItem)
+			}
+			level.removeBlock(pos, false)
+			level.playSound(null, pos, state.soundType.breakSound, SoundSource.BLOCKS, 1f, 1f)
+			return ItemInteractionResult.SUCCESS
 		}
 
 		/**

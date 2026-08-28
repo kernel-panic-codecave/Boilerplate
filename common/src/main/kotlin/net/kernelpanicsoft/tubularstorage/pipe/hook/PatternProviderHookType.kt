@@ -15,6 +15,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternProviderHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType.tickGenericTarget
 import net.kernelpanicsoft.tubularstorage.pipe.hook.PatternProviderHookType.tickVanillaCraftingTable
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -55,6 +56,12 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "pattern_provider"
 
 	override val id: ResourceLocation get() = ID
+
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
+	/** [PipeHookType.basePressureCost] - Can convert a whole batch of patterns in one tick - the heaviest per-tick work among the hooks. */
+	override val basePressureCost: Long = 4L
 
 	override fun createState(): PatternProviderHookState = PatternProviderHookState()
 

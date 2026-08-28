@@ -1,15 +1,21 @@
 package net.kernelpanicsoft.tubularstorage.pipe.hook
 
 import net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType
+import net.kernelpanicsoft.tubularstorage.pipe.block.BistateHookModelBlock
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.tubularstorage.util.byDirection
+import net.kernelpanicsoft.tubularstorage.util.voxelShape
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
-import net.minecraft.world.phys.shapes.Shapes
+import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.shapes.VoxelShape
+
 
 /**
  * A kind of attachment a [MultipartBlockEntity] can carry on one face - see
@@ -40,14 +46,29 @@ abstract class PipeHookType<S : HookHolderState> : PipeAttachmentType<S>() {
 	open val validRoute: Boolean = false
 
 	/**
+	 * Pressure/tick this hook draws to operate at all - every concrete hook type overrides this to
+	 * a real, weight-appropriate value (`0`, the default, would mean "no pressure required," which
+	 * no hook actually is: see [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity.tick]'s
+	 * own gating, drawn for real - not merely a speed multiplier the way
+	 * [net.kernelpanicsoft.tubularstorage.power.PressureConsumer.onPressureTick] treats it
+	 * elsewhere). See [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity.basePressureCost],
+	 * which sums this across every hook a segment carries (for [PressureConsumer]-typed callers that
+	 * still want a speed-bonus reading of a whole segment, e.g. [ExtractionHookType]'s own interval
+	 * scaling).
+	 */
+	open val basePressureCost: Long get() = 0
+
+	/** Pressure/tick one hook of this type can usefully draw at its fastest - see [basePressureCost]. */
+	open val maxPressureDraw: Long get() = basePressureCost
+
+	/**
 	 * This hook's own collision shape, one entry per face it could be attached to - independent of
 	 * [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.armShapes] (the pipe body's own,
 	 * separately-sized cross-section) since a hook's physical model doesn't necessarily match the
-	 * pipe it's attached to. Defaults to a plain 4x4 box reaching from the face to pixel 6 - the
-	 * shape every hook used before any of them needed their own (see
-	 * `net/kernelpanicsoft/tubularstorage/models/block/{extraction,sorting,requester,provider}_hook.json`,
-	 * all identical `[6,6,0]`-`[10,10,6]` boxes) - override this for a hook whose model actually
-	 * differs, e.g. [TerminalHookType]'s wider face plate.
+	 * pipe it's attached to. Defaults to [makeShape]'s Blockbench-exported north-facing box cluster,
+	 * carried onto every other face by [rotatedShape] - the shape every hook used before any of them
+	 * needed their own - override this for a hook whose model actually differs, e.g.
+	 * [TerminalHookType]'s wider face plate.
 	 */
 	open val shapesByDirection: Map<Direction, VoxelShape> get() = DEFAULT_SHAPES
 
@@ -63,14 +84,33 @@ abstract class PipeHookType<S : HookHolderState> : PipeAttachmentType<S>() {
 	 */
 	override val detachLootTableId: ResourceLocation get() = id.withPrefix("multipart/detach_hook/")
 
+	/**
+	 * Drives [BistateHookModelBlock.ACTIVE] off [HookHolderState.active] - shared by every hook
+	 * kind here rather than overridden per type, since every hook's own [partBlockId] resolves to a
+	 * [BistateHookModelBlock] (see [net.kernelpanicsoft.tubularstorage.registry.BlockRegistry]) and
+	 * the property means the same thing everywhere: "did this hook draw its own [basePressureCost]
+	 * this tick." A [partBlockId] that doesn't resolve to one (an addon overriding it entirely)
+	 * falls back to the plain default state untouched.
+	 */
+	override fun getRenderState(level: Level, pos: BlockPos, previousState: BlockState, attachmentState: S): BlockState {
+		val base = BuiltInRegistries.BLOCK.get(partBlockId).defaultBlockState()
+		return if (base.hasProperty(BistateHookModelBlock.ACTIVE)) base.setValue(BistateHookModelBlock.ACTIVE, attachmentState.active) else base
+	}
+
 	companion object {
-		val DEFAULT_SHAPES: Map<Direction, VoxelShape> = mapOf(
-			Direction.NORTH to Shapes.box(0.375, 0.375, 0.0, 0.625, 0.625, 0.375),
-			Direction.SOUTH to Shapes.box(0.375, 0.375, 0.625, 0.625, 0.625, 1.0),
-			Direction.WEST to Shapes.box(0.0, 0.375, 0.375, 0.375, 0.625, 0.625),
-			Direction.EAST to Shapes.box(0.625, 0.375, 0.375, 1.0, 0.625, 0.625),
-			Direction.DOWN to Shapes.box(0.375, 0.0, 0.375, 0.625, 0.375, 0.625),
-			Direction.UP to Shapes.box(0.375, 0.625, 0.375, 0.625, 1.0, 0.625),
-		)
+		/** [makeShape]'s north-facing box cluster, carried onto the other 5 faces via [rotatedShape]. */
+		val DEFAULT_SHAPES: Map<Direction, VoxelShape> by lazy {
+			voxelShape {
+				box(0.375, 0.625, 0.0, 0.625, 0.6875, 0.3125)
+				box(0.375, 0.3125, 0.0, 0.625, 0.375, 0.3125)
+				box(0.3125, 0.375, 0.0, 0.375, 0.625, 0.3125)
+				box(0.625, 0.375, 0.0, 0.6875, 0.625, 0.3125)
+				box(0.625, 0.625, 0.0, 0.6875, 0.6875, 0.3125)
+				box(0.3125, 0.625, 0.0, 0.375, 0.6875, 0.3125)
+
+				box(0.625, 0.3125, 0.0, 0.6875, 0.375, 0.3125)
+				box(0.3125, 0.3125, 0.0, 0.375, 0.375, 0.3125)
+			}.byDirection
+		}
 	}
 }

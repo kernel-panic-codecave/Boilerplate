@@ -10,7 +10,10 @@ import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.SortingHookState
+import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
+import net.kernelpanicsoft.tubularstorage.power.PressureLine
 import net.kernelpanicsoft.tubularstorage.registry.EncasementTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.HookTypeRegistry
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
@@ -25,6 +28,7 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 
 /**
@@ -90,6 +94,12 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 	/** The [SortingHookState] filter grid attached to [direction] - callers must already know it carries a sorting hook. */
 	fun filterFor(direction: Direction) = (hooks[direction.name] as SortingHookState).filter
 
+	/** Sums every attached hook's own [PipeHookType.basePressureCost] - `0` (the [PressureConsumer] default) for a segment with none set. */
+	override val basePressureCost: Long get() = hooks.sumOf { (_, hookState) -> hookState.fromRegistry?.basePressureCost ?: 0 }
+
+	/** See [basePressureCost] - the [PipeHookType.maxPressureDraw] equivalent. */
+	override val maxPressureDraw: Long get() = hooks.sumOf { (_, hookState) -> hookState.fromRegistry?.maxPressureDraw ?: 0 }
+
 	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu {
 		val face = pendingMenuFace ?: run {
 			val encasementState = encasement.value ?: error("No encasement at $blockPos")
@@ -119,19 +129,47 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
 		if (hooks.size > 0) {
+			var anyActiveChanged = false
 			for ((directionName, hookState) in hooks) {
 				val direction = Direction.valueOf(directionName)
 				val hookType = hookState.fromRegistry ?: continue
-				if (firstTick) hookType.start(serverLevel, pos, direction, this, hookState)
+				val wasActive = hookState.active
+				hookState.active = drawHookPressure(serverLevel, pos, hookType)
+				if (hookState.active != wasActive) anyActiveChanged = true
+				if (!hookState.active) continue
+				if (firstTick || !wasActive) hookType.start(serverLevel, pos, direction, this, hookState)
 				hookType.tick(serverLevel, pos, direction, this, hookState)
 			}
 			hooks.touch()
+			// hooks is @Sync, but a menu-less BlockEntity's @Sync fields don't reach clients on
+			// their own - without this, a hook's own on/off model (BistateHookModelBlock.ACTIVE via
+			// PipeHookType.getRenderState) never visually updates no matter how long active's real
+			// value has actually differed, since nothing ever pushes the change to nearby clients.
+			if (anyActiveChanged) serverLevel.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
 		}
 		val encasementState = encasement.value ?: return
 		if (firstTick) encasementState.fromRegistry?.start(serverLevel, pos, this, encasementState)
 		encasementState.fromRegistry?.tick(serverLevel, pos, this, encasementState)
 		encasement.touch()
 		if (firstTick) firstTick = false
+	}
+
+	/**
+	 * Whether [hookType] can draw its own [PipeHookType.basePressureCost] from this segment's own
+	 * [PressureLine] this tick, drawn for real (not merely simulated) when it can - bypasses
+	 * [PressureConsumer]/[PressureConsumer.onPressureTick] entirely rather than implementing that
+	 * interface (see [HookHolderState.active]'s own KDoc for why: a segment can carry several
+	 * independent hooks, each needing its own gate check, not one aggregate multiplier). A zero-cost
+	 * hook (no concrete type actually is one, but an addon's could be) always operates - matching
+	 * [PressureConsumer]'s own "zero cost never gates" convention.
+	 */
+	private fun drawHookPressure(level: ServerLevel, pos: BlockPos, hookType: PipeHookType<*>): Boolean {
+		val cost = hookType.basePressureCost
+		if (cost <= 0) return true
+		val line = PressureLine.find(level, pos) ?: return false
+		if (line.extract(cost, true) < cost) return false
+		line.extract(cost, false)
+		return true
 	}
 
 	override fun setRemoved() {

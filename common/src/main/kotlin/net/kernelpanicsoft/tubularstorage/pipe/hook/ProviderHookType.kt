@@ -5,6 +5,7 @@ import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.SortingHookMenu
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Inventory
@@ -25,6 +26,12 @@ object ProviderHookType : PipeHookType<ProviderHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "provider"
 
 	override val id: ResourceLocation get() = ID
+
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
+	/** [PipeHookType.basePressureCost] - Passive stock exposure only, no active per-tick work - the lightest idle draw. */
+	override val basePressureCost: Long = 1L
 
 	override fun createState(): ProviderHookState = ProviderHookState()
 

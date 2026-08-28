@@ -10,6 +10,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -31,8 +32,19 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 
 	override val id: ResourceLocation get() = ID
 
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
+	/** [PipeHookType.basePressureCost] - Its own periodic pull is real per-tick work, but a single simple extraction - a middling draw. */
+	override val basePressureCost: Long = 2L
+
 	override fun createState(): ExtractionHookState = ExtractionHookState()
 
+	/**
+	 * Gated entirely on [basePressureCost] now - see [MultipartBlockEntity.tick]'s own draw/gate,
+	 * which already skips this call altogether without it - so this just ticks at the flat
+	 * [EXTRACTION_INTERVAL_TICKS], no separate speed-bonus draw of its own on top.
+	 */
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: ExtractionHookState) {
 		state.ticksSinceExtraction++
 		if (state.ticksSinceExtraction < EXTRACTION_INTERVAL_TICKS) return
@@ -70,6 +82,7 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 	}
 
 	const val EXTRACTION_INTERVAL_TICKS = 10
+
 	const val EXTRACTION_AMOUNT = 64L
 
 	override fun asItem(): Item = ItemRegistry.ExtractionHook

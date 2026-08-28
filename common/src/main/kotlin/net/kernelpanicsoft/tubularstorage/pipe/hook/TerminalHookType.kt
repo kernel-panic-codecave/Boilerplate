@@ -4,9 +4,11 @@ import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.crafting.craftingBufferAt
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.tubularstorage.pipe.gui.AbstractTerminalHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.gui.TerminalHookMenu
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
+import net.kernelpanicsoft.tubularstorage.util.byDirection
+import net.kernelpanicsoft.tubularstorage.util.voxelShape
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -15,8 +17,8 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
 import net.minecraft.world.level.block.Block
-import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
+
 
 /**
  * Turns the attached face into a search/withdraw window over every
@@ -32,6 +34,12 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 
 	override val id: ResourceLocation get() = ID
 
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
+	/** [PipeHookType.basePressureCost] - Mostly player-driven (withdraw/menu), with a light background tick - a middling draw. */
+	override val basePressureCost: Long = 2L
+
 	override fun createState(): TerminalHookState = TerminalHookState()
 
 	override val hasMenu: Boolean = true
@@ -46,19 +54,16 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 	override fun asItem(): Item = ItemRegistry.TerminalHook
 
 	/**
-	 * Wider than [DEFAULT_SHAPES]: a full-face plate (pixels 0-2 deep) plus the same 4x4 strut every
-	 * other hook has (pixels 2-6), unioned per face - matches `terminal_hook.json`'s own two
-	 * elements (`[0,0,0]`-`[16,16,2]` outward plate, `[6,6,2]`-`[10,10,6]` strut reaching to the
-	 * pipe), where every other hook model is just the strut alone.
+	 * Wider than [DEFAULT_SHAPES]: [makeShape]'s Blockbench-exported north-facing plate-plus-strut,
+	 * carried onto every other face by [PipeHookType.rotatedShape] - the same derivation
+	 * [DEFAULT_SHAPES] itself uses, just over this hook's own wider geometry.
 	 */
-	override val shapesByDirection: Map<Direction, VoxelShape> = mapOf(
-		Direction.NORTH to Shapes.or(Shapes.box(0.0, 0.0, 0.0, 1.0, 1.0, 0.125), Shapes.box(0.375, 0.375, 0.125, 0.625, 0.625, 0.375)),
-		Direction.SOUTH to Shapes.or(Shapes.box(0.0, 0.0, 0.875, 1.0, 1.0, 1.0), Shapes.box(0.375, 0.375, 0.625, 0.625, 0.625, 0.875)),
-		Direction.WEST to Shapes.or(Shapes.box(0.0, 0.0, 0.0, 0.125, 1.0, 1.0), Shapes.box(0.125, 0.375, 0.375, 0.375, 0.625, 0.625)),
-		Direction.EAST to Shapes.or(Shapes.box(0.875, 0.0, 0.0, 1.0, 1.0, 1.0), Shapes.box(0.625, 0.375, 0.375, 0.875, 0.625, 0.625)),
-		Direction.DOWN to Shapes.or(Shapes.box(0.0, 0.0, 0.0, 1.0, 0.125, 1.0), Shapes.box(0.375, 0.125, 0.375, 0.625, 0.375, 0.625)),
-		Direction.UP to Shapes.or(Shapes.box(0.0, 0.875, 0.0, 1.0, 1.0, 1.0), Shapes.box(0.375, 0.625, 0.375, 0.625, 0.875, 0.625)),
-	)
+	override val shapesByDirection: Map<Direction, VoxelShape> by lazy {
+		voxelShape {
+			box(0.3125, 0.3125, 0.125, 0.6875, 0.6875, 0.3125)
+			box(0.125, 0.125, 0.0, 0.875, 0.875, 0.125)
+		}.byDirection
+	}
 }
 
 /**

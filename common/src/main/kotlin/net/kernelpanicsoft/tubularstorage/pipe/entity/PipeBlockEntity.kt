@@ -5,11 +5,13 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.tubularstorage.network.PipeContentsSyncPacket
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
-import net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock
 import net.kernelpanicsoft.tubularstorage.pipe.client.PipeContentsClientCache
-import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
+import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.SubnetBoundary
+import net.kernelpanicsoft.tubularstorage.pipe.network.networkTypesAt
 import net.kernelpanicsoft.tubularstorage.power.PressureConsumer
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
+import net.kernelpanicsoft.tubularstorage.registry.Registrars
 import net.kernelpanicsoft.tubularstorage.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -20,13 +22,22 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 
 /**
- * A plain pipe segment: holds and advances [TravelingItem]s in transit, and participates in the
- * [PipeNetworkManager] network. Carries no hooks - see
+ * A plain pipe segment - the block entity behind every [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock]
+ * kind (item and pressure alike, see [net.kernelpanicsoft.tubularstorage.power.block.PressurePipeBlock]),
+ * holding and advancing [TravelingItem]s in transit. Registers into whichever
+ * [net.kernelpanicsoft.tubularstorage.pipe.network.AbstractPipeNetworkManager]s this position's
+ * own [net.kernelpanicsoft.tubularstorage.pipe.network.networkTypesAt] names - an item pipe's own
+ * [net.kernelpanicsoft.tubularstorage.pipe.block.PipeBlock.secondaryNetworkTypes] conducts
+ * pressure alongside items, so a dedicated [net.kernelpanicsoft.tubularstorage.power.block.PressurePipeBlock]
+ * run is only needed where a branch wants pressure with no item transport at all - see
+ * [net.kernelpanicsoft.tubularstorage.power.network.PressureNetworkBoundary] for the one exception
+ * (an item-pipe-to-dedicated-pressure-pipe edge doesn't auto-merge without an
+ * [net.kernelpanicsoft.tubularstorage.pipe.hook.AdapterHookType] hook). Carries no hooks - see
  * [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity] for the (heavier, hook-
- * carrying) variant a plain pipe promotes into the moment it gets its first hook attached. Kept
- * separate rather than folding hooks onto every pipe unconditionally: hooks bring six always-
- * allocated 9-slot filter grids plus a synced map, real per-instance memory/NBT/tick cost a plain
- * pipe (the overwhelming majority of a build) shouldn't pay for.
+ * carrying) variant a plain pipe promotes into the moment it gets its first hook or encasement
+ * attached. Kept separate rather than folding hooks onto every pipe unconditionally: hooks bring
+ * six always-allocated 9-slot filter grids plus a synced map, real per-instance memory/NBT/tick
+ * cost a plain pipe (the overwhelming majority of a build) shouldn't pay for.
  */
 open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(type, pos, state), PressureConsumer {
@@ -40,7 +51,10 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	override fun setRemoved() {
 		super.setRemoved()
 		val serverLevel = level as? ServerLevel ?: return
-		PipeNetworkManager.get(serverLevel).onRemoved(blockPos)
+		// Every registered NetworkType, not just this position's current one: onRemoved is a safe
+		// no-op for a manager this position was never a member of, and by the time a block entity
+		// is actually removed there's nothing left to resolve its *former* network types from.
+		for (id in Registrars.NETWORK_TYPE.ids) NetworkTypeRegistry.byId(id)?.managerFor(serverLevel)?.onRemoved(blockPos)
 		PipeContentsClientCache.remove(blockPos)
 	}
 
@@ -55,7 +69,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	open fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
-		PipeNetworkManager.get(serverLevel).ensureRegistered(serverLevel, pos)
+		for (type in networkTypesAt(serverLevel, pos)) type.managerFor(serverLevel).ensureRegistered(serverLevel, pos)
 		var hopped = false
 
 		val items = travelingItems
@@ -82,7 +96,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 			val isFinalHop = item.path.size == 1
 
-			if (isPipe(serverLevel, nextPos) && !boundary && !isFinalHop) {
+			if (PipeRouter.isPipe(serverLevel, nextPos) && !boundary && !isFinalHop) {
 				val nextTile = serverLevel.getBlockEntity(nextPos) as? PipeBlockEntity
 				if (nextTile == null) {
 					jam(serverLevel, pos, item)
@@ -141,8 +155,6 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			PipeContentsSyncPacket(pos, items.toList()),
 		)
 	}
-
-	protected fun isPipe(level: Level, pos: BlockPos): Boolean = level.getBlockState(pos).block is PipeBlock
 
 	companion object {
 		/** Progress gained per tick; 1f / SEGMENT_SPEED ticks to cross one pipe segment. */

@@ -5,6 +5,7 @@ import net.kernelpanicsoft.tubularstorage.TubularStorage
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.gui.PatternTerminalHookMenu
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -12,7 +13,6 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
-import net.minecraft.world.phys.shapes.Shapes
 import net.minecraft.world.phys.shapes.VoxelShape
 
 /**
@@ -25,6 +25,12 @@ object PatternTerminalHookType : PipeHookType<PatternTerminalHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "pattern_terminal"
 
 	override val id: ResourceLocation get() = ID
+
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
+	/** [PipeHookType.basePressureCost] - Drives pattern encoding - heavier than a middling hook, lighter than the two below. */
+	override val basePressureCost: Long = 3L
 
 	override fun createState(): PatternTerminalHookState = PatternTerminalHookState()
 
@@ -40,12 +46,5 @@ object PatternTerminalHookType : PipeHookType<PatternTerminalHookState>() {
 	override fun asItem(): Item = ItemRegistry.PatternTerminalHook
 
 	/** Identical to [TerminalHookType.shapesByDirection] - the same wide face plate, just with more menu behind it. */
-	override val shapesByDirection: Map<Direction, VoxelShape> = mapOf(
-		Direction.NORTH to Shapes.or(Shapes.box(0.0, 0.0, 0.0, 1.0, 1.0, 0.125), Shapes.box(0.375, 0.375, 0.125, 0.625, 0.625, 0.375)),
-		Direction.SOUTH to Shapes.or(Shapes.box(0.0, 0.0, 0.875, 1.0, 1.0, 1.0), Shapes.box(0.375, 0.375, 0.625, 0.625, 0.625, 0.875)),
-		Direction.WEST to Shapes.or(Shapes.box(0.0, 0.0, 0.0, 0.125, 1.0, 1.0), Shapes.box(0.125, 0.375, 0.375, 0.375, 0.625, 0.625)),
-		Direction.EAST to Shapes.or(Shapes.box(0.875, 0.0, 0.0, 1.0, 1.0, 1.0), Shapes.box(0.625, 0.375, 0.375, 0.875, 0.625, 0.625)),
-		Direction.DOWN to Shapes.or(Shapes.box(0.0, 0.0, 0.0, 1.0, 0.125, 1.0), Shapes.box(0.375, 0.125, 0.375, 0.625, 0.375, 0.625)),
-		Direction.UP to Shapes.or(Shapes.box(0.0, 0.875, 0.0, 1.0, 1.0, 1.0), Shapes.box(0.375, 0.625, 0.375, 0.625, 0.875, 0.625)),
-	)
+	override val shapesByDirection: Map<Direction, VoxelShape> get() = TerminalHookType.shapesByDirection
 }

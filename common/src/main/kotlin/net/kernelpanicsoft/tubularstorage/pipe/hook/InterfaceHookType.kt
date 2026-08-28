@@ -8,6 +8,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
 import net.kernelpanicsoft.tubularstorage.pipe.gui.InterfaceHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -54,6 +55,12 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 
 	override val id: ResourceLocation get() = ID
 
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
+	/** [PipeHookType.basePressureCost] - Its own periodic push is real per-tick work alongside its passive stock exposure - a middling draw. */
+	override val basePressureCost: Long = 2L
+
 	override fun createState(): InterfaceHookState = InterfaceHookState()
 
 	override val hasMenu: Boolean = true
@@ -80,7 +87,7 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	 */
 	private fun tryPush(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: InterfaceHookState) {
 		for (slotIndex in 0 until state.stock.size()) {
-			val resource = state.stock.get(slotIndex).resource
+			val resource = state.stock[slotIndex].resource
 			if (resource.isBlank) continue
 			val available = state.stock.extract(resource, PUSH_AMOUNT, true)
 			if (available <= 0) continue

@@ -10,6 +10,7 @@ import net.kernelpanicsoft.tubularstorage.pipe.gui.RequesterHookMenu
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.tubularstorage.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.tubularstorage.registry.ItemRegistry
+import net.kernelpanicsoft.tubularstorage.registry.NetworkTypeRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -33,6 +34,12 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 	val ID: ResourceLocation = TubularStorage.MOD % "requester"
 
 	override val id: ResourceLocation get() = ID
+
+	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.tubularstorage.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
+	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+
+	/** [PipeHookType.basePressureCost] - Its own periodic request is real per-tick work, but a single simple request - a middling draw. */
+	override val basePressureCost: Long = 2L
 
 	override fun createState(): RequesterHookState = RequesterHookState()
 

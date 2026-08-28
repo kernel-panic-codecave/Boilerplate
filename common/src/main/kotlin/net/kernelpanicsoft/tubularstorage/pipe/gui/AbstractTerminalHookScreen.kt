@@ -5,6 +5,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
+import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.TabContainerPanel
 import net.kernelpanicsoft.archie.gui.composables.containers.TabContainerScope
 import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
@@ -82,6 +83,9 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 		val layers = LocalLayerManager.current
 
 		Column(verticalArrangement = Arrangement.spacedBy(6)) {
+			if (!menu.hasPressure) {
+				Text(Component.literal("No pressure reachable"), dropShadow = false)
+			}
 			StoreResultsGrid(
 				results = menu.results,
 				craftable = menu.craftableResources,
@@ -106,6 +110,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 				},
 				middleClickHandler = middleClickHandler,
 				onHoveredStackChanged = { hoveredStack = it },
+				enabled = menu.hasPressure,
 			)
 			Slots("output", COLUMNS, 1)
 			additionalContent()

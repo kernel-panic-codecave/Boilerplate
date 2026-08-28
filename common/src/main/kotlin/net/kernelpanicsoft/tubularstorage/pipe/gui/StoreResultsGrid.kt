@@ -81,6 +81,11 @@ fun combineStoreEntries(results: List<SResourceStack<SItemResource>>, craftable:
  * A single, non-menu-specific composable (unlike the sibling menu classes it's used from) since
  * nothing about search/filter/click-routing actually depends on which concrete terminal menu is
  * open - only the callbacks do.
+ *
+ * @param enabled When `false` (the owning terminal hook itself has no reachable pressure - see
+ *   [AbstractTerminalHookMenu.hasPressure]), every cell draws [TextureStates.DISABLED][net.kernelpanicsoft.archie.gui.composables.theme.TextureStates.DISABLED]'s own
+ *   greyed-out slot texture and ignores clicks entirely, rather than merely showing an already-empty
+ *   [results]/[craftable].
  */
 @Composable
 fun StoreResultsGrid(
@@ -94,6 +99,7 @@ fun StoreResultsGrid(
 	onRequestCraft: (ItemResource) -> Unit,
 	middleClickHandler: MiddleClickHandler,
 	onHoveredStackChanged: (SResourceStack<SItemResource>?) -> Unit,
+	enabled: Boolean = true,
 ) {
 	var query by remember { mutableStateOf("") }
 	var hoveredStack by remember { mutableStateOf<SResourceStack<SItemResource>?>(null) }
@@ -132,6 +138,7 @@ fun StoreResultsGrid(
 								onHovered = { hovered -> hoveredStack = if (hovered) stack else if (hoveredStack === stack) null else hoveredStack },
 								middleClickHandler = middleClickHandler,
 								onMiddleClick = if (craftableInStock) ({ onRequestCraft(entry!!.resource) }) else null,
+								enabled = enabled,
 							)
 						}
 					}

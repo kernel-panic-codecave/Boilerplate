@@ -5,10 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
-import net.kernelpanicsoft.tubularstorage.crafting.InstantCrafting
-import net.kernelpanicsoft.tubularstorage.crafting.PatternEncoder
-import net.kernelpanicsoft.tubularstorage.crafting.PatternItemData
-import net.kernelpanicsoft.tubularstorage.crafting.PatternKind
+import net.kernelpanicsoft.tubularstorage.crafting.*
 import net.kernelpanicsoft.tubularstorage.network.*
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookState
@@ -43,7 +40,7 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 			it.`is`(ItemRegistry.Pattern)
 		}
 		handler("patternOutput", state.patternOutput) {
-			it.`is`(ItemRegistry.Pattern) && PatternItemData(it).pattern != null
+			it.`is`(ItemRegistry.Pattern) && PatternItemData(it).pattern != Pattern.EMPTY
 		}
 	}
 

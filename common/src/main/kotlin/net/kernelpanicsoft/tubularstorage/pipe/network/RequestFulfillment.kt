@@ -85,9 +85,19 @@ object RequestFulfillment {
 	 * claiming, see
 	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType.claimOutstandingStock])
 	 * keeps calling until this returns `0`.
+	 *
+	 * Since M5, a source whose own [HookHolderState.active] is `false` (no reachable pressure) is
+	 * skipped entirely, same as [fulfillFromWarehouse]'s own [WarehouseControllerBlockEntity.hasPressure]
+	 * check - a [ProviderHookType]/[SyncHookType]/[InterfaceHookType]'s passive stock exposure is as
+	 * much "operating" as any hook's per-tick work. This only gates the actual *withdrawal*, not
+	 * resolution/search: [providerSources] itself (and so [reachableProviders], stock counting via
+	 * [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest]) stays ungated, matching
+	 * [reachableWarehouses]'s own equivalent split - a caller that only needs to know *what exists*
+	 * still sees it regardless of pressure; only a caller that would actually *move* it checks.
 	 */
 	internal fun fulfillFromProvider(level: ServerLevel, sources: List<ProviderSource>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
 		for (source in sources) {
+			if (!source.hookState.active) continue
 			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
 			val storage = source.storage(level) ?: continue
 			val available = storage.extract(stack.resource, stack.amount, true)
@@ -102,8 +112,10 @@ object RequestFulfillment {
 		return 0
 	}
 
+	/** [fulfillFromProvider]'s own KDoc's "first willing source" shape, but over reachable warehouses - skips a controller [WarehouseControllerBlockEntity.hasPressure] says can't move its gantry at all, so this never queues a retrieve job that would just sit hard-gated at `0.0` speed forever. */
 	private fun fulfillFromWarehouse(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
 		for (controller in warehouses) {
+			if (!controller.hasPressure()) continue
 			val slot = controller.index.locations[stack.resource]?.firstOrNull() ?: continue
 			val amount = minOf(stack.amount, slot.amount)
 			controller.enqueueRetrieve(slot, stack.withCount(amount), DeliveryTarget.Pipe(deliverTo, deliverFace))
@@ -121,7 +133,7 @@ object RequestFulfillment {
 	/** Every [PatternProviderHookState] reachable from [from], for [net.kernelpanicsoft.tubularstorage.crafting.CraftingRequest]'s own pattern search and [net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookType]'s step feeding. */
 	fun reachablePatternProviders(level: ServerLevel, from: BlockPos): List<PatternProviderSource> = patternProviderSourcesIn(level, reachablePipes(level, from))
 
-	/** Every distinct reachable Crafting CPU cluster from [from], one entry per cluster leader - a terminal's own entry point for finding somewhere to submit a craft request. A cluster's members are themselves pipe segments (see [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType]), so the reachable set is scanned directly rather than through each pipe's own neighbors. Clusters whose arrangement isn't a valid cuboid ([net.kernelpanicsoft.tubularstorage.crafting.CraftingCpuManager.Cluster.valid]) aren't CPUs and never appear here. */
+	/** Every distinct reachable Crafting CPU cluster from [from], one entry per cluster leader - a terminal's own entry point for finding somewhere to submit a craft request. A cluster's members are themselves pipe segments (see [net.kernelpanicsoft.tubularstorage.crafting.CraftingBufferEncasementType]), so the reachable set is scanned directly rather than through each pipe's own neighbors. Clusters whose arrangement isn't a valid cuboid (see [net.kernelpanicsoft.tubularstorage.crafting.CraftingCpuManager]) aren't CPUs and never appear here. */
 	fun reachableCraftingCpus(level: ServerLevel, from: BlockPos): List<CraftingCpuRef> {
 		val leaders = LinkedHashSet<BlockPos>()
 		for (candidatePos in reachablePipes(level, from)) {

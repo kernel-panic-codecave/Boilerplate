@@ -38,6 +38,9 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
  *   non-`null` and the caller passes one (e.g. [StoreResultsGrid]'s own "open the autocraft dialog
  *   for an in-stock, also-craftable entry" interaction) - see [MiddleClickHandler]'s own KDoc for
  *   why detecting the actual click happens one level up, at the screen.
+ * @param enabled When `false`, draws [TextureStates.DISABLED]'s own slot texture instead of
+ *   [TextureStates.DEFAULT] and ignores clicks entirely - the whole-terminal pressure gate (see
+ *   [StoreResultsGrid]) rather than a per-cell concept.
  */
 @Composable
 fun TerminalSlot(
@@ -48,21 +51,22 @@ fun TerminalSlot(
 	countText: String? = null,
 	middleClickHandler: MiddleClickHandler? = null,
 	onMiddleClick: (() -> Unit)? = null,
+	enabled: Boolean = true,
 ) {
-	Clickable(showHandCursor = stack != null, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
+	Clickable(showHandCursor = stack != null && enabled, enabled = enabled, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
 		LaunchedEffect(isHovered, onMiddleClick) {
 			onHovered(isHovered)
-			middleClickHandler?.setHovered(if (isHovered) onMiddleClick else null)
+			middleClickHandler?.setHovered(if (isHovered && enabled) onMiddleClick else null)
 		}
-		FakeSlot(stack, isHovered, countText)
+		FakeSlot(stack, isHovered, countText, enabled)
 	}
 }
 
 @Composable
-fun FakeSlot(stack: ResourceStack<ItemResource>?, isHovered: Boolean, countText: String? = null)
+fun FakeSlot(stack: ResourceStack<ItemResource>?, isHovered: Boolean, countText: String? = null, enabled: Boolean = true)
 {
 	val theme = LocalTheme.current
-	val slotState = theme.getComposableTheme("slot").getState(TextureStates.DEFAULT, theme.mode)
+	val slotState = theme.getComposableTheme("slot").getState(if (enabled) TextureStates.DEFAULT else TextureStates.DISABLED, theme.mode)
 
 	Layout(
 		name = "FakeSlot",
@@ -91,7 +95,7 @@ fun FakeSlot(stack: ResourceStack<ItemResource>?, isHovered: Boolean, countText:
 				partialTick: Float
 			)
 			{
-				if (isHovered)
+				if (isHovered && enabled)
 					AbstractContainerScreen.renderSlotHighlight(guiGraphics, x + 1, y + 1, 0)
 			}
 		}

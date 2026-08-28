@@ -28,6 +28,7 @@ import net.kernelpanicsoft.tubularstorage.network.TerminalSearchResultsPacket
 import net.kernelpanicsoft.tubularstorage.network.TerminalItemWithdrawRequestPacket
 import net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.tubularstorage.pipe.entity.TravelingItem
+import net.kernelpanicsoft.tubularstorage.pipe.hook.HookHolderState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeRouter
 import net.kernelpanicsoft.tubularstorage.pipe.network.RequestFulfillment
@@ -67,6 +68,19 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	var results: List<SResourceStack<SItemResource>> by mutableStateOf(emptyList())
 		protected set
 
+	/**
+	 * Whether this terminal hook's own segment currently draws enough pressure to operate at all -
+	 * Compose state, so [AbstractTerminalHookScreen] can grey the results grid out and refuse
+	 * clicks while `false`, mirroring [HookHolderState.active] server-side (see [isActive]). Starts
+	 * `true` (optimistic) until the first [TerminalSearchResultsPacket] actually says otherwise, the
+	 * same "assume fine until told" default [results] itself uses.
+	 */
+	var hasPressure: Boolean by mutableStateOf(true)
+		protected set
+
+	/** This hook's own [HookHolderState.active], server-side - `false` gates [withdraw] and empties [sendSearchResults] entirely, same as any other [net.kernelpanicsoft.tubularstorage.pipe.hook.PipeHookType] without enough reachable pressure to tick. */
+	private fun isActive(): Boolean = (tile.hooks[direction.name] as? HookHolderState)?.active ?: false
+
 	/** [tile]'s own [MultipartBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
 	val craftJobStatus: String get() = tile.craftJobStatus
 
@@ -96,8 +110,9 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	}
 
 	/** Client-side: applies a freshly received [TerminalSearchResultsPacket]. */
-	fun updateResults(results: List<SResourceStack<SItemResource>>) {
+	fun updateResults(results: List<SResourceStack<SItemResource>>, hasPressure: Boolean) {
 		this.results = results
+		this.hasPressure = hasPressure
 	}
 
 	/** The distinct resources currently craftable somewhere reachable, independent of current stock - Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftableList] applies a fresh [CraftableListPacket]. */
@@ -120,10 +135,20 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, CraftableListPacket(resources))
 	}
 
-	/** Recomputes the aggregated contents of every source reachable from [tile]'s own position and sends it to this menu's own player. */
+	/**
+	 * Recomputes the aggregated contents of every source reachable from [tile]'s own position and
+	 * sends it to this menu's own player - always an empty, `hasPressure = false`
+	 * [TerminalSearchResultsPacket] while this hook itself has no pressure ([isActive]), rather than whatever stale totals a
+	 * reachable source happens to still hold: a player with no way to actually withdraw anything
+	 * shouldn't see a populated, clickable-looking list.
+	 */
 	fun sendSearchResults() {
 		val level = level as? ServerLevel ?: return
 		if (tile.pipeBlockId == MultipartBlockEntity.NONE) return
+		if (!isActive()) {
+			TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, TerminalSearchResultsPacket(emptyList(), hasPressure = false))
+			return
+		}
 		val totals = LinkedHashMap<ItemResource, Long>()
 		fun add(resource: ItemResource, amount: Long) {
 			if (resource.isBlank || amount <= 0) return
@@ -131,15 +156,17 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		}
 
 		for (source in RequestFulfillment.reachableProviders(level, tile.blockPos)) {
+			if (!source.hookState.active) continue
 			val storage = source.storage(level) ?: continue
 			for (i in 0 until storage.size()) add(storage.getResource(i), storage.getAmount(i))
 		}
 		for (warehouse in RequestFulfillment.reachableWarehouses(level, tile.blockPos)) {
+			if (!warehouse.hasPressure()) continue
 			for ((resource, entries) in warehouse.index.locations) add(resource, entries.sumOf { it.amount })
 		}
 
 		val stacks = totals.map { (resource, amount) -> ResourceStack(resource, amount.coerceAtMost(Int.MAX_VALUE.toLong())) }
-		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, TerminalSearchResultsPacket(stacks))
+		TubularStorageNetworkChannel.toPlayer(player as ServerPlayer, TerminalSearchResultsPacket(stacks, hasPressure = true))
 	}
 
 	/**
@@ -149,9 +176,13 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * Re-sends fresh results either way, reflecting whatever the withdrawal actually took -
 	 * immediately accurate for a provider (an ordinary synchronous CSL extract), but only once the
 	 * gantry physically finishes for a warehouse-sourced one, which is what [requestWithdraw]'s own
-	 * client-side optimistic update is for.
+	 * client-side optimistic update is for. No-ops entirely while this hook itself has no pressure
+	 * ([isActive]) - a client-side click can still slip through mid-flight (its own [hasPressure]
+	 * hasn't caught up yet, say), so this checks server-side too rather than trusting the client to
+	 * have actually held off.
 	 */
 	fun withdraw(stack: ResourceStack<ItemResource>) {
+		if (!isActive()) return
 		val level = level as? ServerLevel ?: return
 		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction)
 		sendSearchResults()

@@ -13,12 +13,14 @@ import net.minecraft.client.Minecraft
  * [SItemStack] wire format instead of inventing an `ItemResource` serializer). Applied to whichever
  * [AbstractTerminalHookMenu] the receiving player currently has open, if any - sent unprompted after a
  * menu opens or a withdrawal, or in response to
- * [RequestTerminalSearchResultsPacket].
+ * [RequestTerminalSearchResultsPacket]. [results] is always empty and [hasPressure] always `false`
+ * while the sending menu's own terminal hook has no pressure to operate - see
+ * [AbstractTerminalHookMenu.sendSearchResults].
  */
 @Serializable
-data class TerminalSearchResultsPacket(val results: List<SResourceStack<SItemResource>>) {
+data class TerminalSearchResultsPacket(val results: List<SResourceStack<SItemResource>>, val hasPressure: Boolean) {
 	fun handleOnClient() {
 		val menu = Minecraft.getInstance().player?.containerMenu as? AbstractTerminalHookMenu<*> ?: return
-		menu.updateResults(results)
+		menu.updateResults(results, hasPressure)
 	}
 }

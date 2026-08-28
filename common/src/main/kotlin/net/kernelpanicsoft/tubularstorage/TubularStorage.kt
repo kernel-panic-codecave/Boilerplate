@@ -8,12 +8,15 @@ import net.kernelpanicsoft.archie.data.platform.ADataGeneratorPlatform
 import net.kernelpanicsoft.archie.events.datagen.ADatagenEvents
 import net.kernelpanicsoft.archie.events.gametest.AGametestEvents
 import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
+import net.kernelpanicsoft.archie.registries.CustomModelRegistry
 import net.kernelpanicsoft.tubularstorage.datagen.TubularStorageDatagen
 import net.kernelpanicsoft.tubularstorage.gametest.TubularStorageGameTest
 import net.kernelpanicsoft.tubularstorage.network.TubularStorageNetworkChannel
 import net.kernelpanicsoft.tubularstorage.pipe.network.PipeNetworkManager
+import net.kernelpanicsoft.tubularstorage.power.network.PressurePipeNetworkManager
 import net.kernelpanicsoft.tubularstorage.registry.*
 import net.kernelpanicsoft.tubularstorage.warehouse.WarehouseBlockEventListener
+import net.kernelpanicsoft.tubularstorage.warehouse.client.WarehouseControllerVisual
 import org.slf4j.Logger
 
 /**
@@ -51,6 +54,7 @@ object TubularStorage {
 
 		Registrars.init()
 		TagsRegistry.init()
+		NetworkTypeRegistry.init()
 		HookTypeRegistry.init()
 		EncasementTypeRegistry.init()
 		FilterConditionTypeRegistry.init()
@@ -64,7 +68,8 @@ object TubularStorage {
 
 		TubularStorageNetworkChannel.init()
 
-		TickEvent.SERVER_LEVEL_POST.register { level -> PipeNetworkManager.get(level).tick() }
+		TickEvent.SERVER_LEVEL_POST.register { level -> PipeNetworkManager.get(level).tick(level) }
+		TickEvent.SERVER_LEVEL_POST.register { level -> PressurePipeNetworkManager.get(level).tick(level) }
 
 		if (AGameTestPlatform.isGameTest) {
 			AGametestEvents += MOD
@@ -83,6 +88,7 @@ object TubularStorage {
 	 */
 	@JvmStatic
 	fun initClient() {
+		CustomModelRegistry.register(MOD, WarehouseControllerVisual.HEAD_MODEL_RL)
 	}
 
 	/** Reserved for common-side initialization that must run after both [init] and platform bootstrap. */

@@ -84,6 +84,7 @@ class SubnetBoundaryGameTest {
 		val requester = hookAt(requesterPos)
 		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
 		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 5, false)
+		placeCreativePressureSource(requesterPos.above())
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
@@ -110,6 +111,7 @@ class SubnetBoundaryGameTest {
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+		placeCreativePressureSource(interfacePos.above())
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -198,6 +200,7 @@ class SubnetBoundaryGameTest {
 
 		val extractor = hookAt(extractorPos)
 		extractor.hooks.getOrPut(Direction.SOUTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val filter = hookAt(filterPos)
 		val filterState = filter.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
@@ -205,6 +208,10 @@ class SubnetBoundaryGameTest {
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		// A separate source: the interface hook now anchors a pressure-network boundary too (see
+		// PressureNetworkBoundary), same as the item-network subnet split it already anchors - its
+		// own side needs its own reachable pressure, not a share of the extractor's.
+		placeCreativePressureSource(interfacePos.above())
 
 		succeedWhen {
 			assertTrue(interfaceState.stock.getAmount(0) == 5L && interfaceState.stock.getResource(0) == ItemResource.of(ItemStack(Items.DIAMOND))) {
@@ -227,6 +234,7 @@ class SubnetBoundaryGameTest {
 
 		val extractor = hookAt(extractorPos)
 		extractor.hooks.getOrPut(Direction.SOUTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sync = hookAt(syncPos)
 		val syncState = sync.hooks.getOrPut(Direction.SOUTH.name) { SyncHookType.createState() } as SortingHookState
@@ -239,6 +247,8 @@ class SubnetBoundaryGameTest {
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3, false)
+		// A separate source, same reasoning as testFilterFacingInterfaceCreatesInsertOnlyBoundary's own.
+		placeCreativePressureSource(interfacePos.above())
 
 		succeedWhen {
 			// Insert half: the extractor's diamonds should have crossed into the interface's stock.
@@ -276,6 +286,7 @@ class SubnetBoundaryGameTest {
 
 		val extractor = hookAt(extractorPos)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -307,6 +318,7 @@ class SubnetBoundaryGameTest {
 		// until something opts it into being one (`docs/design/m3-warehouse-storage.md`).
 		val providerState = requester.hooks.getOrPut(Direction.EAST.name) { ProviderHookType.createState() } as ProviderHookState
 		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(requesterPos.above())
 
 		succeedWhen {
 			val source = getBlockEntity(sourcePos) as ChestBlockEntity

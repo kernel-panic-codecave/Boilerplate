@@ -52,6 +52,7 @@ class PatternProviderHookGameTest {
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
 
 		hookState.bufferFor(0)[0].set(ItemStack(Items.OAK_LOG))
+		placeCreativePressureSource(hookPos.above())
 
 		val planks = ItemResource.of(ItemStack(Items.OAK_PLANKS))
 		succeedWhen {
@@ -106,6 +107,7 @@ class PatternProviderHookGameTest {
 		)
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
 		hookState.bufferFor(0)[0].set(ItemStack(Items.OAK_PLANKS, 64))
+		placeCreativePressureSource(hookPos.above())
 
 		val stick = ItemResource.of(ItemStack(Items.STICK))
 		succeedWhen {
@@ -148,6 +150,7 @@ class PatternProviderHookGameTest {
 
 		// Only slot 1's own buffer (the wanted pattern) gets fed - slot 0's stays empty.
 		hookState.bufferFor(1)[0].set(ItemStack(Items.OAK_PLANKS, 2))
+		placeCreativePressureSource(hookPos.above())
 
 		val stick = ItemResource.of(ItemStack(Items.STICK))
 		val trapdoor = ItemResource.of(ItemStack(Items.OAK_TRAPDOOR))
@@ -210,6 +213,7 @@ class PatternProviderHookGameTest {
 
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(northTablePos, Blocks.CRAFTING_TABLE.defaultBlockState())
 		setBlock(southTablePos, Blocks.CRAFTING_TABLE.defaultBlockState())

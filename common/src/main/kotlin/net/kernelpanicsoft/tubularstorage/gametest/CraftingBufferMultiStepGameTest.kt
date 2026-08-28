@@ -80,6 +80,7 @@ class CraftingBufferMultiStepGameTest {
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 		setBlock(linkPipeAPos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(linkPipeBPos, BlockRegistry.Pipe.defaultBlockState())
 

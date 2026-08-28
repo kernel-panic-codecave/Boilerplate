@@ -51,6 +51,35 @@ internal val MultipartBlockEntity.craftingBuffer: CraftingBufferEncasementState
 	get() = encasement.value as CraftingBufferEncasementState
 
 /**
+ * Places a [BlockRegistry.CreativePressureSource] at [pos] - the fixture most hook-carrying
+ * gametests need now that a hook requires pressure to operate at all (see
+ * [net.kernelpanicsoft.tubularstorage.pipe.entity.MultipartBlockEntity.tick]'s own gating): an
+ * always-full pressure endpoint, reachable by any pipe segment on the same secondary-conducted
+ * pressure network, without wiring up a real fuel-burning compressor per test. [pos] must be
+ * adjacent to (or itself be) an actual pipe network member - see [placeAdjacentPressureSource] for
+ * a non-pipe consumer (the warehouse controller) that has no pipe segment of its own to be adjacent
+ * *to*.
+ */
+internal fun GameTestHelper.placeCreativePressureSource(pos: BlockPos) {
+	setBlock(pos, BlockRegistry.CreativePressureSource.defaultBlockState())
+}
+
+/**
+ * Places a bare [BlockRegistry.PressurePipe] at [pos] with a [placeCreativePressureSource] beneath
+ * it - the fixture a non-pipe [net.kernelpanicsoft.tubularstorage.power.PressureConsumer] (the
+ * warehouse controller, say) needs. [net.kernelpanicsoft.tubularstorage.power.PressureLine.find]
+ * only ever resolves a reachable network starting from an *adjacent pipe segment*'s own network
+ * membership (see its own KDoc's "a caller that isn't a pipe segment at all... still needs the
+ * neighbor check") - a raw capability-exposing block sitting directly next to a non-pipe consumer,
+ * with no pipe segment anywhere in between, is invisible to it. Call with [pos] itself adjacent to
+ * the consumer; the source lands one block further out, below it.
+ */
+internal fun GameTestHelper.placeAdjacentPressureSource(pos: BlockPos) {
+	setBlock(pos, BlockRegistry.PressurePipe.defaultBlockState())
+	placeCreativePressureSource(pos.below())
+}
+
+/**
  * Registers Tubular Storage's GameTest suite. Only ever touched from behind
  * [net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform.isGameTest] - see
  * [TubularStorage.initCommon] - so `archie-gametest-common`, a dev-only dependency absent from
@@ -64,6 +93,17 @@ internal object TubularStorageGameTest : AGameTestEventObject(TubularStorage.MOD
 private fun AGametestEvents.ArchieGameTestBuilder.tubularStorageGameTests() {
 	server {
 		register<PipeNetworkGameTest>()
+		register<PressurePipeNetworkGameTest>()
+		register<PressureEqualizationGameTest>()
+		register<CompressorGameTest>()
+		register<PressureLineGameTest>()
+		register<WarehousePressureScalingGameTest>()
+		register<WarehousePressureGateGameTest>()
+		register<ProviderPressureGateGameTest>()
+		register<PressureBoundaryResyncGameTest>()
+		register<PipeNetworkRebuildBoundaryGameTest>()
+		register<ExtractionPressureScalingGameTest>()
+		register<CraftingCpuPressureScalingGameTest>()
 		register<PipeExtractionGameTest>()
 		register<WarehouseGameTest>()
 		register<WarehouseReservationGameTest>()

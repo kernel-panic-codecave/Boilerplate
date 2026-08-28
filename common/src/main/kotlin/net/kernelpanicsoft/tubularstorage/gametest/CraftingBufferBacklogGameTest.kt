@@ -38,6 +38,7 @@ class CraftingBufferBacklogGameTest {
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 
 		val rack = getBlockEntity(rackPos) as ChestBlockEntity
 		rack.setItem(0, ItemStack(Items.DIAMOND, 2))

@@ -71,6 +71,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -95,6 +96,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sortPipe = getBlockEntity(sortPipePos) as MultipartBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -125,6 +127,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sortPipe = getBlockEntity(sortPipePos) as MultipartBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -163,6 +166,7 @@ class PipeExtractionGameTest {
 		provider.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val providerState = provider.hooks.getOrPut(Direction.NORTH.name) { ProviderHookType.createState() } as ProviderHookState
 		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(providerHookPos.above())
 
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -192,6 +196,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val defaultHook = getBlockEntity(defaultHookPos) as MultipartBlockEntity
 		defaultHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -225,6 +230,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val defaultHook = getBlockEntity(defaultHookPos) as MultipartBlockEntity
 		defaultHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -305,6 +311,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val terminalHook = getBlockEntity(terminalHookPos) as MultipartBlockEntity
 		terminalHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -422,6 +429,7 @@ class PipeExtractionGameTest {
 		val syncState = sync.hooks.getOrPut(Direction.NORTH.name) { SyncHookType.createState() } as SortingHookState
 		syncState.routing = RoutingModule(mode = FilterMode.WHITELIST)
 		sync.filterFor(Direction.NORTH)[0] = ItemResource.of(ItemStack(Items.DIAMOND))
+		placeCreativePressureSource(syncHookPos.above())
 
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -459,6 +467,7 @@ class PipeExtractionGameTest {
 		val syncState = sync.hooks.getOrPut(Direction.NORTH.name) { SyncHookType.createState() } as SortingHookState
 		syncState.routing = RoutingModule(mode = FilterMode.WHITELIST)
 		sync.filterFor(Direction.NORTH)[0] = ItemResource.of(ItemStack(Items.REDSTONE))
+		placeCreativePressureSource(syncHookPos.above())
 
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -492,6 +501,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sortPipe = getBlockEntity(sortPipePos) as MultipartBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -564,6 +574,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sortPipe = getBlockEntity(sortPipePos) as MultipartBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -601,6 +612,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sortPipe = getBlockEntity(sortPipePos) as MultipartBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -648,6 +660,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sortPipe = getBlockEntity(sortPipePos) as MultipartBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
@@ -684,6 +697,7 @@ class PipeExtractionGameTest {
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		val sortPipe = getBlockEntity(sortPipePos) as MultipartBlockEntity
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)

@@ -47,6 +47,7 @@ class CraftingBufferCancelGameTest {
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 
 		val rack = getBlockEntity(rackPos) as ChestBlockEntity
 		rack.setItem(0, ItemStack(Items.DIAMOND, 2))
@@ -112,6 +113,7 @@ class CraftingBufferCancelGameTest {
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(linkPipe3Pos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.IRON_INGOT, 8))
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity

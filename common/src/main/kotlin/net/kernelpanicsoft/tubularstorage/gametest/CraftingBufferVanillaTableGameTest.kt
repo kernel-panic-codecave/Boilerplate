@@ -60,10 +60,12 @@ class CraftingBufferVanillaTableGameTest {
 			kind = PatternKind.CRAFTING,
 		)
 		patternHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
+		placeCreativePressureSource(patternHookPos.above())
 
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 		setBlock(linkPipeAPos, BlockRegistry.Pipe.defaultBlockState())
 
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.OAK_PLANKS, 8))

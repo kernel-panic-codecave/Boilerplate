@@ -80,10 +80,12 @@ class CraftingBufferSharedHookGameTest {
 		hookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = logToPlanks })
 		hookState.patterns.get(1).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = planksToSticks })
 		hookState.patterns.get(2).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = toPick })
+		placeCreativePressureSource(patternHookPos.above())
 
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 		setBlock(linkPipeAPos, BlockRegistry.Pipe.defaultBlockState())
 
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.OAK_LOG, 64))

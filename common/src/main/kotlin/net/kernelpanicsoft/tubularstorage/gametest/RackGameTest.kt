@@ -140,6 +140,7 @@ class RackGameTest {
 		val bulkPos = BlockPos(2, 2, 0)
 		val unstackablePos = BlockPos(3, 2, 0)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(generalPos, BlockRegistry.GeneralRack.defaultBlockState())
 		setBlock(bulkPos, BlockRegistry.BulkRack.defaultBlockState())
 		setBlock(unstackablePos, BlockRegistry.UnstackableRack.defaultBlockState())
@@ -176,6 +177,7 @@ class RackGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, BlockRegistry.GeneralRack.defaultBlockState())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -212,6 +214,7 @@ class RackGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, BlockRegistry.BulkRack.defaultBlockState())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -251,6 +254,7 @@ class RackGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, BlockRegistry.UnstackableRack.defaultBlockState())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity

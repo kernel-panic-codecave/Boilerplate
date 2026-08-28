@@ -46,6 +46,7 @@ class TerminalCraftingCpuIntegrationGameTest {
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 
 		setBlock(terminalPos, BlockRegistry.Multipart.defaultBlockState())
 		val terminal = getBlockEntity(terminalPos) as MultipartBlockEntity

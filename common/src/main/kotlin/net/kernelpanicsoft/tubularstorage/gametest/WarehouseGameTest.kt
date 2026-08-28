@@ -40,6 +40,7 @@ class WarehouseGameTest {
 		val cornerOnePos = BlockPos(0, 2, 1)
 		val cornerTwoPos = BlockPos(3, 4, 2)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val player = makeMockPlayer(GameType.CREATIVE)
 		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehouseWand))
@@ -64,6 +65,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(1, 2, 1)
 		val nextCornerPos = BlockPos(2, 2, 1)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val player = makeMockPlayer(GameType.CREATIVE)
 		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehouseWand))
@@ -92,6 +94,7 @@ class WarehouseGameTest {
 		val insideChestPos = BlockPos(1, 2, 0)
 		val outsideChestPos = BlockPos(3, 2, 3)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(insideChestPos, Blocks.CHEST.defaultBlockState())
 		setBlock(outsideChestPos, Blocks.CHEST.defaultBlockState())
 
@@ -119,6 +122,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val targetPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(cornerOnePos), absolutePos(cornerTwoPos))
@@ -139,6 +143,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -162,6 +167,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
 
@@ -187,6 +193,7 @@ class WarehouseGameTest {
 		val rackOnePos = BlockPos(4, 2, 0)
 		val rackTwoPos = BlockPos(4, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackOnePos, Blocks.CHEST.defaultBlockState())
 		setBlock(rackTwoPos, Blocks.CHEST.defaultBlockState())
 		(getBlockEntity(rackOnePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
@@ -222,6 +229,7 @@ class WarehouseGameTest {
 		val destPos = BlockPos(3, 2, 1)
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(requesterHookPos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
@@ -234,6 +242,7 @@ class WarehouseGameTest {
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
 		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+		placeCreativePressureSource(requesterHookPos.above())
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -253,11 +262,13 @@ class WarehouseGameTest {
 		setBlock(extractorPos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(defaultHookPos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
 		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
 		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
 
 		// The warehouse claims the network's default route the same way any other destination
 		// would - a sorting hook on the pipe facing it, at the reserved sentinel priority. No
@@ -281,6 +292,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
 
@@ -319,6 +331,7 @@ class WarehouseGameTest {
 		val controllerPos = BlockPos(0, 2, 0)
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
@@ -344,6 +357,7 @@ class WarehouseGameTest {
 		val firstCornerTwoPos = BlockPos(4, 3, 4)
 		val secondCornerTwoPos = BlockPos(2, 3, 2)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(firstCornerTwoPos))
@@ -380,6 +394,7 @@ class WarehouseGameTest {
 		val controllerPos = BlockPos(0, 2, 0)
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
@@ -401,6 +416,7 @@ class WarehouseGameTest {
 		val cornerOnePos = BlockPos(0, 2, 0)
 		val cornerTwoPos = BlockPos(4, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val player = makeMockPlayer(GameType.CREATIVE)
 		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehouseWand))
@@ -428,6 +444,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
 
@@ -463,6 +480,7 @@ class WarehouseGameTest {
 		val fullRackPos = BlockPos(1, 2, 0)
 		val emptyRackPos = BlockPos(4, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(fullRackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(emptyRackPos, Blocks.CHEST.defaultBlockState())
 
@@ -502,6 +520,7 @@ class WarehouseGameTest {
 		val nearRackPos = BlockPos(1, 2, 4)
 		val farRackPos = BlockPos(4, 2, 0)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(nearRackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(farRackPos, Blocks.CHEST.defaultBlockState())
 
@@ -589,6 +608,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 202, 4)
 		val rackPos = BlockPos(1, 2, 0)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -627,6 +647,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 702, 4)
 		val rackPos = BlockPos(1, 2, 0)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -667,6 +688,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
@@ -710,6 +732,7 @@ class WarehouseGameTest {
 		val cornerTwoPos = BlockPos(4, 3, 4)
 		val rackPos = BlockPos(3, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
@@ -746,6 +769,7 @@ class WarehouseGameTest {
 		val smallerRackPos = BlockPos(1, 2, 0)
 		val biggerRackPos = BlockPos(4, 2, 4)
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
 		setBlock(smallerRackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(biggerRackPos, Blocks.CHEST.defaultBlockState())
 		(getBlockEntity(smallerRackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 3))

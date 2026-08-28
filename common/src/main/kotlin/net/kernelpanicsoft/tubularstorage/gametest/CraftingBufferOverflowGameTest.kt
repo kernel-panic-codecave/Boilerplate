@@ -45,6 +45,7 @@ class CraftingBufferOverflowGameTest {
 		val cpuPos = BlockPos(4, 2, 5)
 		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 
 		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
 		val cpu = cpuTile.craftingBuffer
@@ -80,6 +81,7 @@ class CraftingBufferOverflowGameTest {
 		val cpuPos = BlockPos(4, 2, 5)
 		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 
 		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
 		val cpu = cpuTile.craftingBuffer
@@ -121,6 +123,7 @@ class CraftingBufferOverflowGameTest {
 		val defaultHookPos = BlockPos(5, 2, 4)
 		val destPos = BlockPos(6, 2, 4)
 		val cpuTile = placeCraftingBuffer(cpuPos)
+		placeCreativePressureSource(cpuPos.above())
 		setBlock(linkPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(defaultHookPos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())

@@ -19,10 +19,10 @@ Under `common/src/main/kotlin/net/kernelpanicsoft/tubularstorage/`:
 registry/    BlockRegistry, ItemRegistry, TileRegistry, GuiRegistry, SoundRegistry, ParticleRegistry
 config/      Config.kt
 network/     TubularStorageNetworkChannel + packet data classes
-pipe/        network/ (graph+routing), block/, entity/
+pipe/        network/ (graph+routing, incl. shared AbstractPipeNetwork(Manager) base), block/, entity/
 warehouse/   controller, index, gantry, terminal
 crafting/    pattern, resolver, provider/assembly blocks
-power/       pressure network, tank, compressor
+power/       network/ (pressure-specific AbstractPipeNetwork(Manager) implementation + PressureNetworkBoundary), block/ (PressurePipeBlock), tank/compressor encasement types (PipeEncasementType entries, same hierarchy pipe/encasement/ defines)
 client/      Compose screens/renderers
 datagen/     gated via Platform.isDevelopmentEnvironment()
 gametest/    gated via AGameTestPlatform
@@ -97,26 +97,29 @@ No separate Gradle subprojects (see `../../AGENTS.md`). `datagen`/`gametest` pac
 
 ## Cross-cutting: the `PressureConsumer` hook
 
-Pressure is not a pass/fail gate — **more available pressure makes the operation faster**, not just "allowed vs. stalled". This is the mechanic that lets a pressure-infrastructure investment (bigger compressors, more tanks, a fatter pressure network) let production scale into the late game, rather than every machine being capped at a fixed rate regardless of supply.
+Pressure is a gate first, a speed bonus on top — **no pressure reachable means no operation at all**, but once a machine has *enough* to run, more available pressure makes it run faster still. This is the mechanic that lets a pressure-infrastructure investment (bigger compressors, more tanks, a fatter pressure network) let production scale into the late game, rather than every machine being capped at a fixed rate regardless of supply, while still keeping pneumatics from running on nothing the way a redstone-powered machine effectively can (see `m5-pressure-power.md`'s "Core mechanic" section).
 
 Even though pressure isn't wired up until M5, every "active" tick operation introduced from M1 onward (extractor pipe firing, gantry job execution, assembly-table craft) should implement a no-op version of this hook from day one:
 
 ```kotlin
 interface PressureConsumer {
-    /** Pressure/tick this operation draws at 1.0x (baseline) speed. */
+    /** Pressure/tick this operation requires to run at all, and draws at 1.0x (baseline) speed. */
     val basePressureCost: Long get() = 0
 
     /** Pressure/tick this operation can usefully draw at its fastest — caps how much speed extra supply can buy. */
     val maxPressureDraw: Long get() = basePressureCost
 
     /**
-     * Called once per active tick with the local pressure line/tank. Draws up to [maxPressureDraw],
-     * returns the resulting speed multiplier (drawn / basePressureCost, clamped to at least a small
-     * minimum so machines don't fully halt on brief shortfalls — exact floor/ceiling left to
-     * playtesting). 1.0 = baseline speed with no pressure hooked up (basePressureCost = 0 by default).
+     * Called once per active tick with the local pressure line/tank. Draws up to [maxPressureDraw].
+     * Returns `0.0` — a hard gate, not a divisor — when [line] can't even cover [basePressureCost];
+     * every caller has to check for that and skip its own operation entirely rather than run it at
+     * some reduced rate. Otherwise returns the resulting speed multiplier (drawn / basePressureCost),
+     * at least `1.0`. `1.0` with no pressure hooked up at all (basePressureCost = 0 by default).
      */
     fun onPressureTick(line: ArchieEnergyStorage): Double = 1.0
 }
 ```
 
-M1–M4 implementations keep `basePressureCost`/`maxPressureDraw` at the default `0` (so `onPressureTick` is never meaningfully called and everything runs at the current fixed speed) and just make sure their tick loop multiplies its base duration/interval by whatever `onPressureTick` returns, so M5 only has to (a) give real machines nonzero costs and (b) hook them into a real pressure network — not touch every tick loop's structure. Exact cost/multiplier curve numbers are playtesting, not architecture.
+M1–M4 implementations keep `basePressureCost`/`maxPressureDraw` at the default `0` (so `onPressureTick` always returns `1.0` and everything runs at the current fixed speed) and just make sure their tick loop multiplies its base duration/interval by whatever `onPressureTick` returns *after* checking for the `0.0` gate, so M5 only has to (a) give real machines nonzero costs and (b) hook them into a real pressure network — not touch every tick loop's structure. Exact cost/multiplier curve numbers are playtesting, not architecture.
+
+Every `PipeHookType` (M1/M2/M3 hook kinds) also requires pressure to operate, but doesn't go through this interface at all: a segment can carry several independent hooks needing their own separate gate checks, not one aggregate multiplier for the whole segment, so `MultipartBlockEntity` draws and gates each hook's own cost directly instead — see `m5-pressure-power.md`'s "Hooks: gated the same way, without the speed-scaling layer" section.

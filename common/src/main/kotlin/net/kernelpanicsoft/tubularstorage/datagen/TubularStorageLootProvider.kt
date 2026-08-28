@@ -104,22 +104,27 @@ private val DETACH_HOOK_TYPES: List<PipeHookType<out HookHolderState>> = listOf(
 	HookTypeRegistry.CraftingTerminal,
 	HookTypeRegistry.PatternProvider,
 	HookTypeRegistry.PatternTerminal,
+	HookTypeRegistry.Adapter,
 )
 
 /** Encasement types getting a generated detach table - see [PipeEncasementType.detachLootTableId]. */
 private val DETACH_ENCASEMENT_TYPES: List<PipeEncasementType<out EncasementHolderState>> = listOf(
 	EncasementTypeRegistry.CraftingBuffer,
+	EncasementTypeRegistry.Compressor,
+	EncasementTypeRegistry.PressureTank,
 )
 
 /** Blocks that drop themselves when broken with the right tool. */
 private val SELF_DROPS: List<Block> = listOf(
 	BlockRegistry.Pipe,
 	BlockRegistry.GlassPipe,
+	BlockRegistry.PressurePipe,
 	BlockRegistry.WarehouseController,
 	BlockRegistry.GantryRail,
 	BlockRegistry.GeneralRack,
 	BlockRegistry.BulkRack,
 	BlockRegistry.UnstackableRack,
+	BlockRegistry.CreativePressureSource,
 )
 
 /** The hidden per-attachment model blocks - present in the registry for model/baking purposes only, never obtainable. */
@@ -134,5 +139,8 @@ private val HIDDEN_PART_BLOCKS: List<Block> = listOf(
 	BlockRegistry.CraftingTerminalHook,
 	BlockRegistry.PatternProviderHook,
 	BlockRegistry.PatternTerminalHook,
+	BlockRegistry.AdapterHook,
 	BlockRegistry.CraftingBufferPart,
+	BlockRegistry.CompressorPart,
+	BlockRegistry.PressureTankPart,
 )

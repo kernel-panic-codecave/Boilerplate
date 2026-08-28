@@ -13,6 +13,7 @@
   "filter.tubularstorage.mod": "Mod Condition Card",
   "filter.tubularstorage.regex": "Regex Condition Card",
   "filter.tubularstorage.tag": "Tag Condition Card",
+  "hook.tubularstorage.adapter": "Adapter Hook",
   "hook.tubularstorage.crafting_terminal": "Crafting Terminal Hook",
   "hook.tubularstorage.extraction": "Extraction Hook",
   "hook.tubularstorage.filter": "Filter Hook",

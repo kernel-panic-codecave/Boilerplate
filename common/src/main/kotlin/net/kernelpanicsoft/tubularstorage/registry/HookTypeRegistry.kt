@@ -2,6 +2,8 @@ package net.kernelpanicsoft.tubularstorage.registry
 
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.tubularstorage.TubularStorage
+import net.kernelpanicsoft.tubularstorage.pipe.hook.AdapterHookState
+import net.kernelpanicsoft.tubularstorage.pipe.hook.AdapterHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookState
 import net.kernelpanicsoft.tubularstorage.pipe.hook.CraftingTerminalHookType
 import net.kernelpanicsoft.tubularstorage.pipe.hook.ExtractionHookState
@@ -44,6 +46,7 @@ object HookTypeRegistry : ADeferredRegistryHolder<PipeHookType<out HookHolderSta
 	val PatternProvider: PipeHookType<PatternProviderHookState> by register(PatternProviderHookType.ID) { PatternProviderHookType }
 	val CraftingTerminal: PipeHookType<CraftingTerminalHookState> by register(CraftingTerminalHookType.ID) { CraftingTerminalHookType }
 	val PatternTerminal: PipeHookType<PatternTerminalHookState> by register(PatternTerminalHookType.ID) { PatternTerminalHookType }
+	val Adapter: PipeHookType<AdapterHookState> by register(AdapterHookType.ID) { AdapterHookType }
 
 	/**
 	 * Looks up a registered [PipeHookType] by its full id (e.g.

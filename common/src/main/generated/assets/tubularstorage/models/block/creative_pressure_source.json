@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:block/cube_all",
   "textures": {
-    "all": "tubularstorage:block/general_rack"
+    "all": "tubularstorage:block/creative_pressure_source"
   }
 }

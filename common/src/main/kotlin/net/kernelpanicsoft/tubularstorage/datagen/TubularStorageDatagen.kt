@@ -43,6 +43,7 @@ internal object TubularStorageDatagen : ADatagenEventObject(TubularStorage.MOD) 
 				addItem("Crafting Terminal Hook") { ItemRegistry.CraftingTerminalHook }
 				addItem("Pattern Provider Hook") { ItemRegistry.PatternProviderHook }
 				addItem("Pattern Terminal Hook") { ItemRegistry.PatternTerminalHook }
+				addItem("Adapter Hook") { ItemRegistry.AdapterHook }
 
 				// Same convention - EncasementItem answers as `encasement.<type id>`.
 				addItem("Crafting Buffer") { ItemRegistry.CraftingBufferEncasement }

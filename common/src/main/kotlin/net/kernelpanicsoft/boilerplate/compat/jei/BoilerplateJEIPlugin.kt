@@ -78,16 +78,19 @@ class BoilerplateJEIPlugin : IModPlugin {
 				override fun getRecipeType() = RecipeTypes.CRAFTING
 
 				/**
-				 * Fires on *every* call, not just a real [doTransfer] commit: JEI calls this with
-				 * `doTransfer = false` first as a dry-run check (to decide the transfer button's own
-				 * enabled/tooltip state, mirroring EMI's own `canCraft` pre-gate - see
-				 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own KDoc for the
-				 * confirmed version of this problem there), so gating the supply request behind
-				 * `doTransfer` risks the exact same starvation if JEI's own UI never lets a real commit
-				 * through while that dry run still reports missing ingredients. [targetsOf] is stable
-				 * for a given [recipe] (it just reads the recipe itself, not current stock), so
-				 * comparing against [lastRequestedTargets] is enough to stop this - evaluated far more
-				 * often than an actual click - from resending the same request every frame.
+				 * JEI calls this with `doTransfer = false` first as a dry-run check (to decide the
+				 * transfer button's own enabled/tooltip state), then again with `doTransfer = true` on
+				 * an actual click. Gated on [doTransfer] deliberately - firing
+				 * [CraftingTerminalHookMenu.requestIngredientSupply] from the dry run would pull real
+				 * stock (and animate a ghost item through the pipe) just from JEI re-evaluating the
+				 * button's own state, never an actual click. Unlike
+				 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own `canCraft`/
+				 * `craft` pair, [delegate] doesn't trust this dry run's answer as vouched-for - both
+				 * calls reach the *same* method, which independently reverifies sufficiency each time -
+				 * so gating here doesn't risk starving the real commit the way an honest `canCraft`
+				 * would there. [targetsOf] is stable for a given [recipe] (it just reads the recipe
+				 * itself, not current stock), so comparing against [lastRequestedTargets] only guards a
+				 * rapid double-click, not the dry run (already excluded above).
 				 */
 				override fun transferRecipe(
 					container: CraftingTerminalHookMenu,
@@ -98,7 +101,7 @@ class BoilerplateJEIPlugin : IModPlugin {
 					doTransfer: Boolean,
 				): IRecipeTransferError? {
 					val targets = targetsOf(helper, recipe)
-					if (targets.isNotEmpty() && targets != lastRequestedTargets) {
+					if (doTransfer && targets.isNotEmpty() && targets != lastRequestedTargets) {
 						lastRequestedTargets = targets
 						container.requestIngredientSupply(targets)
 					}

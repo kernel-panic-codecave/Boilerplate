@@ -80,16 +80,19 @@ class BoilerplateREIPlugin : REIClientPlugin {
 
 			/**
 			 * REI calls this both for a hover/preview check (`context.isActuallyCrafting() == false`,
-			 * per this method's own interface KDoc) and a real click, potentially every frame while
-			 * the "+" button is merely hovered. [targetsOf] is stable for a given [Display] (it just
-			 * reads the recipe's own ingredients, not current stock), so comparing against
-			 * [lastRequestedTargets] is enough to stop this from resending the same request
-			 * needlessly often.
+			 * per this method's own interface KDoc) and a real click. Gated on
+			 * [TransferHandler.Context.isActuallyCrafting] deliberately - firing
+			 * [CraftingTerminalHookMenu.requestIngredientSupply] from a mere preview would pull real
+			 * stock (and animate a ghost item through the pipe) just from the player hovering the "+"
+			 * button, never having clicked anything. [targetsOf] is stable for a given [Display] (it
+			 * just reads the recipe's own ingredients, not current stock), so comparing against
+			 * [lastRequestedTargets] only guards against resending the same request on a rapid
+			 * double-click, not against the preview case (already excluded above).
 			 */
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
 				val menu = context.menu as? CraftingTerminalHookMenu
 				val targets = targetsOf(context.display)
-				if (menu != null && targets.isNotEmpty() && targets != lastRequestedTargets) {
+				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty() && targets != lastRequestedTargets) {
 					lastRequestedTargets = targets
 					menu.requestIngredientSupply(targets)
 				}

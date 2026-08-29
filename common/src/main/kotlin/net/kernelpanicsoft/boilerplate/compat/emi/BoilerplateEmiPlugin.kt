@@ -55,41 +55,71 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				override fun supportsRecipe(recipe: EmiRecipe): Boolean = recipe.category == VanillaEmiRecipeCategories.CRAFTING
 
 				/**
-				 * Unconditionally `true`, skipping [StandardRecipeHandler]'s own default
-				 * (`context.getInventory().canCraft(recipe)`) ingredient-sufficiency check entirely -
-				 * EMI's own `performFill` only ever calls [craft] *after* this already returns `true`
-				 * (confirmed against its real source), so if this reported the honest "not enough
-				 * ingredients yet" answer, [craft] - the only place [requestIngredientSupply] actually
-				 * fires - would never run at all, permanently starving the terminal's own supply
-				 * request of a chance to happen. Still asks for supply here too (see [maybeSupply]),
-				 * since this is called well before a click, whenever EMI re-evaluates the fill
-				 * button's own enabled/tooltip state.
+				 * `true` either when [StandardRecipeHandler]'s own default
+				 * (`context.getInventory().canCraft(recipe)`) already says so (everything's already
+				 * sitting in a real slot), or - when it doesn't - every ingredient [recipe] needs shows
+				 * up in [CraftingTerminalHookMenu.results], the terminal's own already-synced "what's
+				 * reachable" snapshot (see [AbstractTerminalHookMenu.results]'s own KDoc): a pure read
+				 * of state the client already has, no request fired, no server round trip. This is
+				 * deliberately just *optimistic*, not a guarantee - [results] is a total snapshot, not
+				 * a live per-click reservation, so a second player draining the same source between
+				 * this check and an actual click can still leave [craft] genuinely short. That's fine:
+				 * this only has to get EMI's own fill button to look enabled and let a click reach
+				 * [craft] at all (its own `performFill` never calls it otherwise, confirmed against its
+				 * real source) - the real, mutating sufficiency check happens there instead. Must never
+				 * fire [CraftingTerminalHookMenu.requestIngredientSupply] itself - this is evaluated
+				 * every single frame a recipe view is open, not just on a click, so any real side effect
+				 * here (pulling stock, animating a ghost item) would fire from the player merely
+				 * *looking* at a recipe.
 				 */
 				override fun canCraft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
-					maybeSupply(recipe, context)
-					return true
+					if (super.canCraft(recipe, context)) return true
+					val reachable = context.screenHandler.results.mapTo(HashSet()) { it.resource }
+					return targetsOf(recipe).values.all { it in reachable }
 				}
 
 				/**
-				 * Asks the terminal to supply anything [recipe] needs that it can reach (storage, its
-				 * own inbox - see [CraftingTerminalHookMenu.requestIngredientSupply]) before running
-				 * the default fill unchanged, which now also draws from [handler]'s own `outputSlots`
-				 * (the inbox) alongside the grid and player inventory. That request isn't instant for
-				 * a network-sourced ingredient, so the *first* click still reports missing ingredients
-				 * the same as any real shortfall - a second click succeeds once it's arrived.
+				 * Only delegates to [StandardRecipeHandler]'s own default fill-then-craft logic
+				 * ([super.craft]) once every targeted ingredient is already sitting in a real slot
+				 * [handler] can see client-side ([availableCount]) - never on [canCraft]'s own
+				 * optimistic say-so, which (being a snapshot, not a reservation) isn't something safe
+				 * to actually consume against. [super.craft] trusts a prior `true` [canCraft] answer as
+				 * vouched-for and proceeds straight to moving/consuming ingredients without re-verifying -
+				 * calling it while a targeted cell is still genuinely empty risks it partially consuming
+				 * whatever *is* present without ever producing a result, silently destroying those real
+				 * ingredients. So a still-missing ingredient here instead only asks the terminal to
+				 * supply it ([CraftingTerminalHookMenu.requestIngredientSupply]) and reports failure for
+				 * *this* click - a second click succeeds once that supply has actually landed and synced
+				 * back to this same slot state.
 				 */
 				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
-					maybeSupply(recipe, context)
+					val handler = context.screenHandler
+					val targets = targetsOf(recipe)
+					val needed = targets.values.groupingBy { it }.eachCount()
+					val missing = targets.filterValues { resource -> availableCount(handler, resource) < (needed[resource] ?: 0) }
+					if (missing.isNotEmpty()) {
+						if (missing != lastRequestedTargets) {
+							lastRequestedTargets = missing
+							handler.requestIngredientSupply(missing)
+						}
+						return false
+					}
 					return super.craft(recipe, context)
 				}
 
-				/** [targetsOf] is stable for a given [recipe] (it just reads the recipe itself, not current stock), so a simple last-sent-targets check is enough to stop [canCraft] - evaluated far more often than an actual click - from resending the same request every single frame. */
-				private fun maybeSupply(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>) {
-					val targets = targetsOf(recipe)
-					if (targets.isEmpty() || targets == lastRequestedTargets) return
-					lastRequestedTargets = targets
-					context.screenHandler.requestIngredientSupply(targets)
-				}
+				/**
+				 * How many of [resource] already sit in a real slot [handler] can see - the client's
+				 * own synced state, no server round trip - summed across the same three slot groups
+				 * [getInputSources] draws from. Quantity-aware, not just presence: [targetsOf] can map
+				 * several grid cells to the same [resource] (a recipe needing more than one plank, say),
+				 * and one unit sitting somewhere doesn't make it "available" for every cell that needs
+				 * it.
+				 */
+				private fun availableCount(handler: CraftingTerminalHookMenu, resource: ItemResource): Int =
+					(handler.outputSlots + handler.gridSlots + handler.inventorySlots).sumOf { slot ->
+						val stack = slot.item
+						if (!stack.isEmpty && ItemResource.of(stack) == resource) stack.count else 0
+					}
 			},
 		)
 

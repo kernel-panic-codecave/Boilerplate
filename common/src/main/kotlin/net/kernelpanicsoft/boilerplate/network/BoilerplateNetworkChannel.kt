@@ -60,6 +60,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(CraftingRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftableListPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CraftGridRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
+			serverbound(RequestIngredientSupplyPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetPatternGhostInputPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetPatternGhostOutputPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(EncodePatternRequestPacket::class) { packet, context -> packet.handleOnServer(context) }

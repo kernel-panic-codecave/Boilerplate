@@ -20,6 +20,7 @@ import net.kernelpanicsoft.boilerplate.network.RequestCraftGridPreviewPacket
 import net.kernelpanicsoft.boilerplate.network.RequestCraftJobTreePacket
 import net.kernelpanicsoft.boilerplate.network.RequestCraftPreviewPacket
 import net.kernelpanicsoft.boilerplate.network.RequestCraftableListPacket
+import net.kernelpanicsoft.boilerplate.network.RequestIngredientSupplyPacket
 import net.kernelpanicsoft.boilerplate.network.RequestTerminalSearchResultsPacket
 import net.kernelpanicsoft.boilerplate.network.SItemResource
 import net.kernelpanicsoft.boilerplate.network.SResourceStack
@@ -88,6 +89,11 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 		BoilerplateNetworkChannel.toServer(CraftGridRequestPacket(shiftClick))
 	}
 
+	/** Client-side: asks the server to run [supplyIngredients] for [resources]. */
+	fun requestIngredientSupply(resources: List<ItemResource>) {
+		BoilerplateNetworkChannel.toServer(RequestIngredientSupplyPacket(resources))
+	}
+
 	/**
 	 * Server-side: [InstantCrafting]'s own live preview isn't a real slot - taking it is what
 	 * actually consumes the grid and produces the result, instantly, no
@@ -110,6 +116,34 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 			craftOneRun(level, state, intoCursor = true)
 		}
 		sendGridPreview()
+	}
+
+	/**
+	 * Server-side: for each of [resources] the requesting player doesn't already carry at least one
+	 * of, tries to put one into their own inventory - first from this terminal's own
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output] "inbox" (instant, same
+	 * tile), then by requesting more from whatever's reachable on the network
+	 * ([RequestFulfillment.request]), which only lands in the inbox for a *later* attempt since a
+	 * network delivery is never instant - a second call once it's arrived finds it there and
+	 * finishes the job. What a recipe viewer's own "transfer recipe" click (`compat/rei`/`compat/jei`/
+	 * `compat/emi`) fires before delegating to its own, otherwise unmodified, player-inventory-based
+	 * fill logic - see [net.kernelpanicsoft.boilerplate.network.RequestIngredientSupplyPacket].
+	 */
+	fun supplyIngredients(resources: List<ItemResource>) {
+		val level = level as? ServerLevel ?: return
+		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
+		for (resource in resources) {
+			if (resource.isBlank) continue
+			if (player.inventory.countItem(resource.cachedStack.item) > 0) continue
+
+			val fromInbox = state.output.extract(resource, 1L, false)
+			if (fromInbox > 0) {
+				val stack = resource.cachedStack.copyWithCount(fromInbox.toInt())
+				if (!player.inventory.add(stack)) player.drop(stack, false)
+				continue
+			}
+			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, 1L), tile.blockPos, direction)
+		}
 	}
 
 	private fun craftOneRun(level: ServerLevel, state: CraftingTerminalHookState, intoCursor: Boolean): Boolean {

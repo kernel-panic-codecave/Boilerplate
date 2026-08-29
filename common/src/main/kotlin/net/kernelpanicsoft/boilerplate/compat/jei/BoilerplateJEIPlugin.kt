@@ -71,10 +71,24 @@ class BoilerplateJEIPlugin : IModPlugin {
 		val delegate = helper.createUnregisteredRecipeTransferHandler(basicInfo)
 		registration.addRecipeTransferHandler(
 			object : IRecipeTransferHandler<CraftingTerminalHookMenu, RecipeHolder<CraftingRecipe>> {
+				private var lastRequestedTargets: Map<Int, ItemResource>? = null
+
 				override fun getContainerClass() = CraftingTerminalHookMenu::class.java
 				override fun getMenuType(): Optional<MenuType<CraftingTerminalHookMenu>> = Optional.of(GuiRegistry.CraftingTerminalHook)
 				override fun getRecipeType() = RecipeTypes.CRAFTING
 
+				/**
+				 * Fires on *every* call, not just a real [doTransfer] commit: JEI calls this with
+				 * `doTransfer = false` first as a dry-run check (to decide the transfer button's own
+				 * enabled/tooltip state, mirroring EMI's own `canCraft` pre-gate - see
+				 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own KDoc for the
+				 * confirmed version of this problem there), so gating the supply request behind
+				 * `doTransfer` risks the exact same starvation if JEI's own UI never lets a real commit
+				 * through while that dry run still reports missing ingredients. [targetsOf] is stable
+				 * for a given [recipe] (it just reads the recipe itself, not current stock), so
+				 * comparing against [lastRequestedTargets] is enough to stop this - evaluated far more
+				 * often than an actual click - from resending the same request every frame.
+				 */
 				override fun transferRecipe(
 					container: CraftingTerminalHookMenu,
 					recipe: RecipeHolder<CraftingRecipe>,
@@ -83,9 +97,10 @@ class BoilerplateJEIPlugin : IModPlugin {
 					maxTransfer: Boolean,
 					doTransfer: Boolean,
 				): IRecipeTransferError? {
-					if (doTransfer) {
-						val targets = targetsOf(helper, recipe)
-						if (targets.isNotEmpty()) container.requestIngredientSupply(targets)
+					val targets = targetsOf(helper, recipe)
+					if (targets.isNotEmpty() && targets != lastRequestedTargets) {
+						lastRequestedTargets = targets
+						container.requestIngredientSupply(targets)
 					}
 					return delegate.transferRecipe(container, recipe, recipeSlots, player, maxTransfer, doTransfer)
 				}

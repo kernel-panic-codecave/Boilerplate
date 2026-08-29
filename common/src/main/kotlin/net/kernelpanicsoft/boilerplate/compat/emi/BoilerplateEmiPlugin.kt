@@ -48,9 +48,27 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 		registry.addRecipeHandler(
 			GuiRegistry.CraftingTerminalHook,
 			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
+				private var lastRequestedTargets: Map<Int, ItemResource>? = null
+
 				override fun getInputSources(handler: CraftingTerminalHookMenu): List<Slot> = handler.outputSlots + handler.gridSlots + handler.inventorySlots
 				override fun getCraftingSlots(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots
 				override fun supportsRecipe(recipe: EmiRecipe): Boolean = recipe.category == VanillaEmiRecipeCategories.CRAFTING
+
+				/**
+				 * Unconditionally `true`, skipping [StandardRecipeHandler]'s own default
+				 * (`context.getInventory().canCraft(recipe)`) ingredient-sufficiency check entirely -
+				 * EMI's own `performFill` only ever calls [craft] *after* this already returns `true`
+				 * (confirmed against its real source), so if this reported the honest "not enough
+				 * ingredients yet" answer, [craft] - the only place [requestIngredientSupply] actually
+				 * fires - would never run at all, permanently starving the terminal's own supply
+				 * request of a chance to happen. Still asks for supply here too (see [maybeSupply]),
+				 * since this is called well before a click, whenever EMI re-evaluates the fill
+				 * button's own enabled/tooltip state.
+				 */
+				override fun canCraft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
+					maybeSupply(recipe, context)
+					return true
+				}
 
 				/**
 				 * Asks the terminal to supply anything [recipe] needs that it can reach (storage, its
@@ -61,9 +79,16 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * the same as any real shortfall - a second click succeeds once it's arrived.
 				 */
 				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
-					val targets = targetsOf(recipe)
-					if (targets.isNotEmpty()) context.screenHandler.requestIngredientSupply(targets)
+					maybeSupply(recipe, context)
 					return super.craft(recipe, context)
+				}
+
+				/** [targetsOf] is stable for a given [recipe] (it just reads the recipe itself, not current stock), so a simple last-sent-targets check is enough to stop [canCraft] - evaluated far more often than an actual click - from resending the same request every single frame. */
+				private fun maybeSupply(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>) {
+					val targets = targetsOf(recipe)
+					if (targets.isEmpty() || targets == lastRequestedTargets) return
+					lastRequestedTargets = targets
+					context.screenHandler.requestIngredientSupply(targets)
 				}
 			},
 		)

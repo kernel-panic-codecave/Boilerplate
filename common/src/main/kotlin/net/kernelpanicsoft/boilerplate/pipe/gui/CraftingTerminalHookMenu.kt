@@ -89,9 +89,9 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 		BoilerplateNetworkChannel.toServer(CraftGridRequestPacket(shiftClick))
 	}
 
-	/** Client-side: asks the server to run [supplyIngredients] for [resources]. */
-	fun requestIngredientSupply(resources: List<ItemResource>) {
-		BoilerplateNetworkChannel.toServer(RequestIngredientSupplyPacket(resources))
+	/** Client-side: asks the server to run [supplyIngredients] for [targets]. */
+	fun requestIngredientSupply(targets: Map<Int, ItemResource>) {
+		BoilerplateNetworkChannel.toServer(RequestIngredientSupplyPacket(targets))
 	}
 
 	/**
@@ -119,24 +119,33 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	}
 
 	/**
-	 * Server-side: for each of [resources] the requesting player doesn't already carry, and this
-	 * terminal's own [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output] "inbox"
-	 * doesn't already hold, requests one from whatever's reachable on the network
-	 * ([RequestFulfillment.request]) - the exact same call [withdraw] makes for a Store-tab request,
-	 * landing in the inbox the same way. Not instant, so the *first* recipe-viewer transfer needing
-	 * a network-sourced ingredient still reports it missing the same as any real shortfall; a
-	 * second click succeeds once it's arrived - see [outputSlots]/[gridSlots]/[inventorySlots], the
-	 * real slots each recipe-viewer plugin (`compat/rei`/`compat/jei`/`compat/emi`) already draws
-	 * its own fill from, the inbox included.
+	 * Server-side: for each ([index], [ItemResource]) in [targets] - [index] into
+	 * [CraftingTerminalHookState.grid] itself, the exact cell a recipe-viewer plugin
+	 * (`compat/rei`/`compat/jei`/`compat/emi`) worked out that ingredient belongs in - that the
+	 * requesting player doesn't already carry, this terminal's own inbox doesn't already hold, and
+	 * that cell isn't already occupied by: tries a reachable provider hook first, granting straight
+	 * into that grid cell the instant one can supply it
+	 * ([RequestFulfillment.requestInstant]) - no second click needed, since a purely cosmetic ghost
+	 * item (see [net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.ghost]) does the *look*
+	 * of traveling the pipe on its own, well after the grid is already usable. Falls back to a
+	 * normal, non-instant [RequestFulfillment.request] (landing in the inbox, same as [withdraw])
+	 * when no provider has it - a warehouse retrieval's own gantry job is a real, pressure-gated
+	 * physical action, not a wait this skips; that case still needs a second click once it lands.
 	 */
-	fun supplyIngredients(resources: List<ItemResource>) {
+	fun supplyIngredients(targets: Map<Int, ItemResource>) {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
-		for (resource in resources) {
-			if (resource.isBlank) continue
+		for ((index, resource) in targets) {
+			if (resource.isBlank || index !in 0 until state.grid.size()) continue
+			if (!state.grid[index].getItem().isEmpty) continue
 			if (player.inventory.countItem(resource.cachedStack.item) > 0) continue
 			if (state.output.extract(resource, 1L, true) > 0) continue
-			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, 1L), tile.blockPos, direction)
+
+			val stack = ResourceStack(resource, 1L)
+			val granted = RequestFulfillment.requestInstant(level, tile.blockPos, stack, tile.blockPos, direction) { granted ->
+				state.grid[index].insert(granted.resource, granted.amount, false)
+			}
+			if (granted <= 0) RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction)
 		}
 	}
 

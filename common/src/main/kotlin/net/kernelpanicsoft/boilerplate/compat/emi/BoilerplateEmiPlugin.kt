@@ -61,8 +61,8 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * the same as any real shortfall - a second click succeeds once it's arrived.
 				 */
 				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
-					val resources = resourcesOf(recipe)
-					if (resources.isNotEmpty()) context.screenHandler.requestIngredientSupply(resources)
+					val targets = targetsOf(recipe)
+					if (targets.isNotEmpty()) context.screenHandler.requestIngredientSupply(targets)
 					return super.craft(recipe, context)
 				}
 			},
@@ -77,12 +77,18 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 		}
 	}
 
-	/** One representative [ItemResource] per ingredient of [recipe] - whichever the default fill logic would itself reach for first, since that's what's actually missing when it can't find one. */
-	private fun resourcesOf(recipe: EmiRecipe): List<ItemResource> =
-		recipe.inputs.mapNotNull { ingredient ->
+	/**
+	 * One representative [ItemResource] per ingredient of [recipe], keyed by the exact grid cell it
+	 * belongs in - [EmiCraftingRecipe]'s own `getInputs()` list is already stored row-major against
+	 * a 3-wide grid (confirmed against its own `canFit`/`addWidgets`, which index it via `i % 3`/
+	 * `i / 3` directly), so the list index *is* the grid index, no width conversion needed the way
+	 * [net.kernelpanicsoft.boilerplate.compat.rei.BoilerplateREIPlugin]'s own REI-side mapping does.
+	 */
+	private fun targetsOf(recipe: EmiRecipe): Map<Int, ItemResource> =
+		recipe.inputs.withIndex().mapNotNull { (index, ingredient) ->
 			ingredient.emiStacks.firstOrNull { !it.isEmpty }
 				?.itemStack?.takeUnless { it.isEmpty }
-				?.let { ItemResource.of(it) }
-		}
+				?.let { index to ItemResource.of(it) }
+		}.toMap()
 
 }

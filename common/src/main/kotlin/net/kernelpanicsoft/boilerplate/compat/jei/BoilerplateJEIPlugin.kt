@@ -9,6 +9,7 @@ import mezz.jei.api.gui.handlers.IGuiContainerHandler
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView
 import mezz.jei.api.recipe.transfer.IRecipeTransferError
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandler
+import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper
 import mezz.jei.api.registration.IGuiHandlerRegistration
 import mezz.jei.api.registration.IRecipeTransferRegistration
 import mezz.jei.api.runtime.IClickableIngredient
@@ -83,8 +84,8 @@ class BoilerplateJEIPlugin : IModPlugin {
 					doTransfer: Boolean,
 				): IRecipeTransferError? {
 					if (doTransfer) {
-						val resources = resourcesOf(recipe)
-						if (resources.isNotEmpty()) container.requestIngredientSupply(resources)
+						val targets = targetsOf(helper, recipe)
+						if (targets.isNotEmpty()) container.requestIngredientSupply(targets)
 					}
 					return delegate.transferRecipe(container, recipe, recipeSlots, player, maxTransfer, doTransfer)
 				}
@@ -93,9 +94,17 @@ class BoilerplateJEIPlugin : IModPlugin {
 		)
 	}
 
-	/** One representative [ItemResource] per ingredient of [recipe] - whichever the default transfer logic would itself reach for first, since that's what's actually missing when it can't find one. */
-	private fun resourcesOf(recipe: RecipeHolder<CraftingRecipe>): List<ItemResource> =
-		recipe.value.ingredients.mapNotNull { ingredient -> ingredient.items.firstOrNull()?.let { ItemResource.of(it) } }
+	/**
+	 * One representative [ItemResource] per ingredient of [recipe], keyed by the exact grid cell it
+	 * belongs in - [IRecipeTransferHandlerHelper.getGuiSlotIndexToIngredientMap] already reports
+	 * that "indexed by the original gui slots" mapping directly (accounting for JEI's own
+	 * smaller-recipe centering internally), so no positional math is needed here at all, unlike
+	 * [net.kernelpanicsoft.boilerplate.compat.rei.BoilerplateREIPlugin]'s own REI-side mapping.
+	 */
+	private fun targetsOf(helper: IRecipeTransferHandlerHelper, recipe: RecipeHolder<CraftingRecipe>): Map<Int, ItemResource> =
+		helper.getGuiSlotIndexToIngredientMap(recipe).mapNotNull { (slot, ingredient) ->
+			ingredient.items.firstOrNull()?.let { slot to ItemResource.of(it) }
+		}.toMap()
 
 	/** Keeps JEI's own item panel off every terminal screen's real occupied rectangle, and surfaces [AbstractTerminalHookScreen.hoveredStack] - the Store list's own non-slot hover tracking - to JEI's "view recipes"/"view uses" hover lookup, both otherwise only inferred from real vanilla [net.minecraft.world.inventory.Slot]s. */
 	override fun registerGuiHandlers(registration: IGuiHandlerRegistration) {

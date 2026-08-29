@@ -64,6 +64,30 @@ object RequestFulfillment {
 	}
 
 	/**
+	 * Like [request], but a reachable provider hook (never a warehouse - see below) delivers
+	 * through [grant] the instant it's found, synchronously, rather than waiting on a real
+	 * [TravelingItem]'s own arrival: [grant] is the caller's own direct insertion (a specific
+	 * crafting-grid slot, say), decoupled entirely from [deliverTo]/[deliverFace], which still only
+	 * steer a purely cosmetic ghost [TravelingItem] (see its own KDoc) toward looking like the
+	 * delivery is still traveling the pipe, for visual continuity with every other delivery. Returns
+	 * the amount granted, `0` if no reachable provider had any - the same shape as [request].
+	 *
+	 * Never falls through to a warehouse retrieval the way [request] does: a gantry job is a real
+	 * physical action gated by [net.kernelpanicsoft.boilerplate.power.PressureConsumer] like
+	 * anything else with its own throughput to invest in, not merely a cosmetic delay to skip -
+	 * making it instant would undermine that the same way skipping pipe travel itself would if
+	 * applied everywhere rather than this one opt-in call site.
+	 */
+	fun requestInstant(
+		level: ServerLevel,
+		from: BlockPos,
+		stack: ResourceStack<ItemResource>,
+		deliverTo: BlockPos,
+		deliverFace: Direction? = null,
+		grant: (ResourceStack<ItemResource>) -> Unit,
+	): Long = fulfillFromProvider(level, providerSources(level, reachablePipes(level, from)), stack, deliverTo, deliverFace, grant)
+
+	/**
 	 * [source.hookPos][ProviderSource.hookPos] `== `[deliverTo] (a pattern-provider hook's own
 	 * target producing something that hook's *own* buffers also want, say) is deliberately left
 	 * unfulfillable through this generic path - [PipeRouter.findRouteTo] returns `null` for it (see
@@ -94,8 +118,19 @@ object RequestFulfillment {
 	 * [net.kernelpanicsoft.boilerplate.crafting.CraftingRequest]) stays ungated, matching
 	 * [reachableWarehouses]'s own equivalent split - a caller that only needs to know *what exists*
 	 * still sees it regardless of pressure; only a caller that would actually *move* it checks.
+	 *
+	 * [grant], when non-null, is [requestInstant]'s own direct delivery - called synchronously the
+	 * moment a source is found, with the spawned [TravelingItem] marked [TravelingItem.ghost] so it
+	 * never delivers for real on arrival (see that field's own KDoc).
 	 */
-	internal fun fulfillFromProvider(level: ServerLevel, sources: List<ProviderSource>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
+	internal fun fulfillFromProvider(
+		level: ServerLevel,
+		sources: List<ProviderSource>,
+		stack: ResourceStack<ItemResource>,
+		deliverTo: BlockPos,
+		deliverFace: Direction? = null,
+		grant: ((ResourceStack<ItemResource>) -> Unit)? = null,
+	): Long {
 		for (source in sources) {
 			if (!source.hookState.active) continue
 			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
@@ -106,7 +141,9 @@ object RequestFulfillment {
 			val extracted = storage.extract(stack.resource, available, false)
 			if (extracted <= 0) continue
 			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
-			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace)
+			val extractedStack = stack.withCount(extracted)
+			grant?.invoke(extractedStack)
+			tile.travelingItems += TravelingItem(extractedStack, source.direction, 0f, route, null, deliverFace, ghost = grant != null)
 			return extracted
 		}
 		return 0

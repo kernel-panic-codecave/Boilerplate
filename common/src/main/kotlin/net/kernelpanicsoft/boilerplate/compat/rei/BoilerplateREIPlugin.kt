@@ -11,6 +11,7 @@ import me.shedaniel.rei.api.client.registry.transfer.TransferHandlerRegistry
 import me.shedaniel.rei.api.client.registry.transfer.simple.SimpleTransferHandler
 import me.shedaniel.rei.api.common.category.CategoryIdentifier
 import me.shedaniel.rei.api.common.display.Display
+import me.shedaniel.rei.api.common.display.SimpleGridMenuDisplay
 import me.shedaniel.rei.api.common.entry.type.VanillaEntryTypes
 import me.shedaniel.rei.api.common.transfer.info.stack.SlotAccessor
 import me.shedaniel.rei.api.common.util.EntryStacks
@@ -76,18 +77,32 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			}
 
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
-				(context.menu as? CraftingTerminalHookMenu)?.requestIngredientSupply(resourcesOf(context.display))
+				(context.menu as? CraftingTerminalHookMenu)?.requestIngredientSupply(targetsOf(context.display))
 				return super.handle(context)
 			}
 		})
 	}
 
-	/** One representative [ItemResource] per input slot of [display] - whichever [SimpleTransferHandler]'s own fill logic would itself reach for first, since that's what's actually missing when it can't find one. */
-	private fun resourcesOf(display: Display): List<ItemResource> =
-		display.inputEntries.mapNotNull { ingredient ->
+	/**
+	 * One representative [ItemResource] per input slot of [display], keyed by the exact grid cell
+	 * it belongs in. [Display.getInputEntries] is only as wide as the recipe's own *functional*
+	 * shape (a 2x2 recipe reports 4 entries, not 9) - [SimpleGridMenuDisplay.getWidth] (REI's own
+	 * vanilla `DefaultCraftingDisplay` implements it) gives that real width back, converting a
+	 * recipe-relative row-major index into a grid-relative one (`x = i % width; y = i / width;
+	 * index = y * 3 + x`). This anchors every recipe to the grid's own top-left rather than
+	 * REI's own centered display position - harmless, since vanilla's shaped-recipe matching tries
+	 * every valid offset itself, top-left included, unlike
+	 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]/
+	 * [net.kernelpanicsoft.boilerplate.compat.jei.BoilerplateJEIPlugin]'s own EMI/JEI-reported
+	 * indices, which are already grid-relative and need no such conversion.
+	 */
+	private fun targetsOf(display: Display): Map<Int, ItemResource> {
+		val width = (display as? SimpleGridMenuDisplay)?.width ?: GRID_WIDTH
+		return display.inputEntries.withIndex().mapNotNull { (i, ingredient) ->
 			ingredient.firstOrNull { it.type == VanillaEntryTypes.ITEM && !it.isEmpty }
-				?.let { ItemResource.of(it.castValue<ItemStack>()) }
-		}
+				?.let { (i / width * GRID_WIDTH + i % width) to ItemResource.of(it.castValue<ItemStack>()) }
+		}.toMap()
+	}
 
 	/** Keeps REI's own item panel off every terminal screen's real occupied rectangle - fully custom Compose content (the Store search grid, sidebar, tabs), not real vanilla [net.minecraft.world.inventory.Slot]s REI could otherwise infer bounds from on its own. */
 	override fun registerExclusionZones(zones: ExclusionZones) {
@@ -107,5 +122,6 @@ class BoilerplateREIPlugin : REIClientPlugin {
 
 	companion object {
 		private val CATEGORY = CategoryIdentifier.of<Display>("minecraft", "plugins/crafting")
+		private const val GRID_WIDTH = 3
 	}
 }

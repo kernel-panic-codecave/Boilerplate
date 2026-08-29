@@ -34,8 +34,8 @@ class BoilerplateEmiPlugin : EmiPlugin {
 		registry.addRecipeHandler(
 			GuiRegistry.CraftingTerminalHook,
 			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
-				override fun getInputSources(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots() + handler.inventorySlots()
-				override fun getCraftingSlots(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots()
+				override fun getInputSources(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots + handler.inventorySlots
+				override fun getCraftingSlots(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots
 				override fun supportsRecipe(recipe: EmiRecipe): Boolean = recipe.category == VanillaEmiRecipeCategories.CRAFTING
 			},
 		)
@@ -49,13 +49,4 @@ class BoilerplateEmiPlugin : EmiPlugin {
 		}
 	}
 
-	companion object {
-		private const val GRID_SLOT_START = 9
-		private const val GRID_SLOT_COUNT = 9
-		private const val INVENTORY_SLOT_START = 18
-		private const val INVENTORY_SLOT_COUNT = 36
-
-		private fun CraftingTerminalHookMenu.gridSlots(): List<Slot> = slots.subList(GRID_SLOT_START, GRID_SLOT_START + GRID_SLOT_COUNT)
-		private fun CraftingTerminalHookMenu.inventorySlots(): List<Slot> = slots.subList(INVENTORY_SLOT_START, INVENTORY_SLOT_START + INVENTORY_SLOT_COUNT)
-	}
 }

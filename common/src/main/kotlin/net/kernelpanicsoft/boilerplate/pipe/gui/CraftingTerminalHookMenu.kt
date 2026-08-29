@@ -39,6 +39,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
 
 /**
@@ -132,7 +133,32 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 
 	override val shiftClickForbiddenSlotRanges: List<IntRange> = listOf(9..18)
 
+	/**
+	 * Whether every slot group [rebuildSlots][net.kernelpanicsoft.archie.gui.ComposeContainerMenuBase]
+	 * is ever going to add has actually been added yet - `false` for a brief window right after the
+	 * screen opens, since [handler]'s own "grid" group only gets registered once the Compose layout's
+	 * first pass reaches it, not at menu construction time (see
+	 * [net.kernelpanicsoft.archie.gui.ComposeContainerMenuBase]'s own KDoc). A recipe viewer
+	 * (JEI/REI/EMI) can poll [gridSlots]/[inventorySlots] before that pass has run - most visibly
+	 * EMI, which recomputes craftability every frame a recipe view is open - so both stay empty
+	 * rather than slicing a [slots] list that's still shorter than expected.
+	 */
+	private val slotsReady: Boolean get() = slots.size >= TOTAL_SLOT_COUNT
+
+	/** The real, vanilla-[Slot]-backed 3x3 grid cells - see [slotsReady]'s own readiness caveat. */
+	val gridSlots: List<Slot> get() = if (slotsReady) slots.subList(GRID_SLOT_START, GRID_SLOT_START + GRID_SLOT_COUNT) else emptyList()
+
+	/** The player inventory+hotbar slots - see [gridSlots]'s own readiness caveat. */
+	val inventorySlots: List<Slot> get() = if (slotsReady) slots.subList(INVENTORY_SLOT_START, INVENTORY_SLOT_START + INVENTORY_SLOT_COUNT) else emptyList()
+
 	companion object {
 		private const val MAX_QUICK_CRAFT = 64
+
+		/** [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output]'s own slot count, registered before `grid` - the single source of truth every recipe-viewer plugin (`compat/rei`/`compat/jei`/`compat/emi`) keys its own slot ranges off instead of re-deriving them. */
+		const val GRID_SLOT_START = 9
+		const val GRID_SLOT_COUNT = 9
+		const val INVENTORY_SLOT_START = GRID_SLOT_START + GRID_SLOT_COUNT
+		const val INVENTORY_SLOT_COUNT = 36
+		private const val TOTAL_SLOT_COUNT = INVENTORY_SLOT_START + INVENTORY_SLOT_COUNT
 	}
 }

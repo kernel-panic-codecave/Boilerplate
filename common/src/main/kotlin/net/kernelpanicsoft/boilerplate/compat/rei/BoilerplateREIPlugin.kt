@@ -38,7 +38,7 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			SimpleTransferHandler.create(
 				CraftingTerminalHookMenu::class.java,
 				CategoryIdentifier.of<Display>("minecraft", "plugins/crafting"),
-				SimpleTransferHandler.IntRange(GRID_SLOT_START, GRID_SLOT_START + GRID_SLOT_COUNT),
+				SimpleTransferHandler.IntRange(CraftingTerminalHookMenu.GRID_SLOT_START, CraftingTerminalHookMenu.GRID_SLOT_START + CraftingTerminalHookMenu.GRID_SLOT_COUNT),
 			)
 		)
 	}
@@ -59,8 +59,4 @@ class BoilerplateREIPlugin : REIClientPlugin {
 		}
 	}
 
-	companion object {
-		private const val GRID_SLOT_START = 9
-		private const val GRID_SLOT_COUNT = 9
-	}
 }

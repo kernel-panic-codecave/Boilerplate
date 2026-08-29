@@ -40,10 +40,10 @@ class BoilerplateJEIPlugin : IModPlugin {
 			CraftingTerminalHookMenu::class.java,
 			GuiRegistry.CraftingTerminalHook,
 			RecipeTypes.CRAFTING,
-			GRID_SLOT_START,
-			GRID_SLOT_COUNT,
-			INVENTORY_SLOT_START,
-			INVENTORY_SLOT_COUNT,
+			CraftingTerminalHookMenu.GRID_SLOT_START,
+			CraftingTerminalHookMenu.GRID_SLOT_COUNT,
+			CraftingTerminalHookMenu.INVENTORY_SLOT_START,
+			CraftingTerminalHookMenu.INVENTORY_SLOT_COUNT,
 		)
 	}
 
@@ -71,10 +71,6 @@ class BoilerplateJEIPlugin : IModPlugin {
 
 	companion object {
 		private val UID = ResourceLocation.fromNamespaceAndPath(Boilerplate.MOD_ID, "jei_plugin")
-		private const val GRID_SLOT_START = 9
-		private const val GRID_SLOT_COUNT = 9
-		private const val INVENTORY_SLOT_START = 18
-		private const val INVENTORY_SLOT_COUNT = 36
 		private const val HOVER_AREA_RADIUS = 8
 	}
 }

@@ -89,9 +89,9 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 		BoilerplateNetworkChannel.toServer(CraftGridRequestPacket(shiftClick))
 	}
 
-	/** Client-side: asks the server to run [supplyIngredients] for [targets] - see [RequestIngredientSupplyPacket.bulk] for [bulk]. */
-	fun requestIngredientSupply(targets: Map<Int, ItemResource>, bulk: Boolean = false) {
-		BoilerplateNetworkChannel.toServer(RequestIngredientSupplyPacket(targets, bulk))
+	/** Client-side: asks the server to run [supplyIngredients] for [targets] - see [RequestIngredientSupplyPacket.amount] for [amount]. */
+	fun requestIngredientSupply(targets: Map<Int, ItemResource>, amount: Long = 1L) {
+		BoilerplateNetworkChannel.toServer(RequestIngredientSupplyPacket(targets, amount))
 	}
 
 	/**
@@ -128,22 +128,23 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	 * still travels the real pipe distance, not instant, so a fill needs at least one more click
 	 * once it's actually arrived, the same as any other shortfall.
 	 *
-	 * [bulk] (see [RequestIngredientSupplyPacket.bulk]) asks for up to a full stack of each
-	 * ingredient instead of just one, matching whichever recipe-viewer plugin's own "shift-click
-	 * fills as much as possible" signal triggered this call - enough on hand for
-	 * [craftOnce]'s own `shiftClick` to actually run more than once before running dry again.
+	 * [amount] (see [RequestIngredientSupplyPacket.amount]) is the requested quantity per target -
+	 * `1` for a plain fill, up to a full stack for a "fill as much as possible" shift-click, or
+	 * whatever exact count a specific step needs (EMI's own BOM sidebar fill, say) - capped at each
+	 * resource's own max stack size regardless of what's asked, since that's the most a single grid
+	 * cell could ever hold anyway.
 	 */
-	fun supplyIngredients(targets: Map<Int, ItemResource>, bulk: Boolean) {
+	fun supplyIngredients(targets: Map<Int, ItemResource>, amount: Long) {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
 		for ((index, resource) in targets) {
 			if (resource.isBlank || index !in 0 until state.grid.size()) continue
 			if (!state.grid[index].getItem().isEmpty) continue
-			val amount = if (bulk) resource.cachedStack.maxStackSize.toLong() else 1L
-			if (player.inventory.countItem(resource.cachedStack.item) >= amount) continue
-			if (state.output.extract(resource, amount, true) >= amount) continue
+			val need = amount.coerceAtMost(resource.cachedStack.maxStackSize.toLong())
+			if (player.inventory.countItem(resource.cachedStack.item) >= need) continue
+			if (state.output.extract(resource, need, true) >= need) continue
 
-			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, amount), tile.blockPos, direction)
+			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, need), tile.blockPos, direction)
 		}
 	}
 

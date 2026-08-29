@@ -14,17 +14,21 @@ import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
  * reach becomes available - instantly if a provider hook can supply it, for a *second* click
  * otherwise - instead of the viewer just reporting "missing ingredients" forever.
  *
- * [bulk] mirrors each recipe-viewer's own "shift-click fills as much as possible" signal - EMI's
- * `EmiCraftContext.amount` (`Int.MAX_VALUE` for a shift-click, `1` for a plain one), JEI's
- * `maxTransfer`, REI's `TransferHandler.Context.isStackedCrafting()` - `false` asks for just enough
- * of each ingredient for one craft, `true` asks for up to a full stack instead, so the terminal's
- * own repeated-craft shortcut ([CraftingTerminalHookMenu.craftOnce]'s own `shiftClick`) has enough
- * on hand to run more than once per click.
+ * [amount] mirrors each recipe-viewer's own per-target quantity signal - EMI's own
+ * `EmiCraftContext.amount` is the exact one: `1` for a plain fill, `Int.MAX_VALUE` for a
+ * shift-click ("fill with as much as possible"), but also whatever *specific* count EMI's own BOM
+ * sidebar fill (recipe-tree mode) asks for when it fills the crafting table for one particular step
+ * of a larger tree - genuinely not always 1 or "as much as possible". REI/JEI only ever offer a
+ * boolean "shift-click fills as much as possible" signal (`TransferHandler.Context.isStackedCrafting()`,
+ * `maxTransfer`), so their own callers just pass `1` or `Int.MAX_VALUE.toLong()` - the same sentinel
+ * EMI itself uses for "as much as possible", which [CraftingTerminalHookMenu.supplyIngredients]
+ * caps at each resource's own max stack size regardless of caller, so a nonsensically large value
+ * never gets requested literally.
  */
 @Serializable
-data class RequestIngredientSupplyPacket(val targets: Map<Int, SItemResource>, val bulk: Boolean = false) {
+data class RequestIngredientSupplyPacket(val targets: Map<Int, SItemResource>, val amount: Long = 1L) {
 	fun handleOnServer(context: IPacketContext) {
 		val menu = context.player.containerMenu as? CraftingTerminalHookMenu ?: return
-		menu.supplyIngredients(targets, bulk)
+		menu.supplyIngredients(targets, amount)
 	}
 }

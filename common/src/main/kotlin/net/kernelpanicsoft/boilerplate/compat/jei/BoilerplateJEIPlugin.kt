@@ -92,7 +92,7 @@ class BoilerplateJEIPlugin : IModPlugin {
 		val delegate = helper.createUnregisteredRecipeTransferHandler(transferInfo)
 		registration.addRecipeTransferHandler(
 			object : IRecipeTransferHandler<CraftingTerminalHookMenu, RecipeHolder<CraftingRecipe>> {
-				private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Boolean>? = null
+				private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Long>? = null
 
 				override fun getContainerClass() = CraftingTerminalHookMenu::class.java
 				override fun getMenuType(): Optional<MenuType<CraftingTerminalHookMenu>> = Optional.of(GuiRegistry.CraftingTerminalHook)
@@ -112,9 +112,11 @@ class BoilerplateJEIPlugin : IModPlugin {
 				 * would there. [targetsOf] is stable for a given [recipe] (it just reads the recipe
 				 * itself, not current stock), so comparing against [lastRequestedTargets] only guards a
 				 * rapid double-click, not the dry run (already excluded above). [maxTransfer] is JEI's
-				 * own "shift-click fills as much as possible" signal, matching EMI's
-				 * `EmiCraftContext.amount`/REI's `isStackedCrafting` - see
-				 * [RequestIngredientSupplyPacket.bulk].
+				 * own "shift-click fills as much as possible" signal - unlike EMI's own
+				 * `EmiCraftContext.amount`, it's only ever a boolean, no specific quantity - so `true`
+				 * maps to [Int.MAX_VALUE], relying on [CraftingTerminalHookMenu.supplyIngredients]'s
+				 * own per-resource cap to bound it sensibly, same as
+				 * [RequestIngredientSupplyPacket.amount]'s own KDoc describes.
 				 *
 				 * When [delegate] reports an error, substitutes its own flat-red highlight for
 				 * [MissingIngredientError]'s tri-color one whenever the error is genuinely about missing
@@ -131,9 +133,10 @@ class BoilerplateJEIPlugin : IModPlugin {
 					doTransfer: Boolean,
 				): IRecipeTransferError? {
 					val targets = targetsOf(helper, recipe)
-					if (doTransfer && targets.isNotEmpty() && (targets to maxTransfer) != lastRequestedTargets) {
-						lastRequestedTargets = targets to maxTransfer
-						container.requestIngredientSupply(targets, maxTransfer)
+					val amount = if (maxTransfer) Int.MAX_VALUE.toLong() else 1L
+					if (doTransfer && targets.isNotEmpty() && (targets to amount) != lastRequestedTargets) {
+						lastRequestedTargets = targets to amount
+						container.requestIngredientSupply(targets, amount)
 					}
 					val error = delegate.transferRecipe(container, recipe, recipeSlots, player, maxTransfer, doTransfer) ?: return null
 					val missing = missingInputSlots(container, recipeSlots)

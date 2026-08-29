@@ -67,7 +67,7 @@ class BoilerplateREIPlugin : REIClientPlugin {
 	 */
 	override fun registerTransferHandlers(registry: TransferHandlerRegistry) {
 		registry.register(object : SimpleTransferHandler {
-			private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Boolean>? = null
+			private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Long>? = null
 
 			override fun checkApplicable(context: TransferHandler.Context): TransferHandler.ApplicabilityResult =
 				if (context.menu is CraftingTerminalHookMenu && CATEGORY == context.display.categoryIdentifier && context.containerScreen != null) {
@@ -97,16 +97,18 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			 * [lastRequestedTargets] only guards against resending the same request on a rapid
 			 * double-click, not against the preview case (already excluded above).
 			 * [TransferHandler.Context.isStackedCrafting] is REI's own "shift-click fills as much as
-			 * possible" signal, matching EMI's `EmiCraftContext.amount`/JEI's `maxTransfer` - see
-			 * [RequestIngredientSupplyPacket.bulk].
+			 * possible" signal - unlike EMI's own `EmiCraftContext.amount`, it's only ever a boolean,
+			 * no specific quantity - so `true` maps to [Int.MAX_VALUE], relying on
+			 * [CraftingTerminalHookMenu.supplyIngredients]'s own per-resource cap to bound it
+			 * sensibly, same as [RequestIngredientSupplyPacket.amount]'s own KDoc describes.
 			 */
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
 				val menu = context.menu as? CraftingTerminalHookMenu
 				val targets = targetsOf(context.display)
-				val bulk = context.isStackedCrafting
-				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty() && (targets to bulk) != lastRequestedTargets) {
-					lastRequestedTargets = targets to bulk
-					menu.requestIngredientSupply(targets, bulk)
+				val amount = if (context.isStackedCrafting) Int.MAX_VALUE.toLong() else 1L
+				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty() && (targets to amount) != lastRequestedTargets) {
+					lastRequestedTargets = targets to amount
+					menu.requestIngredientSupply(targets, amount)
 				}
 				return super.handle(context)
 			}

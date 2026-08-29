@@ -53,7 +53,7 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 		registry.addRecipeHandler(
 			GuiRegistry.CraftingTerminalHook,
 			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
-				private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Boolean>? = null
+				private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Long>? = null
 
 				/**
 				 * Deliberately excludes [CraftingTerminalHookMenu.gridSlots] - EMI's own default
@@ -107,19 +107,21 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * KDoc describes - safe now that [getCraftingSlots] is excluded from [getInputSources].
 				 * Still genuinely short (only [canCraft]'s own optimistic reachability check passed,
 				 * not this stricter one) instead only asks the terminal to supply what's missing
-				 * ([CraftingTerminalHookMenu.requestIngredientSupply], [bulk] set whenever
-				 * [EmiCraftContext.amount] is more than a single craft - EMI sets it to
-				 * `Int.MAX_VALUE` for a shift-click fill, meaning "fill with as much as possible," `1`
-				 * for a plain one) and reports failure for *this* click - a second click succeeds once
-				 * that supply has actually landed and synced back.
+				 * ([CraftingTerminalHookMenu.requestIngredientSupply], passing [EmiCraftContext.amount]
+				 * straight through as the requested quantity - `1` for a plain fill, `Int.MAX_VALUE`
+				 * for a shift-click ("fill with as much as possible"), or whatever specific count
+				 * EMI's own BOM sidebar fill asks for when filling the grid for one particular step of
+				 * a larger recipe tree, genuinely not always 1 or "as much as possible" - and reports
+				 * failure for *this* click - a second click succeeds once that supply has actually
+				 * landed and synced back.
 				 */
 				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
 					if (super.canCraft(recipe, context)) return super.craft(recipe, context)
 					val targets = targetsOf(recipe)
-					val bulk = context.amount > 1
-					if (targets.isNotEmpty() && (targets to bulk) != lastRequestedTargets) {
-						lastRequestedTargets = targets to bulk
-						context.screenHandler.requestIngredientSupply(targets, bulk)
+					val amount = context.amount.toLong()
+					if (targets.isNotEmpty() && (targets to amount) != lastRequestedTargets) {
+						lastRequestedTargets = targets to amount
+						context.screenHandler.requestIngredientSupply(targets, amount)
 					}
 					return true
 				}

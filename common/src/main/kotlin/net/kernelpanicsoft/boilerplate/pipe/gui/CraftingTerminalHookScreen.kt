@@ -67,7 +67,7 @@ class CraftingTerminalHookScreen(menu: CraftingTerminalHookMenu, playerInventory
 			Row(horizontalArrangement = Arrangement.spacedBy(18), verticalAlignment = Alignment.CenterVertically) {
 				Slots("grid", 3, 3)
 				TerminalSlot(stack = menu.gridPreview, onClick =  {
-					menu.requestCraftOnce(hasShiftDown())
+					menu.requestCraftOnce(hasShiftDown(), hasControlDown())
 					menu.requestGridPreview()
 				})
 			}

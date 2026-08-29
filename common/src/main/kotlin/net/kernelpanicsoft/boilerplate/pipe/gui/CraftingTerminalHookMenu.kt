@@ -83,9 +83,9 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, CraftGridPreviewPacket(InstantCrafting.match(level, state.grid)))
 	}
 
-	/** Client-side: asks the server to try [craftOnce] - a plain click ([shiftClick] `false`) or shift-click ([shiftClick] `true`), matching a real vanilla crafting table's own result slot; [ctrlClick] additionally lets it top up/autocraft, see [craftOnce]'s own KDoc. */
-	fun requestCraftOnce(shiftClick: Boolean, ctrlClick: Boolean) {
-		BoilerplateNetworkChannel.toServer(CraftGridRequestPacket(shiftClick, ctrlClick))
+	/** Client-side: asks the server to try [craftOnce] - a plain click ([shiftClick] `false`) or shift-click ([shiftClick] `true`), matching a real vanilla crafting table's own result slot. */
+	fun requestCraftOnce(shiftClick: Boolean) {
+		BoilerplateNetworkChannel.toServer(CraftGridRequestPacket(shiftClick))
 	}
 
 	/**
@@ -98,70 +98,18 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	 * `true`) instead repeatedly crafts straight into the player's own inventory (never touching
 	 * [carried]) until the grid stops matching, the inventory has no more room, or [MAX_QUICK_CRAFT]
 	 * runs have happened - a safety cap, not an expected stopping point.
-	 *
-	 * Whenever the grid stops matching mid-run (a shaped ingredient's own slot ran out), [topUpGrid]
-	 * tries to refill it back toward [gridShape] - the arrangement as the player originally set it
-	 * up, captured once before the loop starts, so a shaped recipe doesn't shift position as slots
-	 * get replenished out of order. [ctrlClick] additionally submits an autocraft job (AE2/RS-style
-	 * "craft the missing ingredient too") for anything even the network can't currently supply, once
-	 * a known pattern says it can - fire-and-forget, like every other Crafting CPU job: this doesn't
-	 * wait for it, the player just clicks again once it's ready.
 	 */
-	fun craftOnce(shiftClick: Boolean, ctrlClick: Boolean) {
+	fun craftOnce(shiftClick: Boolean) {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
 
 		if (shiftClick) {
-			val shape = gridShape(state)
 			var runs = 0
-			while (runs < MAX_QUICK_CRAFT) {
-				if (InstantCrafting.match(level, state.grid).isEmpty) {
-					if (!topUpGrid(level, state, shape, ctrlClick)) break
-					if (InstantCrafting.match(level, state.grid).isEmpty) break
-				}
-				if (!craftOneRun(level, state, intoCursor = false)) break
-				runs++
-			}
+			while (runs < MAX_QUICK_CRAFT && craftOneRun(level, state, intoCursor = false)) runs++
 		} else {
-			if (InstantCrafting.match(level, state.grid).isEmpty) topUpGrid(level, state, gridShape(state), ctrlClick)
 			craftOneRun(level, state, intoCursor = true)
 		}
 		sendGridPreview()
-	}
-
-	/** Which [ItemResource] each occupied [CraftingTerminalHookState.grid] slot currently holds, by index - what [topUpGrid] refills back toward as a shift-click burst consumes it. */
-	private fun gridShape(state: CraftingTerminalHookState): Map<Int, ItemResource> =
-		(0 until state.grid.size()).mapNotNull { i -> state.grid[i].getResource().takeUnless { it.isBlank }?.let { i to it } }.toMap()
-
-	/**
-	 * Refills every [shape] slot [craftOneRun] has emptied out, first straight from this terminal's
-	 * own [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output] "inbox" - the same
-	 * tile, so this is instant - then, if that's empty too, by requesting more from whatever's
-	 * reachable on the network via [RequestFulfillment.request]. That request only tops the inbox up
-	 * for a *later* attempt, though - unlike an in-pipe item's own travel, it's never instant, so it
-	 * can't help the current [craftOnce] burst finish. [ctrlClick] additionally calls [submitCraft]
-	 * for whatever's still missing even after that, once a known pattern can produce it.
-	 *
-	 * Returns whether at least one slot was actually refilled *right now* (from the inbox) - the
-	 * only thing that lets the calling loop's current iteration keep going; a network request or
-	 * autocraft job submitted along the way doesn't count; the caller re-checks [InstantCrafting.match]
-	 * itself once this returns to see whether that made the difference.
-	 */
-	private fun topUpGrid(level: ServerLevel, state: CraftingTerminalHookState, shape: Map<Int, ItemResource>, ctrlClick: Boolean): Boolean {
-		var refilledNow = false
-		for ((index, resource) in shape) {
-			if (!state.grid[index].getItem().isEmpty) continue
-			val fromInbox = state.output.extract(resource, 1L, false)
-			if (fromInbox > 0) {
-				state.grid[index].insert(resource, fromInbox, false)
-				refilledNow = true
-				continue
-			}
-			val requested = RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, 1L), tile.blockPos, direction)
-			if (requested > 0) continue
-			if (ctrlClick) submitCraft(resource, 1L)
-		}
-		return refilledNow
 	}
 
 	private fun craftOneRun(level: ServerLevel, state: CraftingTerminalHookState, intoCursor: Boolean): Boolean {

@@ -66,11 +66,24 @@ object RequestFulfillment {
 	/**
 	 * Like [request], but a reachable provider hook (never a warehouse - see below) delivers
 	 * through [grant] the instant it's found, synchronously, rather than waiting on a real
-	 * [TravelingItem]'s own arrival: [grant] is the caller's own direct insertion (a specific
-	 * crafting-grid slot, say), decoupled entirely from [deliverTo]/[deliverFace], which still only
-	 * steer a purely cosmetic ghost [TravelingItem] (see its own KDoc) toward looking like the
-	 * delivery is still traveling the pipe, for visual continuity with every other delivery. Returns
-	 * the amount granted, `0` if no reachable provider had any - the same shape as [request].
+	 * [TravelingItem]'s own arrival: [grant] is the caller's own direct insertion, decoupled entirely
+	 * from [deliverTo]/[deliverFace], which still only steer a purely cosmetic ghost [TravelingItem]
+	 * (see its own KDoc) toward looking like the delivery is still traveling the pipe, for visual
+	 * continuity with every other delivery. Returns the amount granted, `0` if no reachable provider
+	 * had any - the same shape as [request].
+	 *
+	 * [grant] should land somewhere a caller's own downstream logic already treats as a normal,
+	 * re-sourceable holding - a storage slot, an inbox - never somewhere that same logic expects to
+	 * exclusively own and rebuild from scratch on its own terms (a UI's own "clear then refill from
+	 * declared sources" destination, say): [net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu.supplyIngredients]
+	 * grants into this terminal's own inbox rather than straight into a targeted
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.CraftingTerminalHookState.grid] cell precisely
+	 * because every recipe-viewer plugin's own fill logic (`compat/rei`/`compat/jei`/`compat/emi`)
+	 * clears and rebuilds that grid from its *own* declared sources on a real commit, which
+	 * deliberately exclude the grid itself - an ingredient granted directly into a cell ahead of that
+	 * commit has no other copy to be rebuilt from once cleared (confirmed the hard way against EMI's
+	 * real source: its default fill unconditionally ejects a crafting slot's contents via a genuine
+	 * simulated `ClickType.THROW` click before refilling).
 	 *
 	 * Never falls through to a warehouse retrieval the way [request] does: a gantry job is a real
 	 * physical action gated by [net.kernelpanicsoft.boilerplate.power.PressureConsumer] like

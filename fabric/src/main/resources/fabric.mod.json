@@ -37,6 +37,12 @@
         "adapter": "kotlin",
         "value": "net.kernelpanicsoft.boilerplate.BoilerplateFabric"
       }
+    ],
+    "rei_client": [
+      {
+        "adapter": "kotlin",
+        "value": "net.kernelpanicsoft.boilerplate.compat.rei.BoilerplateREIPlugin"
+      }
     ]
   },
   "depends": {

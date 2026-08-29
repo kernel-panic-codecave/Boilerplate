@@ -28,8 +28,16 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 	protected val contentWidth = 18 * COLUMNS
 	protected val middleClickHandler = MiddleClickHandler()
 
-	private var hoveredStack: SResourceStack<SItemResource>? = null
+	/** The [StoreResultsGrid] row currently under the mouse, if any - not a real vanilla [net.minecraft.world.inventory.Slot], so a recipe viewer (JEI/REI/EMI) can't discover it the normal hovered-slot way; exposed publicly for exactly that lookup (see `compat/rei/BoilerplateREIPlugin`'s own `registerScreens`). */
+	var hoveredStack: SResourceStack<SItemResource>? = null
+		private set
 	private var sidebarTooltip: String? = null
+
+	/** This screen's own on-window rectangle - [leftPos]/[topPos]/[imageWidth]/[imageHeight] are `protected` on vanilla's own [AbstractContainerScreen], exposed publicly here since a recipe viewer's exclusion-zone registration needs the real occupied bounds to avoid overlapping its own item panel with this screen's fully custom (non-[net.minecraft.world.inventory.Slot]) content. */
+	val screenLeft get() = leftPos
+	val screenTop get() = topPos
+	val screenWidth get() = imageWidth
+	val screenHeight get() = imageHeight
 
 	init
 	{

@@ -94,6 +94,11 @@ dependencies {
 	modCompileOnly(libs.archie.datagen.neoforge)
 	modLocalRuntime(libs.archie.datagen.neoforge)
 
+	// Only for NeoForgeEmiEntrypoint's own @EmiEntrypoint marker - the real plugin logic compiles
+	// against emi-xplat in common/build.gradle.kts instead, but that modCompileOnly doesn't
+	// propagate transitively to this module's own compile classpath.
+	modCompileOnly("${libs.emi.neoforge.get()}:api")
+
 	when (rootProject.property("recipe_viewer") as? String)
 	{
 		"jei" -> modLocalRuntime(libs.jei.neoforge)

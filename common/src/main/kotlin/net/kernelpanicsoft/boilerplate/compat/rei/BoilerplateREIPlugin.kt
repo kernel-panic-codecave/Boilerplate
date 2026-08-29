@@ -2,7 +2,10 @@ package net.kernelpanicsoft.boilerplate.compat.rei
 
 import dev.architectury.event.CompoundEventResult
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import it.unimi.dsi.fastutil.ints.IntSet
 import me.shedaniel.math.Rectangle
+import me.shedaniel.rei.api.client.gui.widgets.Slot
+import me.shedaniel.rei.api.client.gui.widgets.Widget
 import me.shedaniel.rei.api.client.plugins.REIClientPlugin
 import me.shedaniel.rei.api.client.registry.screen.ExclusionZones
 import me.shedaniel.rei.api.client.registry.screen.ScreenRegistry
@@ -12,12 +15,14 @@ import me.shedaniel.rei.api.client.registry.transfer.simple.SimpleTransferHandle
 import me.shedaniel.rei.api.common.category.CategoryIdentifier
 import me.shedaniel.rei.api.common.display.Display
 import me.shedaniel.rei.api.common.display.SimpleGridMenuDisplay
+import me.shedaniel.rei.api.common.entry.InputIngredient
 import me.shedaniel.rei.api.common.entry.type.VanillaEntryTypes
 import me.shedaniel.rei.api.common.transfer.info.stack.SlotAccessor
 import me.shedaniel.rei.api.common.util.EntryStacks
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.util.itemStack
+import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.world.item.ItemStack
 
 /**
@@ -62,7 +67,7 @@ class BoilerplateREIPlugin : REIClientPlugin {
 	 */
 	override fun registerTransferHandlers(registry: TransferHandlerRegistry) {
 		registry.register(object : SimpleTransferHandler {
-			private var lastRequestedTargets: Map<Int, ItemResource>? = null
+			private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Boolean>? = null
 
 			override fun checkApplicable(context: TransferHandler.Context): TransferHandler.ApplicabilityResult =
 				if (context.menu is CraftingTerminalHookMenu && CATEGORY == context.display.categoryIdentifier && context.containerScreen != null) {
@@ -91,15 +96,64 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			 * just reads the recipe's own ingredients, not current stock), so comparing against
 			 * [lastRequestedTargets] only guards against resending the same request on a rapid
 			 * double-click, not against the preview case (already excluded above).
+			 * [TransferHandler.Context.isStackedCrafting] is REI's own "shift-click fills as much as
+			 * possible" signal, matching EMI's `EmiCraftContext.amount`/JEI's `maxTransfer` - see
+			 * [RequestIngredientSupplyPacket.bulk].
 			 */
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
 				val menu = context.menu as? CraftingTerminalHookMenu
 				val targets = targetsOf(context.display)
-				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty() && targets != lastRequestedTargets) {
-					lastRequestedTargets = targets
-					menu.requestIngredientSupply(targets)
+				val bulk = context.isStackedCrafting
+				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty() && (targets to bulk) != lastRequestedTargets) {
+					lastRequestedTargets = targets to bulk
+					menu.requestIngredientSupply(targets, bulk)
 				}
 				return super.handle(context)
+			}
+
+			/**
+			 * Overrides [SimpleTransferHandler]'s own default (a flat red on every missing input,
+			 * confirmed against its real source) rather than layering on top of it, same treatment as
+			 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own `render` override:
+			 * orange when the ingredient shows up in [CraftingTerminalHookMenu.results] (a request
+			 * would actually fetch it), blue when it shows up in
+			 * [CraftingTerminalHookMenu.craftableResources] instead (a known pattern exists somewhere
+			 * reachable), red only when neither applies. Rebuilds the same "which widget is which
+			 * missing input" walk [SimpleTransferHandler]'s own default `renderMissingInput` does -
+			 * [missingIndices] are [InputIngredient.getDisplayIndex] values assigned in the same order
+			 * as the [Slot.INPUT]-marked [widgets], not directly usable as a list index into anything
+			 * else.
+			 */
+			override fun renderMissingInput(
+				context: TransferHandler.Context,
+				inputs: List<InputIngredient<ItemStack>>,
+				missing: List<InputIngredient<ItemStack>>,
+				missingIndices: IntSet,
+				graphics: GuiGraphics,
+				mouseX: Int,
+				mouseY: Int,
+				delta: Float,
+				widgets: List<Widget>,
+				bounds: Rectangle,
+			) {
+				val menu = context.menu as? CraftingTerminalHookMenu
+				val resourceByIndex = missing.associate { ingredient ->
+					ingredient.displayIndex to ingredient.get().firstOrNull { !it.isEmpty }?.let { ItemResource.of(it) }
+				}
+				var i = 0
+				for (widget in widgets) {
+					if (widget !is Slot || widget.noticeMark != Slot.INPUT) continue
+					val index = i++
+					if (!missingIndices.contains(index)) continue
+					val resource = resourceByIndex[index]
+					val color = when {
+						menu != null && resource != null && menu.results.any { it.resource == resource } -> COLOR_REQUESTABLE
+						menu != null && resource != null && menu.craftableResources.contains(resource) -> COLOR_CRAFTABLE
+						else -> COLOR_MISSING
+					}
+					val innerBounds = widget.innerBounds
+					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, color)
+				}
 			}
 		})
 	}
@@ -144,5 +198,12 @@ class BoilerplateREIPlugin : REIClientPlugin {
 	companion object {
 		private val CATEGORY = CategoryIdentifier.of<Display>("minecraft", "plugins/crafting")
 		private const val GRID_WIDTH = 3
+
+		/** Genuinely not obtainable right now - not local, not reachable, no known pattern. Matches [SimpleTransferHandler]'s own default `renderMissingInput` color exactly. */
+		private const val COLOR_MISSING = 0x40FF0000
+		/** Not local, but present somewhere reachable - a request would actually fetch it. */
+		private const val COLOR_REQUESTABLE = 0x40FFA500
+		/** Not local and not reachable, but a known pattern could produce it somewhere reachable. */
+		private const val COLOR_CRAFTABLE = 0x400080FF
 	}
 }

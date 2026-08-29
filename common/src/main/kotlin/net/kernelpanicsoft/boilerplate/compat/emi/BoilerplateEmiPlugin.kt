@@ -3,7 +3,6 @@ package net.kernelpanicsoft.boilerplate.compat.emi
 import com.mojang.blaze3d.systems.RenderSystem
 import dev.emi.emi.api.EmiPlugin
 import dev.emi.emi.api.EmiRegistry
-import dev.emi.emi.api.EmiStackProvider
 import dev.emi.emi.api.recipe.EmiRecipe
 import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories
 import dev.emi.emi.api.recipe.handler.EmiCraftContext
@@ -21,7 +20,7 @@ import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
 import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.world.inventory.Slot
-import java.util.IdentityHashMap
+import java.util.*
 
 /**
  * Unlike REI/JEI, EMI ships no *published* loader-agnostic api artifact under its own main
@@ -54,7 +53,7 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 		registry.addRecipeHandler(
 			GuiRegistry.CraftingTerminalHook,
 			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
-				private var lastRequestedTargets: Map<Int, ItemResource>? = null
+				private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Boolean>? = null
 
 				/**
 				 * Deliberately excludes [CraftingTerminalHookMenu.gridSlots] - EMI's own default
@@ -108,17 +107,21 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * KDoc describes - safe now that [getCraftingSlots] is excluded from [getInputSources].
 				 * Still genuinely short (only [canCraft]'s own optimistic reachability check passed,
 				 * not this stricter one) instead only asks the terminal to supply what's missing
-				 * ([CraftingTerminalHookMenu.requestIngredientSupply]) and reports failure for *this*
-				 * click - a second click succeeds once that supply has actually landed and synced back.
+				 * ([CraftingTerminalHookMenu.requestIngredientSupply], [bulk] set whenever
+				 * [EmiCraftContext.amount] is more than a single craft - EMI sets it to
+				 * `Int.MAX_VALUE` for a shift-click fill, meaning "fill with as much as possible," `1`
+				 * for a plain one) and reports failure for *this* click - a second click succeeds once
+				 * that supply has actually landed and synced back.
 				 */
 				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
 					if (super.canCraft(recipe, context)) return super.craft(recipe, context)
 					val targets = targetsOf(recipe)
-					if (targets.isNotEmpty() && targets != lastRequestedTargets) {
-						lastRequestedTargets = targets
-						context.screenHandler.requestIngredientSupply(targets)
+					val bulk = context.amount > 1
+					if (targets.isNotEmpty() && (targets to bulk) != lastRequestedTargets) {
+						lastRequestedTargets = targets to bulk
+						context.screenHandler.requestIngredientSupply(targets, bulk)
 					}
-					return false
+					return true
 				}
 
 				/**

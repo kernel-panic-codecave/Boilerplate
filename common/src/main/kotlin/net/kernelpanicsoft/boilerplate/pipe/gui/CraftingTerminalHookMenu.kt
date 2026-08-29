@@ -89,9 +89,9 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 		BoilerplateNetworkChannel.toServer(CraftGridRequestPacket(shiftClick))
 	}
 
-	/** Client-side: asks the server to run [supplyIngredients] for [targets]. */
-	fun requestIngredientSupply(targets: Map<Int, ItemResource>) {
-		BoilerplateNetworkChannel.toServer(RequestIngredientSupplyPacket(targets))
+	/** Client-side: asks the server to run [supplyIngredients] for [targets] - see [RequestIngredientSupplyPacket.bulk] for [bulk]. */
+	fun requestIngredientSupply(targets: Map<Int, ItemResource>, bulk: Boolean = false) {
+		BoilerplateNetworkChannel.toServer(RequestIngredientSupplyPacket(targets, bulk))
 	}
 
 	/**
@@ -127,17 +127,23 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	 * landing in this terminal's own inbox exactly like a normal [withdraw] - a provider-hook pull
 	 * still travels the real pipe distance, not instant, so a fill needs at least one more click
 	 * once it's actually arrived, the same as any other shortfall.
+	 *
+	 * [bulk] (see [RequestIngredientSupplyPacket.bulk]) asks for up to a full stack of each
+	 * ingredient instead of just one, matching whichever recipe-viewer plugin's own "shift-click
+	 * fills as much as possible" signal triggered this call - enough on hand for
+	 * [craftOnce]'s own `shiftClick` to actually run more than once before running dry again.
 	 */
-	fun supplyIngredients(targets: Map<Int, ItemResource>) {
+	fun supplyIngredients(targets: Map<Int, ItemResource>, bulk: Boolean) {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? CraftingTerminalHookState ?: return
 		for ((index, resource) in targets) {
 			if (resource.isBlank || index !in 0 until state.grid.size()) continue
 			if (!state.grid[index].getItem().isEmpty) continue
-			if (player.inventory.countItem(resource.cachedStack.item) > 0) continue
-			if (state.output.extract(resource, 1L, true) > 0) continue
+			val amount = if (bulk) resource.cachedStack.maxStackSize.toLong() else 1L
+			if (player.inventory.countItem(resource.cachedStack.item) >= amount) continue
+			if (state.output.extract(resource, amount, true) >= amount) continue
 
-			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, 1L), tile.blockPos, direction)
+			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, amount), tile.blockPos, direction)
 		}
 	}
 

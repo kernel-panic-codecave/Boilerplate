@@ -12,6 +12,7 @@ import me.shedaniel.rei.api.client.registry.transfer.simple.SimpleTransferHandle
 import me.shedaniel.rei.api.common.category.CategoryIdentifier
 import me.shedaniel.rei.api.common.display.Display
 import me.shedaniel.rei.api.common.entry.type.VanillaEntryTypes
+import me.shedaniel.rei.api.common.transfer.info.stack.SlotAccessor
 import me.shedaniel.rei.api.common.util.EntryStacks
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
@@ -39,25 +40,44 @@ class BoilerplateREIPlugin : REIClientPlugin {
 	/**
 	 * Lets REI's own "transfer recipe" button fill [CraftingTerminalHookMenu.registerSlotHandlers]'s
 	 * real `grid` slots from a shown vanilla crafting recipe, exactly as it already does for a real
-	 * crafting table - [SimpleTransferHandler]'s own player-inventory-based fill, untouched,
-	 * wrapped so a click first asks the terminal to top the player's own inventory up with anything
-	 * missing that it can reach (storage, its own inbox - see
-	 * [CraftingTerminalHookMenu.requestIngredientSupply]). That request isn't instant for a
-	 * network-sourced ingredient, so the *first* click transferring one still reports "missing
-	 * ingredients" the same as any real shortfall - a second click succeeds once it's arrived.
+	 * crafting table. [SimpleTransferHandler]'s own convenience `create(...)` factory hardcodes its
+	 * "inventory" (source) side to the player's own inventory with no way to redirect it to other
+	 * menu slots, so this implements the interface directly instead: [getInventorySlots] spans this
+	 * terminal's own `outputSlots` (the inbox) through the end of the player's own inventory -
+	 * [getInputSlots] (the grid) sits inside that same span too, which is harmless, not a double
+	 * count, since the grid starts every transfer empty. A click first asks the terminal to supply
+	 * anything missing that it can reach (storage, the inbox - see
+	 * [CraftingTerminalHookMenu.requestIngredientSupply]) before running the same fill
+	 * [SimpleTransferHandler.handle]'s own default implementation already provides. That supply
+	 * request isn't instant for a network-sourced ingredient, so the *first* click transferring one
+	 * still reports "missing ingredients" the same as any real shortfall - a second click succeeds
+	 * once it's arrived.
 	 */
 	override fun registerTransferHandlers(registry: TransferHandlerRegistry) {
-		val delegate = SimpleTransferHandler.create(
-			CraftingTerminalHookMenu::class.java,
-			CategoryIdentifier.of<Display>("minecraft", "plugins/crafting"),
-			SimpleTransferHandler.IntRange(CraftingTerminalHookMenu.GRID_SLOT_START, CraftingTerminalHookMenu.GRID_SLOT_START + CraftingTerminalHookMenu.GRID_SLOT_COUNT),
-		)
-		registry.register(object : TransferHandler {
-			override fun checkApplicable(context: TransferHandler.Context) = delegate.checkApplicable(context)
+		registry.register(object : SimpleTransferHandler {
+			override fun checkApplicable(context: TransferHandler.Context): TransferHandler.ApplicabilityResult =
+				if (context.menu is CraftingTerminalHookMenu && CATEGORY == context.display.categoryIdentifier && context.containerScreen != null) {
+					TransferHandler.ApplicabilityResult.createApplicable()
+				} else {
+					TransferHandler.ApplicabilityResult.createNotApplicable()
+				}
+
+			override fun getInputSlots(context: TransferHandler.Context): Iterable<SlotAccessor> {
+				val menu = context.menu ?: return emptyList()
+				val range = CraftingTerminalHookMenu.GRID_SLOT_START until CraftingTerminalHookMenu.GRID_SLOT_START + CraftingTerminalHookMenu.GRID_SLOT_COUNT
+				return range.map { SlotAccessor.fromSlot(menu.getSlot(it)) }
+			}
+
+			override fun getInventorySlots(context: TransferHandler.Context): Iterable<SlotAccessor> {
+				val menu = context.menu ?: return emptyList()
+				val end = CraftingTerminalHookMenu.INVENTORY_SLOT_START + CraftingTerminalHookMenu.INVENTORY_SLOT_COUNT
+				val range = CraftingTerminalHookMenu.OUTPUT_SLOT_START until end
+				return range.map { SlotAccessor.fromSlot(menu.getSlot(it)) }
+			}
 
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
 				(context.menu as? CraftingTerminalHookMenu)?.requestIngredientSupply(resourcesOf(context.display))
-				return delegate.handle(context)
+				return super.handle(context)
 			}
 		})
 	}
@@ -85,4 +105,7 @@ class BoilerplateREIPlugin : REIClientPlugin {
 		}
 	}
 
+	companion object {
+		private val CATEGORY = CategoryIdentifier.of<Display>("minecraft", "plugins/crafting")
+	}
 }

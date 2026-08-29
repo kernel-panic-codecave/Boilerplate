@@ -119,15 +119,15 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	}
 
 	/**
-	 * Server-side: for each of [resources] the requesting player doesn't already carry at least one
-	 * of, tries to put one into their own inventory - first from this terminal's own
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output] "inbox" (instant, same
-	 * tile), then by requesting more from whatever's reachable on the network
-	 * ([RequestFulfillment.request]), which only lands in the inbox for a *later* attempt since a
-	 * network delivery is never instant - a second call once it's arrived finds it there and
-	 * finishes the job. What a recipe viewer's own "transfer recipe" click (`compat/rei`/`compat/jei`/
-	 * `compat/emi`) fires before delegating to its own, otherwise unmodified, player-inventory-based
-	 * fill logic - see [net.kernelpanicsoft.boilerplate.network.RequestIngredientSupplyPacket].
+	 * Server-side: for each of [resources] the requesting player doesn't already carry, and this
+	 * terminal's own [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output] "inbox"
+	 * doesn't already hold, requests one from whatever's reachable on the network
+	 * ([RequestFulfillment.request]) - the exact same call [withdraw] makes for a Store-tab request,
+	 * landing in the inbox the same way. Not instant, so the *first* recipe-viewer transfer needing
+	 * a network-sourced ingredient still reports it missing the same as any real shortfall; a
+	 * second click succeeds once it's arrived - see [outputSlots]/[gridSlots]/[inventorySlots], the
+	 * real slots each recipe-viewer plugin (`compat/rei`/`compat/jei`/`compat/emi`) already draws
+	 * its own fill from, the inbox included.
 	 */
 	fun supplyIngredients(resources: List<ItemResource>) {
 		val level = level as? ServerLevel ?: return
@@ -135,13 +135,7 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 		for (resource in resources) {
 			if (resource.isBlank) continue
 			if (player.inventory.countItem(resource.cachedStack.item) > 0) continue
-
-			val fromInbox = state.output.extract(resource, 1L, false)
-			if (fromInbox > 0) {
-				val stack = resource.cachedStack.copyWithCount(fromInbox.toInt())
-				if (!player.inventory.add(stack)) player.drop(stack, false)
-				continue
-			}
+			if (state.output.extract(resource, 1L, true) > 0) continue
 			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, 1L), tile.blockPos, direction)
 		}
 	}
@@ -179,6 +173,9 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	 */
 	private val slotsReady: Boolean get() = slots.size >= TOTAL_SLOT_COUNT
 
+	/** [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output]'s own real, vanilla-[Slot]-backed cells - the terminal's "inbox," registered before `grid` - see [slotsReady]'s own readiness caveat. */
+	val outputSlots: List<Slot> get() = if (slotsReady) slots.subList(OUTPUT_SLOT_START, OUTPUT_SLOT_START + OUTPUT_SLOT_COUNT) else emptyList()
+
 	/** The real, vanilla-[Slot]-backed 3x3 grid cells - see [slotsReady]'s own readiness caveat. */
 	val gridSlots: List<Slot> get() = if (slotsReady) slots.subList(GRID_SLOT_START, GRID_SLOT_START + GRID_SLOT_COUNT) else emptyList()
 
@@ -188,8 +185,10 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	companion object {
 		private const val MAX_QUICK_CRAFT = 64
 
-		/** [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output]'s own slot count, registered before `grid` - the single source of truth every recipe-viewer plugin (`compat/rei`/`compat/jei`/`compat/emi`) keys its own slot ranges off instead of re-deriving them. */
-		const val GRID_SLOT_START = 9
+		/** [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output]'s own slot range, registered before `grid` - the single source of truth every recipe-viewer plugin (`compat/rei`/`compat/jei`/`compat/emi`) keys its own slot ranges off instead of re-deriving them. */
+		const val OUTPUT_SLOT_START = 0
+		const val OUTPUT_SLOT_COUNT = 9
+		const val GRID_SLOT_START = OUTPUT_SLOT_START + OUTPUT_SLOT_COUNT
 		const val GRID_SLOT_COUNT = 9
 		const val INVENTORY_SLOT_START = GRID_SLOT_START + GRID_SLOT_COUNT
 		const val INVENTORY_SLOT_COUNT = 36

@@ -46,11 +46,15 @@ class BoilerplateJEIPlugin : IModPlugin {
 	 * Lets JEI's own "transfer recipe" button fill [CraftingTerminalHookMenu.registerSlotHandlers]'s
 	 * real `grid` slots from a shown vanilla crafting recipe, exactly as it already does for a real
 	 * crafting table - [IRecipeTransferHandlerHelper.createUnregisteredRecipeTransferHandler]'s own
-	 * default logic ([basicInfo]), untouched, wrapped so a click first asks the terminal to top the
-	 * player's own inventory up with anything missing that it can reach (storage, its own inbox -
-	 * see [CraftingTerminalHookMenu.requestIngredientSupply]). That request isn't instant for a
-	 * network-sourced ingredient, so the *first* click transferring one still reports missing
-	 * ingredients the same as any real shortfall - a second click succeeds once it's arrived.
+	 * default logic ([basicInfo]), untouched, wrapped so a click first asks the terminal to supply
+	 * anything missing that it can reach (storage, its own inbox - see
+	 * [CraftingTerminalHookMenu.requestIngredientSupply]). [basicInfo]'s own "inventory" span runs
+	 * from [CraftingTerminalHookMenu.OUTPUT_SLOT_START] rather than
+	 * [CraftingTerminalHookMenu.INVENTORY_SLOT_START], so the inbox (and, harmlessly, the grid
+	 * itself) count as fill sources too, not just the player's own inventory. That supply request
+	 * isn't instant for a network-sourced ingredient, so the *first* click transferring one still
+	 * reports missing ingredients the same as any real shortfall - a second click succeeds once
+	 * it's arrived.
 	 */
 	override fun registerRecipeTransferHandlers(registration: IRecipeTransferRegistration) {
 		val helper = registration.transferHelper
@@ -60,8 +64,8 @@ class BoilerplateJEIPlugin : IModPlugin {
 			RecipeTypes.CRAFTING,
 			CraftingTerminalHookMenu.GRID_SLOT_START,
 			CraftingTerminalHookMenu.GRID_SLOT_COUNT,
-			CraftingTerminalHookMenu.INVENTORY_SLOT_START,
-			CraftingTerminalHookMenu.INVENTORY_SLOT_COUNT,
+			CraftingTerminalHookMenu.OUTPUT_SLOT_START,
+			CraftingTerminalHookMenu.INVENTORY_SLOT_START + CraftingTerminalHookMenu.INVENTORY_SLOT_COUNT - CraftingTerminalHookMenu.OUTPUT_SLOT_START,
 		)
 		val delegate = helper.createUnregisteredRecipeTransferHandler(basicInfo)
 		registration.addRecipeTransferHandler(

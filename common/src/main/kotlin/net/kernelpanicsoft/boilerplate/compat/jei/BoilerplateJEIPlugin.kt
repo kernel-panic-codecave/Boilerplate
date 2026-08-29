@@ -7,9 +7,11 @@ import mezz.jei.api.constants.RecipeTypes
 import mezz.jei.api.gui.builder.IClickableIngredientFactory
 import mezz.jei.api.gui.handlers.IGuiContainerHandler
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView
+import mezz.jei.api.recipe.RecipeType
 import mezz.jei.api.recipe.transfer.IRecipeTransferError
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandler
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper
+import mezz.jei.api.recipe.transfer.IRecipeTransferInfo
 import mezz.jei.api.registration.IGuiHandlerRegistration
 import mezz.jei.api.registration.IRecipeTransferRegistration
 import mezz.jei.api.runtime.IClickableIngredient
@@ -22,6 +24,7 @@ import net.minecraft.client.renderer.Rect2i
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.MenuType
+import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.crafting.CraftingRecipe
 import net.minecraft.world.item.crafting.RecipeHolder
 import java.util.Optional
@@ -47,28 +50,41 @@ class BoilerplateJEIPlugin : IModPlugin {
 	 * Lets JEI's own "transfer recipe" button fill [CraftingTerminalHookMenu.registerSlotHandlers]'s
 	 * real `grid` slots from a shown vanilla crafting recipe, exactly as it already does for a real
 	 * crafting table - [IRecipeTransferHandlerHelper.createUnregisteredRecipeTransferHandler]'s own
-	 * default logic ([basicInfo]), untouched, wrapped so a click first asks the terminal to supply
+	 * default logic ([transferInfo]), untouched, wrapped so a click first asks the terminal to supply
 	 * anything missing that it can reach (storage, its own inbox - see
-	 * [CraftingTerminalHookMenu.requestIngredientSupply]). [basicInfo]'s own "inventory" span runs
-	 * from [CraftingTerminalHookMenu.OUTPUT_SLOT_START] rather than
-	 * [CraftingTerminalHookMenu.INVENTORY_SLOT_START], so the inbox (and, harmlessly, the grid
-	 * itself) count as fill sources too, not just the player's own inventory. That supply request
-	 * isn't instant for a network-sourced ingredient, so the *first* click transferring one still
-	 * reports missing ingredients the same as any real shortfall - a second click succeeds once
-	 * it's arrived.
+	 * [CraftingTerminalHookMenu.requestIngredientSupply]).
+	 *
+	 * [transferInfo] is a hand-written [IRecipeTransferInfo] rather than the simpler
+	 * [IRecipeTransferHandlerHelper.createBasicRecipeTransferInfo] convenience (which only accepts
+	 * one contiguous "inventory" range) precisely so its [IRecipeTransferInfo.getInventorySlots] can
+	 * be `outputSlots + inventorySlots` - the inbox and the player's own inventory, deliberately
+	 * excluding [CraftingTerminalHookMenu.gridSlots] even though that leaves output/grid/inventory
+	 * non-contiguous. [RecipeTransferUtil.validateSlots][mezz.jei.common.transfer.RecipeTransferUtil.validateSlots]
+	 * (confirmed against its real source) hard-rejects any overlap between "inventory" and "crafting"
+	 * slots outright - the earlier version's inventory span ran from
+	 * [CraftingTerminalHookMenu.OUTPUT_SLOT_START] through the end of the player's own inventory,
+	 * which included the grid range too, so every transfer here was silently failing validation
+	 * before ever reaching a real move. [BasicRecipeTransferHandler][mezz.jei.library.transfer.BasicRecipeTransferHandler]'s
+	 * own `getInventoryState` already folds a crafting slot's *existing* contents into the available
+	 * pool on its own, so nothing here needs the grid listed as a source to recognize "already
+	 * correctly placed" - that's handled without our help.
+	 *
+	 * That supply request isn't instant for a network-sourced ingredient, so the *first* click
+	 * transferring one still reports missing ingredients the same as any real shortfall - a second
+	 * click succeeds once it's arrived.
 	 */
 	override fun registerRecipeTransferHandlers(registration: IRecipeTransferRegistration) {
 		val helper = registration.transferHelper
-		val basicInfo = helper.createBasicRecipeTransferInfo(
-			CraftingTerminalHookMenu::class.java,
-			GuiRegistry.CraftingTerminalHook,
-			RecipeTypes.CRAFTING,
-			CraftingTerminalHookMenu.GRID_SLOT_START,
-			CraftingTerminalHookMenu.GRID_SLOT_COUNT,
-			CraftingTerminalHookMenu.OUTPUT_SLOT_START,
-			CraftingTerminalHookMenu.INVENTORY_SLOT_START + CraftingTerminalHookMenu.INVENTORY_SLOT_COUNT - CraftingTerminalHookMenu.OUTPUT_SLOT_START,
-		)
-		val delegate = helper.createUnregisteredRecipeTransferHandler(basicInfo)
+		val transferInfo = object : IRecipeTransferInfo<CraftingTerminalHookMenu, RecipeHolder<CraftingRecipe>> {
+			override fun getContainerClass() = CraftingTerminalHookMenu::class.java
+			override fun getMenuType(): Optional<MenuType<CraftingTerminalHookMenu>> = Optional.of(GuiRegistry.CraftingTerminalHook)
+			override fun getRecipeType(): RecipeType<RecipeHolder<CraftingRecipe>> = RecipeTypes.CRAFTING
+			override fun canHandle(container: CraftingTerminalHookMenu, recipe: RecipeHolder<CraftingRecipe>) = true
+			override fun getRecipeSlots(container: CraftingTerminalHookMenu, recipe: RecipeHolder<CraftingRecipe>): List<Slot> = container.gridSlots
+			override fun getInventorySlots(container: CraftingTerminalHookMenu, recipe: RecipeHolder<CraftingRecipe>): List<Slot> =
+				container.outputSlots + container.inventorySlots
+		}
+		val delegate = helper.createUnregisteredRecipeTransferHandler(transferInfo)
 		registration.addRecipeTransferHandler(
 			object : IRecipeTransferHandler<CraftingTerminalHookMenu, RecipeHolder<CraftingRecipe>> {
 				private var lastRequestedTargets: Map<Int, ItemResource>? = null

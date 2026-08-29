@@ -50,7 +50,21 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
 				private var lastRequestedTargets: Map<Int, ItemResource>? = null
 
-				override fun getInputSources(handler: CraftingTerminalHookMenu): List<Slot> = handler.outputSlots + handler.gridSlots + handler.inventorySlots
+				/**
+				 * Deliberately excludes [CraftingTerminalHookMenu.gridSlots] - EMI's own default
+				 * [craft] ([EmiRecipeFiller.clientFill], confirmed against its real source) always
+				 * clears every crafting slot *first* (a real simulated `ClickType.THROW` click, ejecting
+				 * whatever's there) before refilling from these sources, and its refill step explicitly
+				 * refuses to treat a crafting slot as its own source (`if (slots.contains(input))
+				 * continue`) - so a grid cell already correctly filled (by a prior
+				 * [CraftingTerminalHookMenu.supplyIngredients] grant, say) would get thrown away here
+				 * and could never be replaced from itself, only from elsewhere; if nothing spare exists
+				 * outside the grid the fill just fails, but the original grid contents are already gone.
+				 * EMI's own intended mechanism for "the grid already has some/all of this recipe" is
+				 * [dev.emi.emi.registry.EmiRecipeFiller.batchesAlreadyPresent] instead, which reads
+				 * [getCraftingSlots] directly - no need to *also* list it as an input source.
+				 */
+				override fun getInputSources(handler: CraftingTerminalHookMenu): List<Slot> = handler.outputSlots + handler.inventorySlots
 				override fun getCraftingSlots(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots
 				override fun supportsRecipe(recipe: EmiRecipe): Boolean = recipe.category == VanillaEmiRecipeCategories.CRAFTING
 
@@ -80,46 +94,26 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 
 				/**
 				 * Only delegates to [StandardRecipeHandler]'s own default fill-then-craft logic
-				 * ([super.craft]) once every targeted ingredient is already sitting in a real slot
-				 * [handler] can see client-side ([availableCount]) - never on [canCraft]'s own
-				 * optimistic say-so, which (being a snapshot, not a reservation) isn't something safe
-				 * to actually consume against. [super.craft] trusts a prior `true` [canCraft] answer as
-				 * vouched-for and proceeds straight to moving/consuming ingredients without re-verifying -
-				 * calling it while a targeted cell is still genuinely empty risks it partially consuming
-				 * whatever *is* present without ever producing a result, silently destroying those real
-				 * ingredients. So a still-missing ingredient here instead only asks the terminal to
-				 * supply it ([CraftingTerminalHookMenu.requestIngredientSupply]) and reports failure for
-				 * *this* click - a second click succeeds once that supply has actually landed and synced
-				 * back to this same slot state.
+				 * ([super.craft]) once [super.canCraft] - re-checked here, freshly, not trusted from
+				 * [canCraft]'s own outer optimistic answer - genuinely agrees everything's already
+				 * available. That re-check is exactly the same [EmiPlayerInventory.canCraft] quantity-
+				 * aware, all-or-nothing computation [super.craft]'s own [EmiRecipeFiller.getStacks] relies
+				 * on internally, so trusting it here doesn't risk the mismatch [getInputSources]'s own
+				 * KDoc describes - safe now that [getCraftingSlots] is excluded from [getInputSources].
+				 * Still genuinely short (only [canCraft]'s own optimistic reachability check passed,
+				 * not this stricter one) instead only asks the terminal to supply what's missing
+				 * ([CraftingTerminalHookMenu.requestIngredientSupply]) and reports failure for *this*
+				 * click - a second click succeeds once that supply has actually landed and synced back.
 				 */
 				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
-					val handler = context.screenHandler
+					if (super.canCraft(recipe, context)) return super.craft(recipe, context)
 					val targets = targetsOf(recipe)
-					val needed = targets.values.groupingBy { it }.eachCount()
-					val missing = targets.filterValues { resource -> availableCount(handler, resource) < (needed[resource] ?: 0) }
-					if (missing.isNotEmpty()) {
-						if (missing != lastRequestedTargets) {
-							lastRequestedTargets = missing
-							handler.requestIngredientSupply(missing)
-						}
-						return false
+					if (targets.isNotEmpty() && targets != lastRequestedTargets) {
+						lastRequestedTargets = targets
+						context.screenHandler.requestIngredientSupply(targets)
 					}
-					return super.craft(recipe, context)
+					return false
 				}
-
-				/**
-				 * How many of [resource] already sit in a real slot [handler] can see - the client's
-				 * own synced state, no server round trip - summed across the same three slot groups
-				 * [getInputSources] draws from. Quantity-aware, not just presence: [targetsOf] can map
-				 * several grid cells to the same [resource] (a recipe needing more than one plank, say),
-				 * and one unit sitting somewhere doesn't make it "available" for every cell that needs
-				 * it.
-				 */
-				private fun availableCount(handler: CraftingTerminalHookMenu, resource: ItemResource): Int =
-					(handler.outputSlots + handler.gridSlots + handler.inventorySlots).sumOf { slot ->
-						val stack = slot.item
-						if (!stack.isEmpty && ItemResource.of(stack) == resource) stack.count else 0
-					}
 			},
 		)
 

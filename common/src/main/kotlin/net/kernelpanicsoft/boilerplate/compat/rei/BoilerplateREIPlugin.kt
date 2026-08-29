@@ -43,10 +43,16 @@ class BoilerplateREIPlugin : REIClientPlugin {
 	 * real `grid` slots from a shown vanilla crafting recipe, exactly as it already does for a real
 	 * crafting table. [SimpleTransferHandler]'s own convenience `create(...)` factory hardcodes its
 	 * "inventory" (source) side to the player's own inventory with no way to redirect it to other
-	 * menu slots, so this implements the interface directly instead: [getInventorySlots] spans this
-	 * terminal's own `outputSlots` (the inbox) through the end of the player's own inventory -
-	 * [getInputSlots] (the grid) sits inside that same span too, which is harmless, not a double
-	 * count, since the grid starts every transfer empty. A click first asks the terminal to supply
+	 * menu slots, so this implements the interface directly instead: [getInventorySlots] is this
+	 * terminal's own `outputSlots` (the inbox) plus the player's own inventory, deliberately excluding
+	 * [getInputSlots] (the grid itself) - JEI's own equivalent hard-rejects that exact overlap outright
+	 * (see [net.kernelpanicsoft.boilerplate.compat.jei.BoilerplateJEIPlugin]'s own KDoc for the
+	 * confirmed version of this), and EMI's own default fill unconditionally drops whatever's already
+	 * in the grid before refilling it, unable to re-source from the very slot it just cleared (see
+	 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own KDoc) - silently
+	 * destroying it if nothing spare exists elsewhere. Nothing here needs the grid listed as its own
+	 * source either way: a cell already correctly filled just needs leaving alone, not re-supplied
+	 * from itself. A click first asks the terminal to supply
 	 * anything missing that it can reach (storage, the inbox - see
 	 * [CraftingTerminalHookMenu.requestIngredientSupply]) before running the same fill
 	 * [SimpleTransferHandler.handle]'s own default implementation already provides. That supply
@@ -66,16 +72,13 @@ class BoilerplateREIPlugin : REIClientPlugin {
 				}
 
 			override fun getInputSlots(context: TransferHandler.Context): Iterable<SlotAccessor> {
-				val menu = context.menu ?: return emptyList()
-				val range = CraftingTerminalHookMenu.GRID_SLOT_START until CraftingTerminalHookMenu.GRID_SLOT_START + CraftingTerminalHookMenu.GRID_SLOT_COUNT
-				return range.map { SlotAccessor.fromSlot(menu.getSlot(it)) }
+				val menu = context.menu as? CraftingTerminalHookMenu ?: return emptyList()
+				return menu.gridSlots.map { SlotAccessor.fromSlot(it) }
 			}
 
 			override fun getInventorySlots(context: TransferHandler.Context): Iterable<SlotAccessor> {
-				val menu = context.menu ?: return emptyList()
-				val end = CraftingTerminalHookMenu.INVENTORY_SLOT_START + CraftingTerminalHookMenu.INVENTORY_SLOT_COUNT
-				val range = CraftingTerminalHookMenu.OUTPUT_SLOT_START until end
-				return range.map { SlotAccessor.fromSlot(menu.getSlot(it)) }
+				val menu = context.menu as? CraftingTerminalHookMenu ?: return emptyList()
+				return (menu.outputSlots + menu.inventorySlots).map { SlotAccessor.fromSlot(it) }
 			}
 
 			/**

@@ -94,6 +94,20 @@ dependencies {
 	modCompileOnly(libs.archie.datagen.neoforge)
 	modLocalRuntime(libs.archie.datagen.neoforge)
 
+	// REI's own plugin class lives in `common` (its api is loader-agnostic) - only real REI
+	// presence for local dev testing is needed here.
+	modLocalRuntime(libs.rei.neoforge)
+
+	// JEI ships no shared loader-agnostic api artifact (unlike REI) - BoilerplateJEIPlugin lives
+	// directly in this module, compiled against NeoForge's own JEI jar.
+	modCompileOnly(libs.jei.neoforge.api)
+	modLocalRuntime(libs.jei.neoforge)
+
+	// Same shape as JEI: EMI's api is only published as a classifier on its per-loader jar, no
+	// shared common artifact.
+	modCompileOnly("${libs.emi.neoforge.get()}:api")
+	modLocalRuntime(libs.emi.neoforge)
+
 	runtimeLibrary(libs.okio)
 	runtimeLibrary(libs.androidx.annotation)
 	runtimeLibrary(libs.androidx.collection)

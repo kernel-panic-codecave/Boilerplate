@@ -28,6 +28,10 @@ flywheel = "1.0.6"
 cloth-config = "15.0.140"
 cloth-config-range = "10.0"
 
+rei = "16.0.788"
+emi = "1.1.24+1.21.1"
+jei = "19.44.0.413"
+
 compose = "1.7.1"
 androidx-annotation = "1.8.0"
 androidx-collection = "1.4.0"
@@ -72,6 +76,18 @@ flywheel-neoforge = { module = "dev.engine-room.flywheel:flywheel-neoforge-1.21.
 
 clothConfig-fabric = { module = "me.shedaniel.cloth:cloth-config-fabric", version.ref = "cloth-config" }
 clothConfig-neoforge = { module = "me.shedaniel.cloth:cloth-config-neoforge", version.ref = "cloth-config" }
+
+rei-common = { module = "me.shedaniel:RoughlyEnoughItems-api", version.ref = "rei" }
+rei-fabric = { module = "me.shedaniel:RoughlyEnoughItems-fabric", version.ref = "rei" }
+rei-neoforge = { module = "me.shedaniel:RoughlyEnoughItems-neoforge", version.ref = "rei" }
+
+emi-fabric = { module = "dev.emi:emi-fabric", version.ref = "emi" }
+emi-neoforge = { module = "dev.emi:emi-neoforge", version.ref = "emi" }
+
+jei-fabric-api = { module = "mezz.jei:jei-1.21.1-fabric-api", version.ref = "jei" }
+jei-fabric = { module = "mezz.jei:jei-1.21.1-fabric", version.ref = "jei" }
+jei-neoforge-api = { module = "mezz.jei:jei-1.21.1-neoforge-api", version.ref = "jei" }
+jei-neoforge = { module = "mezz.jei:jei-1.21.1-neoforge", version.ref = "jei" }
 
 androidx-annotation = { module = "androidx.annotation:annotation-jvm", version.ref = "androidx-annotation" }
 androidx-collection = { module = "androidx.collection:collection-jvm", version.ref = "androidx-collection" }

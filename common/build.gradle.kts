@@ -40,6 +40,11 @@ dependencies {
 	modCompileOnly(libs.archie.gametest.common)
 	modCompileOnly(libs.archie.datagen.common)
 
+	// REI's api artifact is loader-agnostic, unlike JEI/EMI (see fabric/neoforge build.gradle.kts) -
+	// the plugin class and its registration both live here; only the service-loader discovery hook
+	// itself is a one-line per-loader shim.
+	modCompileOnly(libs.rei.common)
+
 	"modTestImplementation"(libs.archie.gametest.common)
 	testImplementation(libs.junit.jupiter.api)
 	testImplementation(kotlin("reflect"))

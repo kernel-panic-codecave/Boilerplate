@@ -68,6 +68,7 @@ subprojects {
 		maven("https://maven.fabricmc.net/")
 		maven("https://maven.neoforged.net/releases/")
 		maven("https://maven.terraformersmc.com/releases/")
+		maven("https://maven.blamejared.com/")
 		maven("https://repo.nyon.dev/releases")
 		maven("https://maven.isxander.dev/releases") {
 			name = "Xander Maven"

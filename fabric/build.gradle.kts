@@ -85,6 +85,20 @@ dependencies {
 	modCompileOnly(libs.archie.datagen.fabric)
 	modLocalRuntime(libs.archie.datagen.fabric)
 
+	// REI's own plugin class lives in `common` (its api is loader-agnostic) - only real REI
+	// presence for local dev testing is needed here.
+	modLocalRuntime(libs.rei.fabric)
+
+	// JEI ships no shared loader-agnostic api artifact (unlike REI) - BoilerplateJEIPlugin lives
+	// directly in this module, compiled against Fabric's own JEI jar.
+	modCompileOnly(libs.jei.fabric.api)
+	modLocalRuntime(libs.jei.fabric)
+
+	// Same shape as JEI: EMI's api is only published as a classifier on its per-loader jar, no
+	// shared common artifact.
+	modCompileOnly("${libs.emi.fabric.get()}:api")
+	modLocalRuntime(libs.emi.fabric)
+
 	modLocalRuntime("curse.maven:nbtedit-678133:6125442")
 
 	"common"(project(":boilerplate-common", "namedElements")) { isTransitive = false }

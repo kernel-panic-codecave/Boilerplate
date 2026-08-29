@@ -43,6 +43,12 @@
         "adapter": "kotlin",
         "value": "net.kernelpanicsoft.boilerplate.compat.rei.BoilerplateREIPlugin"
       }
+    ],
+    "emi": [
+      {
+        "adapter": "kotlin",
+        "value": "net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin"
+      }
     ]
   },
   "depends": {

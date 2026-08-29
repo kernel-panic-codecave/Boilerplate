@@ -89,9 +89,8 @@ dependencies {
 	// presence for local dev testing is needed here.
 	modLocalRuntime(libs.rei.fabric)
 
-	// JEI ships no shared loader-agnostic api artifact (unlike REI) - BoilerplateJEIPlugin lives
-	// directly in this module, compiled against Fabric's own JEI jar.
-	modCompileOnly(libs.jei.fabric.api)
+	// BoilerplateJEIPlugin lives in `common`, compiled against JEI's own shared common-api artifact
+	// - only real JEI presence for local dev testing is needed here.
 	modLocalRuntime(libs.jei.fabric)
 
 	// Same shape as JEI: EMI's api is only published as a classifier on its per-loader jar, no

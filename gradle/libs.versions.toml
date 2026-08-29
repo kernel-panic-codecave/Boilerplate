@@ -84,9 +84,8 @@ rei-neoforge = { module = "me.shedaniel:RoughlyEnoughItems-neoforge", version.re
 emi-fabric = { module = "dev.emi:emi-fabric", version.ref = "emi" }
 emi-neoforge = { module = "dev.emi:emi-neoforge", version.ref = "emi" }
 
-jei-fabric-api = { module = "mezz.jei:jei-1.21.1-fabric-api", version.ref = "jei" }
+jei-common-api = { module = "mezz.jei:jei-1.21.1-common-api", version.ref = "jei" }
 jei-fabric = { module = "mezz.jei:jei-1.21.1-fabric", version.ref = "jei" }
-jei-neoforge-api = { module = "mezz.jei:jei-1.21.1-neoforge-api", version.ref = "jei" }
 jei-neoforge = { module = "mezz.jei:jei-1.21.1-neoforge", version.ref = "jei" }
 
 androidx-annotation = { module = "androidx.annotation:annotation-jvm", version.ref = "androidx-annotation" }

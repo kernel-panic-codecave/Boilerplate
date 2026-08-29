@@ -40,10 +40,12 @@ dependencies {
 	modCompileOnly(libs.archie.gametest.common)
 	modCompileOnly(libs.archie.datagen.common)
 
-	// REI's api artifact is loader-agnostic, unlike JEI/EMI (see fabric/neoforge build.gradle.kts) -
-	// the plugin class and its registration both live here; only the service-loader discovery hook
-	// itself is a one-line per-loader shim.
+	// REI's and JEI's api artifacts are both loader-agnostic, unlike EMI (see fabric/neoforge
+	// build.gradle.kts, which has no shared common artifact to compile against) - both plugin
+	// classes live here in full. REI needs a one-line per-loader discovery shim (service-loader
+	// registration); JEI needs none at all - it discovers @JeiPlugin-annotated classes itself.
 	modCompileOnly(libs.rei.common)
+	modCompileOnly(libs.jei.common.api)
 
 	"modTestImplementation"(libs.archie.gametest.common)
 	testImplementation(libs.junit.jupiter.api)

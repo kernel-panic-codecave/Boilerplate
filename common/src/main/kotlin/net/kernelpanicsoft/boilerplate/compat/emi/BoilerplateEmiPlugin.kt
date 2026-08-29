@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.compat.emi
 
+import com.mojang.blaze3d.systems.RenderSystem
 import dev.emi.emi.api.EmiPlugin
 import dev.emi.emi.api.EmiRegistry
 import dev.emi.emi.api.EmiStackProvider
@@ -7,15 +8,20 @@ import dev.emi.emi.api.recipe.EmiRecipe
 import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories
 import dev.emi.emi.api.recipe.handler.EmiCraftContext
 import dev.emi.emi.api.recipe.handler.StandardRecipeHandler
+import dev.emi.emi.api.stack.EmiIngredient
 import dev.emi.emi.api.stack.EmiStack
 import dev.emi.emi.api.stack.EmiStackInteraction
 import dev.emi.emi.api.widget.Bounds
+import dev.emi.emi.api.widget.SlotWidget
+import dev.emi.emi.api.widget.Widget
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
 import net.kernelpanicsoft.boilerplate.util.itemStack
+import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.world.inventory.Slot
+import java.util.IdentityHashMap
 
 /**
  * Unlike REI/JEI, EMI ships no *published* loader-agnostic api artifact under its own main
@@ -83,7 +89,7 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * real source) - the real, mutating sufficiency check happens there instead. Must never
 				 * fire [CraftingTerminalHookMenu.requestIngredientSupply] itself - this is evaluated
 				 * every single frame a recipe view is open, not just on a click, so any real side effect
-				 * here (pulling stock, animating a ghost item) would fire from the player merely
+				 * here (pulling real stock from storage) would fire from the player merely
 				 * *looking* at a recipe.
 				 */
 				override fun canCraft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
@@ -114,6 +120,45 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 					}
 					return false
 				}
+
+				/**
+				 * Overrides [StandardRecipeHandler]'s own default (`renderMissing`, confirmed against
+				 * its real source) rather than layering on top of it - that default paints every missing
+				 * ingredient the same flat red regardless of *why* it's missing, which this terminal can
+				 * do better: matched against [CraftingTerminalHookMenu.results] (this terminal's own
+				 * already-synced "what's reachable" snapshot - a request would actually fetch it) for
+				 * orange, or [CraftingTerminalHookMenu.craftableResources] (a known pattern exists
+				 * somewhere reachable) for blue, falling back to the original red only when neither
+				 * applies - genuinely not obtainable right now. Rebuilds the same identity-keyed
+				 * availability map [StandardRecipeHandler]'s own private `getAvailable` does (not
+				 * reachable from here - a Java interface's `private static` method), since a
+				 * [SlotWidget]'s own [EmiIngredient] is only reliably matched back to a specific recipe
+				 * input by reference identity, not structural equality.
+				 */
+				override fun render(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>, widgets: List<Widget>, draw: GuiGraphics) {
+					val inputs = recipe.inputs
+					val availability = context.inventory.getCraftAvailability(recipe)
+					if (availability.size != inputs.size) return
+					val available = IdentityHashMap<EmiIngredient, Boolean>()
+					for (i in inputs.indices) available[inputs[i]] = availability[i]
+
+					val menu = context.screenHandler
+					RenderSystem.enableDepthTest()
+					for (widget in widgets) {
+						if (widget !is SlotWidget || widget.recipe != null) continue
+						val stack = widget.stack
+						if (stack.isEmpty || available[stack] != false) continue
+
+						val resource = stack.emiStacks.firstOrNull { !it.isEmpty }?.itemStack?.takeUnless { it.isEmpty }?.let { ItemResource.of(it) }
+						val color = when {
+							resource != null && menu.results.any { it.resource == resource } -> COLOR_REQUESTABLE
+							resource != null && menu.craftableResources.contains(resource) -> COLOR_CRAFTABLE
+							else -> COLOR_MISSING
+						}
+						val bounds = widget.bounds
+						draw.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), color)
+					}
+				}
 			},
 		)
 
@@ -140,4 +185,12 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				?.let { index to ItemResource.of(it) }
 		}.toMap()
 
+	companion object {
+		/** Genuinely not obtainable right now - not local, not reachable, no known pattern. Matches [StandardRecipeHandler]'s own default `renderMissing` color exactly. */
+		private const val COLOR_MISSING = 0x44FF0000
+		/** Not local, but present somewhere reachable - a request would actually fetch it. */
+		private const val COLOR_REQUESTABLE = 0x44FFA500
+		/** Not local and not reachable, but a known pattern could produce it somewhere reachable. */
+		private const val COLOR_CRAFTABLE = 0x440080FF
+	}
 }

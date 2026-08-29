@@ -83,6 +83,7 @@ rei-neoforge = { module = "me.shedaniel:RoughlyEnoughItems-neoforge", version.re
 
 emi-fabric = { module = "dev.emi:emi-fabric", version.ref = "emi" }
 emi-neoforge = { module = "dev.emi:emi-neoforge", version.ref = "emi" }
+emi-xplat = { module = "dev.emi:emi-xplat-intermediary", version.ref = "emi" }
 
 jei-common-api = { module = "mezz.jei:jei-1.21.1-common-api", version.ref = "jei" }
 jei-fabric = { module = "mezz.jei:jei-1.21.1-fabric", version.ref = "jei" }

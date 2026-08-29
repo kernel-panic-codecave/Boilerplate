@@ -1,0 +1,86 @@
+package net.kernelpanicsoft.boilerplate.compat.emi
+
+import dev.emi.emi.api.EmiEntrypoint
+import dev.emi.emi.api.EmiExclusionArea
+import dev.emi.emi.api.EmiPlugin
+import dev.emi.emi.api.EmiRegistry
+import dev.emi.emi.api.EmiStackProvider
+import dev.emi.emi.api.recipe.EmiRecipe
+import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories
+import dev.emi.emi.api.recipe.handler.EmiCraftContext
+import dev.emi.emi.api.recipe.handler.StandardRecipeHandler
+import dev.emi.emi.api.stack.EmiStack
+import dev.emi.emi.api.stack.EmiStackInteraction
+import dev.emi.emi.api.widget.Bounds
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
+import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
+import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
+import net.kernelpanicsoft.boilerplate.util.itemStack
+import net.minecraft.world.inventory.Slot
+
+/**
+ * Unlike REI/JEI, EMI ships no *published* loader-agnostic api artifact under its own main
+ * coordinates (`emi-fabric`/`emi-neoforge` each bundle their own copy of the same shared source,
+ * confirmed by diffing their class lists - only two loader-specific ingredient-wrapper classes
+ * differ) - but it does separately publish that shared source as its own intermediary-mapped
+ * artifact, `dev.emi:emi-xplat-intermediary` (see `docs/design/m6-polish-parity.md`), which
+ * Architectury Loom remaps per real platform exactly like Archie's own published modules. So this
+ * plugin lives here in `common` too, same as [net.kernelpanicsoft.boilerplate.compat.rei.BoilerplateREIPlugin]/
+ * [net.kernelpanicsoft.boilerplate.compat.jei.BoilerplateJEIPlugin] - no per-loader duplication
+ * needed after all. Discovery still differs per loader, though: [EmiEntrypoint] (present
+ * unconditionally on this class) is what NeoForge's own annotation scanning looks for; Fabric
+ * instead needs the `"emi"` entrypoint declared in `fabric.mod.json` pointing at this same class.
+ * Neither mechanism is scanned by the other loader's own EMI implementation, so having both here
+ * is safe.
+ *
+ * Same scope as [net.kernelpanicsoft.boilerplate.compat.rei.BoilerplateREIPlugin]/
+ * [net.kernelpanicsoft.boilerplate.compat.jei.BoilerplateJEIPlugin] - only the Crafting Terminal's
+ * manual 3x3 grid, the one part of either terminal screen that's both real-vanilla-[Slot]-backed
+ * and matches a genuine registered vanilla `CraftingRecipe`. See those classes' KDoc for what's
+ * deliberately out of scope.
+ */
+@EmiEntrypoint
+class BoilerplateEmiPlugin : EmiPlugin {
+	override fun register(registry: EmiRegistry) {
+		registry.addRecipeHandler(
+			GuiRegistry.CraftingTerminalHook,
+			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
+				override fun getInputSources(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots + handler.inventorySlots
+				override fun getCraftingSlots(handler: CraftingTerminalHookMenu): List<Slot> = handler.gridSlots
+				override fun supportsRecipe(recipe: EmiRecipe): Boolean = recipe.category == VanillaEmiRecipeCategories.CRAFTING
+
+				/**
+				 * Asks the terminal to top the player's own inventory up with anything [recipe] needs
+				 * that it can reach (storage, its own inbox - see
+				 * [CraftingTerminalHookMenu.requestIngredientSupply]) before running the default
+				 * player-inventory-based fill unchanged. That request isn't instant for a
+				 * network-sourced ingredient, so the *first* click still reports missing ingredients
+				 * the same as any real shortfall - a second click succeeds once it's arrived.
+				 */
+				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
+					val resources = resourcesOf(recipe)
+					if (resources.isNotEmpty()) context.screenHandler.requestIngredientSupply(resources)
+					return super.craft(recipe, context)
+				}
+			},
+		)
+
+		registry.addExclusionArea(AbstractTerminalHookScreen::class.java) { screen: AbstractTerminalHookScreen<*>, consumer ->
+			consumer.accept(Bounds(screen.screenLeft, screen.screenTop, screen.screenWidth, screen.screenHeight))
+		}
+
+		registry.addStackProvider(AbstractTerminalHookScreen::class.java) { screen: AbstractTerminalHookScreen<*>, _, _ ->
+			screen.hoveredStack?.let { EmiStackInteraction(EmiStack.of(it.itemStack)) } ?: EmiStackInteraction.EMPTY
+		}
+	}
+
+	/** One representative [ItemResource] per ingredient of [recipe] - whichever the default fill logic would itself reach for first, since that's what's actually missing when it can't find one. */
+	private fun resourcesOf(recipe: EmiRecipe): List<ItemResource> =
+		recipe.inputs.mapNotNull { ingredient ->
+			ingredient.emiStacks.firstOrNull { !it.isEmpty }
+				?.itemStack?.takeUnless { it.isEmpty }
+				?.let { ItemResource.of(it) }
+		}
+
+}

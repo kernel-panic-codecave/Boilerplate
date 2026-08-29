@@ -98,7 +98,7 @@ class BoilerplateJEIPlugin : IModPlugin {
 				 * transfer button's own enabled/tooltip state), then again with `doTransfer = true` on
 				 * an actual click. Gated on [doTransfer] deliberately - firing
 				 * [CraftingTerminalHookMenu.requestIngredientSupply] from the dry run would pull real
-				 * stock (and animate a ghost item through the pipe) just from JEI re-evaluating the
+				 * stock from storage just from JEI re-evaluating the
 				 * button's own state, never an actual click. Unlike
 				 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own `canCraft`/
 				 * `craft` pair, [delegate] doesn't trust this dry run's answer as vouched-for - both

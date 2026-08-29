@@ -33,13 +33,6 @@ import net.minecraft.world.item.DyeColor
  * [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter.findRoute], or a target that was
  * never ambiguous - a single rack, a chest), which keeps today's "whichever face the topology
  * happens to land on" resolution exactly as it was.
- *
- * [ghost] marks a purely cosmetic trip: [net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity.tick]
- * still relays it hop-by-hop exactly like a real item, but its own final hop just vanishes it
- * instead of ever calling [earth.terrarium.common_storage_lib.storage.base.CommonStorage.insert] -
- * see [net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment.requestInstant], which is
- * what actually delivers the resource (synchronously, on the spot) and only spawns this to *look*
- * like the delivery is still traveling.
  */
 @Serializable
 data class TravelingItem(
@@ -49,7 +42,6 @@ data class TravelingItem(
 	var path: List<SBlockPos> = emptyList(),
 	val color: SDyeColor? = null,
 	val targetFace: SDirection? = null,
-	val ghost: Boolean = false,
 )
 
 typealias SDirection = @Serializable(with = DirectionSerializer::class) Direction

@@ -104,18 +104,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					hopped = true
 					continue
 				}
-				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace, item.ghost)
-				items.removeAt(index)
-				hopped = true
-				continue
-			}
-
-			// A ghost's own resource was already delivered synchronously by whatever spawned it
-			// (see RequestFulfillment.requestInstant) - this final hop is purely cosmetic, so it
-			// vanishes here instead of ever touching the destination's own storage. No jam either:
-			// a ghost reaching a dead end (the destination's own capability genuinely missing, say)
-			// isn't a real delivery failure to fall back to dropping an item entity for.
-			if (item.ghost) {
+				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace)
 				items.removeAt(index)
 				hopped = true
 				continue

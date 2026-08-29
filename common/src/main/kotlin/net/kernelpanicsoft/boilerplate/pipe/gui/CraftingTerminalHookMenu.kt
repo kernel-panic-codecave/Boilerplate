@@ -123,24 +123,10 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	 * [CraftingTerminalHookState.grid] itself, the exact cell a recipe-viewer plugin
 	 * (`compat/rei`/`compat/jei`/`compat/emi`) worked out that ingredient belongs in - that the
 	 * requesting player doesn't already carry, this terminal's own inbox doesn't already hold, and
-	 * that cell isn't already occupied by: tries a reachable provider hook first, granting straight
-	 * into this terminal's own inbox ([TerminalHookState.output]) the instant one can supply it
-	 * ([RequestFulfillment.requestInstant]) - a purely cosmetic ghost item (see
-	 * [net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.ghost]) still does the *look* of
-	 * traveling the pipe on its own. Falls back to a normal, non-instant [RequestFulfillment.request]
-	 * (also landing in the inbox, same as [withdraw]) when no provider has it - a warehouse
-	 * retrieval's own gantry job is a real, pressure-gated physical action, not a wait this skips.
-	 * Either way this always lands in the inbox, never straight into [index] itself: every
-	 * recipe-viewer plugin's own (otherwise unmodified) fill logic clears and rebuilds
-	 * [CraftingTerminalHookState.grid] from its own declared sources on an actual commit - EMI's via
-	 * a real simulated `ClickType.THROW` click, confirmed against its own source - so anything landed
-	 * directly in a grid cell ahead of that commit would get thrown away with no way back once
-	 * cleared, since the grid itself is deliberately excluded as one of those sources (see
-	 * `docs/design/m6-polish-parity.md`). The inbox has no such conflict - every viewer's own fill
-	 * logic already treats it as a normal, safe pull source - so a click still always needs to
-	 * reach that viewer's real commit to actually move the ingredient from inbox into grid, exactly
-	 * like the non-instant path already did; only the *wait* for a network-sourced ingredient to
-	 * exist somewhere reachable at all is what this skips.
+	 * that cell isn't already occupied by: asks the network for it via [RequestFulfillment.request],
+	 * landing in this terminal's own inbox exactly like a normal [withdraw] - a provider-hook pull
+	 * still travels the real pipe distance, not instant, so a fill needs at least one more click
+	 * once it's actually arrived, the same as any other shortfall.
 	 */
 	fun supplyIngredients(targets: Map<Int, ItemResource>) {
 		val level = level as? ServerLevel ?: return
@@ -151,11 +137,7 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 			if (player.inventory.countItem(resource.cachedStack.item) > 0) continue
 			if (state.output.extract(resource, 1L, true) > 0) continue
 
-			val stack = ResourceStack(resource, 1L)
-			val granted = RequestFulfillment.requestInstant(level, tile.blockPos, stack, tile.blockPos, direction) { granted ->
-				state.output.insert(granted.resource, granted.amount, false)
-			}
-			if (granted <= 0) RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction)
+			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, 1L), tile.blockPos, direction)
 		}
 	}
 

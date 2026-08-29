@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.archie.serialization.field
 import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
 import net.kernelpanicsoft.boilerplate.network.SItemResource
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
@@ -12,7 +13,7 @@ import net.minecraft.world.item.DyeColor
 
 /** Self-contained state for one filter-grid-and-routing-config attachment - [FilterHookType]'s own, and [SyncHookType]'s reused as its request-fulfillment filter (see [accepts]). */
 abstract class SortingHookState(defaultType: ResourceLocation) : HookHolderState(defaultType) {
-	var routing: RoutingModule by field(RoutingModule.serializer()) { RoutingModule() }
+	var routing: RoutingModule by field { RoutingModule() }
 
 	/**
 	 * This face's 3x3 filter grid, matched against [routing]'s mode - see

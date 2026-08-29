@@ -57,7 +57,7 @@ class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID), Fa
 
 	/** The actual [Pattern] carried by each non-blank slot in [patterns], in slot order - what [net.kernelpanicsoft.boilerplate.crafting.CraftingRequest]/[net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookType] search across reachable pattern providers for. */
 	fun heldPatterns(): List<Pattern> =
-		(0 until patterns.size()).mapNotNull { i -> patterns.get(i).getItem().takeIf { !it.isEmpty }?.let { PatternItemData(it).pattern } }
+		(0 until patterns.size()).mapNotNull { i -> patterns[i].getItem().takeIf { !it.isEmpty }?.let { PatternItemData(it).pattern } }
 
 	/** [patterns]' own slot index holding [pattern], or `null` if it isn't currently held at all - the [bufferFor] index a Crafting CPU job step targeting this [pattern] needs to feed directly, rather than the shared, round-robin [PatternBufferIO]. */
 	fun indexOfPattern(pattern: Pattern): Int? {

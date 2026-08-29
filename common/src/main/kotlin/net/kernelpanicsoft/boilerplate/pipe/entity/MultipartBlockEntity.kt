@@ -1,7 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.entity
 
 import dev.architectury.registry.menu.ExtendedMenuProvider
-import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.serialization.NestedNBTHolder
 import net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap
 import net.kernelpanicsoft.archie.serialization.Sync
@@ -89,7 +88,7 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 	 * faces on the same block.
 	 */
 	@Sync
-	var craftJobStatus: String by field(String.serializer()) { "" }
+	var craftJobStatus: String by stringField { "" }
 
 	/** The [SortingHookState] filter grid attached to [direction] - callers must already know it carries a sorting hook. */
 	fun filterFor(direction: Direction) = (hooks[direction.name] as SortingHookState).filter

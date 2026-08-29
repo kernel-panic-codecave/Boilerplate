@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import kotlinx.serialization.Serializable
+import net.kernelpanicsoft.archie.serialization.field
 import net.kernelpanicsoft.boilerplate.pipe.entity.SDyeColor
 import net.minecraft.world.item.DyeColor
 
@@ -18,7 +19,7 @@ class ExtractionHookState : HookHolderState(ExtractionHookType.ID) {
 	 * [net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule.color] - nested inside that
 	 * data class - works fine).
 	 */
-	private var colorSlot: ColorSlot by field(ColorSlot.serializer()) { ColorSlot() }
+	private var colorSlot: ColorSlot by field { ColorSlot() }
 	var color: DyeColor?
 		get() = colorSlot.color
 		set(value) {

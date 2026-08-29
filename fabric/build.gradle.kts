@@ -38,8 +38,6 @@ loom {
 			source(sourceSets.main.get())
 			vmArgs("-XX:+AllowEnhancedClassRedefinition")
 		}
-		// "gradlew runGametest"/"runGametestClient" - see the dependency comment below for why
-		// archie-gametest is safe to have on this run's classpath despite never shipping.
 		create("gametest") {
 			server()
 			name = "Minecraft GameTest"
@@ -56,11 +54,6 @@ loom {
 			property("archie.gametest.side", "client")
 			property("archie.gametest.modid", "boilerplate")
 		}
-		// "gradlew runDatagen" - see BoilerplateBlockStateProvider. Writes to common's own
-		// src/main/generated (wired in as an extra resources root there), not src/main/resources
-		// directly - Minecraft's datagen cache deletes anything in its output directory it didn't
-		// just write, which would otherwise destroy the hand-placed textures/gametest structures
-		// living alongside it.
 		create("datagen") {
 			client()
 			name = "Minecraft Datagen"
@@ -75,12 +68,6 @@ loom {
 		}
 	}
 }
-
-// No fabricApi.configureDataGeneration{} call - unlike a typical single-module setup, it registers
-// its outputDirectory as an *extra* resources root, which here collides with the explicit
-// processResources { from(project(":boilerplate-common")...) } merge below (the same directory
-// registered twice, tripping processResources' duplicate-entry check). The "datagen" run above
-// already sets fabric-api.datagen.output-dir directly - all FabricDataGenerator actually reads.
 
 dependencies {
 	modImplementation(libs.fabric.loader)

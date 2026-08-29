@@ -17,6 +17,7 @@ authors = "${mod_authors}"
 description = '''
 ${mod_description}
 '''
+logoFile = "assets/${mod_id}/banner.png"
 displayURL = "${mod_url}"
 
 [[dependencies."${mod_id}"]]
@@ -46,3 +47,6 @@ type = "required"
 versionRange = "[${versions.cloth_config_range},)"
 ordering = "NONE"
 side = "BOTH"
+
+[modproperties."${mod_id}"]
+catalogueImageIcon = "assets/${mod_id}/icon.png"

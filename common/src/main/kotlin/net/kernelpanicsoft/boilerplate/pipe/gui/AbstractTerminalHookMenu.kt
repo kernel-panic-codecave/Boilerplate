@@ -247,15 +247,36 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * The [PendingDelivery] a reserved-slot placeholder at [outputSlots]' own cell [index] should
 	 * render, if any - a direct lookup by [PendingDelivery.slot], since a reservation owns that exact
 	 * inbox index for its whole life rather than merely being drawn over whichever cell happens to
-	 * be free. Still guarded on the cell genuinely being empty: a placeholder must never paint over
-	 * a real item (see [PendingDelivery]'s own KDoc), and while nothing should be able to fill a
-	 * reserved slot behind its back ([net.kernelpanicsoft.boilerplate.pipe.hook.ReservedSlotStorage]),
-	 * drawing a ghost on top of a real stack is a bad enough failure to be worth ruling out here too.
+	 * be free.
+	 *
+	 * Driven purely by [pendingDeliveries], which is real Compose state; [outputSlots] deliberately
+	 * only ever *suppresses* a placeholder, never gates one. It used to be the other way round -
+	 * `outputSlots.getOrNull(index) ?: return null` came first - and that made the whole feature
+	 * depend on a plain, unobservable read of [slots]. Composition runs before the layout pass that
+	 * populates that list, so the first pass saw it empty and bailed; nothing about it later filling
+	 * in is a Compose state change, so no recomposition ever re-ran this, and repeat polls carrying
+	 * an unchanged list don't trigger one either (state equality is structural). The placeholders
+	 * simply never appeared.
+	 *
+	 * Worse, composition runs on Compose's own dispatcher, not the render thread, while [slots] is a
+	 * plain `ArrayList` rebuilt *on* the render thread - an unsynchronised cross-thread read with no
+	 * happens-before edge, so a composition worker can keep observing it empty indefinitely. That's
+	 * what the diagnostics for this bug actually showed: `outputSlots=0` on a worker thread seconds
+	 * after the slots were long since built. Compose state doesn't have that problem (the snapshot
+	 * system establishes the ordering), which is the other reason the positive path reads only
+	 * [pendingDeliveries]. Suppression-only keeps the "never paint over a real item" guarantee
+	 * wherever the slot does resolve, without making it a precondition for drawing at all - and a
+	 * missed suppression is harmless, since a reserved slot is already closed to every other inserter
+	 * ([net.kernelpanicsoft.boilerplate.pipe.hook.ReservedSlotStorage]) for the reservation's whole life.
 	 */
 	fun pendingDeliveryFor(index: Int): PendingDelivery? {
-		val slot = outputSlots.getOrNull(index) ?: return null
-		if (!slot.item.isEmpty) return null
-		return pendingDeliveries.firstOrNull { it.slot == index }
+		val delivery = pendingDeliveries.firstOrNull { it.slot == index } ?: return null
+		// Best-effort suppression, never a preconditon: hide the placeholder only when the real slot
+		// is both visible to us *and* genuinely occupied. Requiring the slot to resolve before
+		// showing anything is what broke this - see this function's own KDoc.
+		val slot = outputSlots.getOrNull(index)
+		if (slot != null && !slot.item.isEmpty) return null
+		return delivery
 	}
 
 	/** The most recently received craft-preview result - `resource to maxCraftable` - or `null` before any preview's been requested. Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftPreview] applies a fresh [CraftPreviewPacket]. */

@@ -111,6 +111,7 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<RackGameTest>()
 		register<SubnetBoundaryGameTest>()
 		register<HookFilterPersistenceGameTest>()
+		register<PendingDeliveryPersistenceGameTest>()
 		register<CraftingCpuManagerGameTest>()
 		register<CraftingBufferGameTest>()
 		register<CraftingBufferMultiStepGameTest>()

@@ -5,21 +5,8 @@ import androidx.compose.runtime.remember
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.gui.composables.basic.ProgressBar
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
-import net.kernelpanicsoft.archie.gui.composables.containers.ConnectorAnimation
-import net.kernelpanicsoft.archie.gui.composables.containers.ConnectorShape
-import net.kernelpanicsoft.archie.gui.composables.containers.ConnectorStyle
-import net.kernelpanicsoft.archie.gui.composables.containers.NodeBuilder
-import net.kernelpanicsoft.archie.gui.composables.containers.NodeFrame
-import net.kernelpanicsoft.archie.gui.composables.containers.NodeTreeView
-import net.kernelpanicsoft.archie.gui.composables.containers.Panel
-import net.kernelpanicsoft.archie.gui.composables.containers.RootAlignment
-import net.kernelpanicsoft.archie.gui.composables.containers.TreeNode
-import net.kernelpanicsoft.archie.gui.composables.containers.tree
-import net.kernelpanicsoft.archie.gui.layout.Alignment
-import net.kernelpanicsoft.archie.gui.layout.Arrangement
-import net.kernelpanicsoft.archie.gui.layout.Box
-import net.kernelpanicsoft.archie.gui.layout.Column
-import net.kernelpanicsoft.archie.gui.layout.Row
+import net.kernelpanicsoft.archie.gui.composables.containers.*
+import net.kernelpanicsoft.archie.gui.layout.*
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
@@ -61,6 +48,11 @@ private class CraftJobNodeBuilder(id: Any) : NodeBuilder<Any, CraftJobTreeNode, 
  * for a job with real sharing (logs feeding both planks and, two steps later, sticks-via-planks,
  * say) than drawing the same step twice, and this applies across different jobs' own trees too.
  *
+ * Laid out root-first ([RootAlignment.START]): the job's own target leads, with the steps it depends
+ * on extending rightward and each arrowhead landing back on the consumer that needs it. That reads
+ * as a dependency hierarchy - "this needs these" - which is what the tree actually is, and matches
+ * the advancements menu this was modelled on.
+ *
  * Each connector's own color/style/animation reflects the *child* step's current status: green once
  * [CraftJobTreeNode.done], a gentle flowing shimmer while its own ingredients are still being fed
  * or it's actively processing, a dim, sine-waved [ConnectorStyle.DISCONNECTED] look while it's
@@ -80,6 +72,7 @@ fun CraftingTreeView(roots: List<CraftJobTreeNode>, modifier: Modifier = Modifie
 	}
 
 	val registry = remember(roots) {
+		val consumers = consumerIds(roots)
 		val declared = mutableSetOf<Any>()
 		tree(::CraftJobNodeBuilder) {
 			for ((index, root) in roots.withIndex()) {
@@ -87,7 +80,7 @@ fun CraftingTreeView(roots: List<CraftJobTreeNode>, modifier: Modifier = Modifie
 				declared += key
 				node(key) {
 					payload = root
-					wireChildren(root, declared)
+					wireChildren(root, key, consumers, declared)
 				}
 			}
 		}
@@ -107,22 +100,58 @@ fun CraftingTreeView(roots: List<CraftJobTreeNode>, modifier: Modifier = Modifie
 }
 
 /**
+ * Every node id that consumes each resource anywhere in [roots] - a root's own id is its
+ * `"root-<index>"` key rather than its resource, matching how [CraftingTreeView] declares them.
+ *
+ * Collected up front because a shared resource's column depends on *all* of its consumers, not just
+ * whichever one happened to reach it first: [NodeTreeView] lays each node one column past its
+ * deepest parent, so every consumer edge has to exist before that can come out right.
+ */
+private fun consumerIds(roots: List<CraftJobTreeNode>): Map<Any, Set<Any>> {
+	val result = mutableMapOf<Any, MutableSet<Any>>()
+	fun walk(node: CraftJobTreeNode, id: Any) {
+		for (child in node.children) {
+			result.getOrPut(child.resource) { mutableSetOf() } += id
+			walk(child, child.resource)
+		}
+	}
+	for ((index, root) in roots.withIndex()) walk(root, "root-$index")
+	return result
+}
+
+/**
  * Declares [craftNode]'s own children on the [CraftJobNodeBuilder] currently building it - a child
  * resource seen for the first time anywhere in this [tree] call nests as a genuine structural child
- * ([NodeBuilder.children]); a repeat instead uses [NodeBuilder.dependsOn] to add an extra connector
- * back to the node already declared for it, without redeclaring (and crashing on) its id.
+ * ([NodeBuilder.children]); a repeat is skipped rather than redeclared (which would crash on its id).
+ *
+ * Whichever consumer declares a shared resource, *every* other consumer of it still gets an edge -
+ * added from the shared node's own side with [NodeBuilder.dependsOn], naming the consumer. That
+ * direction matters and is the whole point of [consumers] being precomputed: `dependsOn` adds the
+ * named node as a **prerequisite**, i.e. a parent, so calling it the other way round (on the
+ * consumer, naming the ingredient) declares the ingredient as the consumer's *parent* - the exact
+ * inverse of what this tree means, since here a node's children are the things it's made from.
+ *
+ * That inversion put a shared ingredient one column too shallow: for logs -> planks -> sticks and
+ * sticks + planks -> pickaxe, planks got declared under the pickaxe first, then sticks' own repeat
+ * of it registered planks as *sticks'* prerequisite - laying sticks out one past planks, so the
+ * sticks appeared to come before the planks they're cut from. Wiring both consumer edges into planks
+ * instead puts it one past the deepest of them (sticks), which is the real production order.
  */
-private fun CraftJobNodeBuilder.wireChildren(craftNode: CraftJobTreeNode, declared: MutableSet<Any>) {
-	val newChildren = mutableListOf<CraftJobTreeNode>()
-	for (child in craftNode.children) {
-		if (declared.add(child.resource)) newChildren += child
-		else dependsOn(child.resource)
-	}
+private fun CraftJobNodeBuilder.wireChildren(
+	craftNode: CraftJobTreeNode,
+	craftNodeId: Any,
+	consumers: Map<Any, Set<Any>>,
+	declared: MutableSet<Any>,
+) {
+	val newChildren = craftNode.children.filter { declared.add(it.resource) }
 	children {
 		for (child in newChildren) {
 			node(child.resource) {
 				payload = child
-				wireChildren(child, declared)
+				for (consumer in consumers[child.resource].orEmpty()) {
+					if (consumer != craftNodeId) dependsOn(consumer)
+				}
+				wireChildren(child, child.resource, consumers, declared)
 			}
 		}
 	}

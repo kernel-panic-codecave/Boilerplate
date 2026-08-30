@@ -88,6 +88,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		if (level.isClientSide) {
 			BoilerplateNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
 			BoilerplateNetworkChannel.toServer(RequestCraftableListPacket)
+			BoilerplateNetworkChannel.toServer(RequestPendingDeliveriesPacket)
 		}
 	}
 
@@ -227,22 +228,20 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	}
 
 	/**
-	 * The real vanilla [Slot]s backing [TerminalHookState.output], in cell order - whichever
-	 * menu-slot range [registerSlotHandlers] most recently assigned to the `"output"` slot group,
-	 * resolved through [slotData] since neither this menu nor [CraftingTerminalHookMenu] expose
-	 * that range directly. Empty before the first [net.kernelpanicsoft.archie.gui.Slots] layout
-	 * pass reports positions at all.
+	 * The real vanilla [Slot]s backing [TerminalHookState.output], in cell order - this menu's own
+	 * first [TerminalHookState.SLOT_COUNT] slots, since [registerSlotHandlers] registers `"output"`
+	 * as its one and only group and menu slots are built in handler-registration order.
+	 * [CraftingTerminalHookMenu] registers more groups after it and overrides this with the same
+	 * range spelled out explicitly.
+	 *
+	 * Deliberately *not* derived from [slotData]: that's populated by the Compose layout reporting
+	 * slot positions, which a freshly-opened screen hasn't done yet (and which only fires at all
+	 * once every named group *and* the player group have reported). Reading it here meant
+	 * [pendingDeliveryFor] returned `null` for every cell on a reopened terminal until layout
+	 * settled - reserved-slot placeholders simply didn't come back. The slot list itself is
+	 * pre-registered at construction, so this is correct from the first frame.
 	 */
-	open val outputSlots: List<Slot> get() {
-		var start = 0
-		for ((id, group) in slotData.groups) {
-			if (!group.enabled) continue
-			val count = group.size.width * group.size.height
-			if (id == "output") return slots.drop(start).take(count)
-			start += count
-		}
-		return emptyList()
-	}
+	open val outputSlots: List<Slot> get() = slots.take(TerminalHookState.SLOT_COUNT)
 
 	/**
 	 * The [PendingDelivery] a reserved-slot placeholder at [outputSlots]' own cell [index] should

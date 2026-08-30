@@ -1,12 +1,8 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import androidx.compose.runtime.*
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
+import net.kernelpanicsoft.archie.gui.Slots
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
@@ -22,14 +18,10 @@ import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.SimpleThemeState
 import net.kernelpanicsoft.archie.gui.theme.Theme
-import net.kernelpanicsoft.boilerplate.network.OpenFilterCardEditorPacket
-import net.kernelpanicsoft.boilerplate.network.SetGhostSlotPacket
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.UpdateSortingRoutingPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardTarget
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.item.DyeColor
@@ -42,63 +34,43 @@ import kotlin.math.roundToInt
  * compares it by exact equality against a traveling item's color - see
  * `docs/design/m2-sorting-routing.md`.
  *
- * Reads [SortingHookMenu.currentRouting]/[SortingHookMenu.currentFilter] once, into local Compose
- * state, rather than observing [net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity.hooks]
- * live - a nested [net.kernelpanicsoft.archie.serialization.NBTHolder] field isn't wired into
+ * Reads [SortingHookMenu.currentRouting] once, into local Compose state, rather than observing
+ * [net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity.hooks] live - a nested
+ * [net.kernelpanicsoft.archie.serialization.NBTHolder] field isn't wired into
  * [net.kernelpanicsoft.archie.gui.blockentity.BlockEntityStateManager] for that the way a
  * top-level `@Sync` field is. Edits update that local state immediately (optimistic UI) and push
- * an [UpdateSortingRoutingPacket]/[SetGhostSlotPacket] to persist them server-side.
+ * an [UpdateSortingRoutingPacket] to persist them server-side. The filter itself needs none of
+ * that any more - it's a real vanilla slot now (see [SortingHookMenu.registerSlotHandlers]), so
+ * vanilla's own container syncing carries it.
  */
 class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<SortingHookMenu>(menu, playerInventory, title) {
 
 	private val contentWidth = 18 * 9
-	private val middleClickHandler = MiddleClickHandler()
+	private val clickHandler = ClickHandler(1)
 
 	init {
 		start { content() }
 	}
 
 	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		if (middleClickHandler.tryHandle(button)) return true
-		return super.mouseClicked(mouseX, mouseY, button)
+		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
 	}
 
 	@Composable
 	fun content() {
 		var module by remember { mutableStateOf(menu.currentRouting()) }
-		var filterSlots by remember { mutableStateOf(menu.currentFilter()) }
 
 		fun update(next: RoutingModule) {
 			module = next
 			BoilerplateNetworkChannel.toServer(UpdateSortingRoutingPacket(menu.pos, menu.direction, next))
 		}
 
-		fun setSlot(index: Int, resource: ItemResource) {
-			filterSlots = filterSlots.toMutableList().also { it[index] = resource }
-			BoilerplateNetworkChannel.toServer(SetGhostSlotPacket(FilterCardTarget.HookFilterSlot(menu.pos, menu.direction, index), resource))
-		}
-
 		Theme {
 			ContainerPanel(contentWidth = contentWidth) {
 				Column(verticalArrangement = Arrangement.spacedBy(6)) {
 					Text(Component.literal("Filter"), dropShadow = false)
-					GhostSlotGrid(
-						resources = filterSlots,
-						columns = 3,
-						carried = { menu.carried },
-						onPlace = { index, resource -> setSlot(index, resource) },
-						onClear = { index -> setSlot(index, ItemResource.BLANK) },
-						middleClickHandler = middleClickHandler,
-						onMiddleClick = { index ->
-							if (filterSlots[index].item !is FilterCardItem) null
-							else ({
-								BoilerplateNetworkChannel.toServer(
-									OpenFilterCardEditorPacket(FilterCardTarget.HookFilterSlot(menu.pos, menu.direction, index)),
-								)
-							})
-						},
-					)
+					Slots("filter")
 
 					Text(Component.literal("Mode"), dropShadow = false)
 					RadioGroup(

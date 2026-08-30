@@ -2,10 +2,10 @@ package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.serialization.field
-import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
-import net.kernelpanicsoft.boilerplate.network.SItemResource
+import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterContext
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.evaluateGhostSlot
 import net.minecraft.resources.ResourceLocation
@@ -16,35 +16,44 @@ abstract class SortingHookState(defaultType: ResourceLocation) : HookHolderState
 	var routing: RoutingModule by field { RoutingModule() }
 
 	/**
-	 * This face's 3x3 filter grid, matched against [routing]'s mode - see
-	 * `docs/design/m2-sorting-routing.md`. A ghost grid, not a real
-	 * [net.kernelpanicsoft.archie.transfer.ArchieItemStorage]: each entry is a bare
-	 * [ItemResource] reference dropped in for identity, or a
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem]'s own richer
-	 * condition (see [net.kernelpanicsoft.boilerplate.pipe.hook.filter.evaluateGhostSlot]) -
-	 * never real, extractable items, so placing one here never actually removes it from a
-	 * player's inventory. Mutated by [net.kernelpanicsoft.boilerplate.network.SetGhostSlotPacket],
-	 * not through a vanilla [net.minecraft.world.inventory.Slot].
+	 * This face's filter card, matched against [routing]'s mode - see
+	 * `docs/design/m2-sorting-routing.md`. A single **real**
+	 * [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] slot restricted to
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem], registered as an ordinary
+	 * vanilla [net.minecraft.world.inventory.Slot] by [net.kernelpanicsoft.boilerplate.pipe.gui.SortingHookMenu] -
+	 * the same shape [net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity.filter] uses,
+	 * rather than the 3x3 ghost grid this used to be. A card placed here is genuinely consumed from
+	 * the player's inventory and can be taken back out again.
+	 *
+	 * Filtering on plain item identity is still perfectly possible - that's what an
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionType] card's own ghost grid is
+	 * for - and several conditions still combine through a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType] card, so one slot
+	 * loses no expressiveness over the old nine.
 	 */
-	val filter: MutableList<SItemResource> by listField(ItemResourceSerializer) { List(9) { ItemResource.BLANK } }
+	val filter: ArchieItemStorage by itemField(1, filter = { it.item is FilterCardItem })
 
 	/**
-	 * Whether [resource] passes [filter] under [routing]'s [RoutingModule.mode] - an empty grid
-	 * accepts nothing under [FilterMode.WHITELIST] and everything under [FilterMode.BLACKLIST].
+	 * Whether [resource] passes [filter] under [routing]'s [RoutingModule.mode] - an empty slot
+	 * accepts nothing under [FilterMode.WHITELIST] and everything under [FilterMode.BLACKLIST],
+	 * deliberately unchanged from when this was a nine-entry ghost grid: a sorting hook's empty
+	 * whitelist is a meaningful "deny everything" configuration, unlike
+	 * [net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity.acceptsByFilter]'s own
+	 * "unconfigured rack takes anything" default.
+	 *
 	 * [color] is the traveling item's own consignment color, if any - see [FilterContext.color].
 	 * Shared by [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter]'s push-routing search
 	 * and [net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment]'s pull-request search
 	 * alike, so a [SyncHookType] hook's filter constrains both directions identically.
 	 */
 	fun accepts(resource: ItemResource, color: DyeColor? = null): Boolean {
-		val context = FilterContext(resource, color)
-		val entries = filter.filterNot { it.isBlank }
-		if (entries.isEmpty()) return routing.mode == FilterMode.BLACKLIST
+		val card = filter.get(0).resource
+		if (card.isBlank) return routing.mode == FilterMode.BLACKLIST
 
-		val matchesAnyEntry = entries.any { evaluateGhostSlot(it, context) }
+		val matches = evaluateGhostSlot(card, FilterContext(resource, color))
 		return when (routing.mode) {
-			FilterMode.WHITELIST -> matchesAnyEntry
-			FilterMode.BLACKLIST -> !matchesAnyEntry
+			FilterMode.WHITELIST -> matches
+			FilterMode.BLACKLIST -> !matches
 		}
 	}
 }

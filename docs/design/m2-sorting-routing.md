@@ -35,7 +35,7 @@ abstract class HookHolderState(defaultType: ResourceLocation) : NBTHolder by NBT
 
 class SortingHookState : HookHolderState(SortingHookType.ID) {
     var routing: RoutingModule by field(RoutingModule.serializer()) { RoutingModule() }
-    val filter by itemField(9)
+    val filter: ArchieItemStorage by itemField(1, filter = { it.item is FilterCardItem })
 }
 
 class ExtractionHookState : HookHolderState(ExtractionHookType.ID) {
@@ -46,11 +46,11 @@ class ExtractionHookState : HookHolderState(ExtractionHookType.ID) {
 }
 ```
 
-`filter` (one 9-slot grid) lives directly on `SortingHookState` rather than as six always-allocated per-face fields on `HookBlockEntity` — only a face actually carrying a sorting hook has one at all, matching the "self-contained per hook" model. An `ExtractionHookType` hook has its own independent `color: DyeColor?` (stamped onto whatever it pulls) rather than sharing `SortingHookState.routing` — the two hook kinds no longer share one flat state shape, so each keeps only the fields it actually uses.
+`filter` (one real filter-card slot — see [Filtering & routing decision](#filtering--routing-decision) for why it's a single card rather than the 3x3 grid it began as) lives directly on `SortingHookState` rather than as six always-allocated per-face fields on `HookBlockEntity` — only a face actually carrying a sorting hook has one at all, matching the "self-contained per hook" model. An `ExtractionHookType` hook has its own independent `color: DyeColor?` (stamped onto whatever it pulls) rather than sharing `SortingHookState.routing` — the two hook kinds no longer share one flat state shape, so each keeps only the fields it actually uses.
 
 ## GUI
 
-`SortingPipeMenu(id, inventory, tile, direction) : ComposeBlockContainerMenu<HookBlockEntity, SortingPipeMenu>` — `direction` identifies which face's sorting hook is being edited (round-tripped from `HookBlockEntity.pendingMenuFace`, set right before `MenuRegistry.openExtendedMenu` and written by `saveExtraData` for the client to reconstruct the same menu). `handler("filter", tile.filterFor(direction))` bound to a `Slots("filter", 3, 3)` composable, a `RadioGroup<FilterMode>` for whitelist/blacklist, a `Slider` (0..10, normalized internally since Archie's `Slider` always operates on a `Float` in `[0,1]`) for priority. Color is a `RadioGroup<DyeColor?>` (17 options: `null` "Any" plus all 16 `DyeColor`s), **not** Archie's continuous `ColorPicker` — the design originally called for `ColorPicker`, but routing compares color by exact equality against a discrete `DyeColor?`, and a continuous `HsvColor` picker doesn't map onto that cleanly without a lossy nearest-match step.
+`SortingPipeMenu(id, inventory, tile, direction) : ComposeBlockContainerMenu<HookBlockEntity, SortingPipeMenu>` — `direction` identifies which face's sorting hook is being edited (round-tripped from `HookBlockEntity.pendingMenuFace`, set right before `MenuRegistry.openExtendedMenu` and written by `saveExtraData` for the client to reconstruct the same menu). `handler("filter", tile.filterFor(direction)) { it.item is FilterCardItem }` bound to a `Slots("filter")` composable, a `RadioGroup<FilterMode>` for whitelist/blacklist, a `Slider` (0..10, normalized internally since Archie's `Slider` always operates on a `Float` in `[0,1]`) for priority. Color is a `RadioGroup<DyeColor?>` (17 options: `null` "Any" plus all 16 `DyeColor`s), **not** Archie's continuous `ColorPicker` — the design originally called for `ColorPicker`, but routing compares color by exact equality against a discrete `DyeColor?`, and a continuous `HsvColor` picker doesn't map onto that cleanly without a lossy nearest-match step.
 
 `SortingPipeMenu.currentRouting()` reads `(tile.hooks[direction.name] as? SortingHookState)?.routing` once when the screen opens, into local Compose state (`remember { mutableStateOf(...) }`) rather than observing it live — a `NestedNBTHolderMap` entry isn't wired into `BlockEntityStateManager` for `observeProperty` the way a top-level `@Sync` field is (see [m1-pipe-network.md](m1-pipe-network.md#hooks-attachments-not-separate-blocks)). Edits update that local state immediately (optimistic UI) and push a dedicated C2S `UpdateSortingRoutingPacket(pos, direction, routing)` to persist them server-side, which looks up the same hook by `pos`/`direction`, writes `routing`, calls `hooks.touch()`, and resyncs via `level.sendBlockUpdated`.
 
@@ -62,7 +62,13 @@ Real Minecraft items can't cleanly carry an arbitrary "color" tag, so the color 
 
 ## Filtering & routing decision
 
-Filter grid entries are matched by item identity (`ItemResource.isOf(resource.item)`, ignoring data components) rather than CSL's `TransferUtil.byIngredient`/`byItemTag` — the design originally proposed those, but this is simpler and sufficient for "filter by item" without needing to verify their exact signatures; revisit if component-aware filtering is wanted later. `PipeRouter.search` was rewritten from M1's shape to:
+**`SortingHookState.filter` is a single real slot holding one filter card**, not the 3x3 ghost grid it started as. It's an `ArchieItemStorage` of size 1 restricted to `FilterCardItem`, registered by `SortingHookMenu` as an ordinary vanilla `Slot` — exactly the shape `RackBlockEntity.filter` already used, adopted here so both configure the same way. A card placed in it is genuinely consumed from the player's inventory and can be taken back out, unlike a ghost entry, which was only ever a reference.
+
+One slot loses no expressiveness over the old nine: filtering on plain item identity is what an `ItemConditionType` card's own ghost grid is for, and several conditions still combine through a `CombinedConditionType` card. It does mean the hook-side ghost plumbing is gone entirely — `FilterCardTarget.HookFilterSlot` and `HookGhostSlotItemAccess` were deleted, and a hook's card is now configured while held (a `PlayerSlot` target) before being placed, the same way a rack's is. `SetGhostSlotPacket`/`GhostSlotGrid` remain for the places that genuinely still are ghosts: a card's own `itemMatches`/`children`, and the Pattern Terminal's authoring grid.
+
+An **empty** filter slot deliberately keeps the old grid's semantics — accepts nothing under whitelist, everything under blacklist. That differs from `RackBlockEntity.acceptsByFilter`, where an unconfigured rack takes anything, and the difference is intentional: a sorting hook's empty whitelist is a meaningful "deny everything" configuration, whereas an unfiltered rack is just a rack nobody has got to yet.
+
+Card conditions themselves are matched by item identity (`ItemResource.isOf(resource.item)`, ignoring data components unless `ItemConditionState.matchComponents` is set) rather than CSL's `TransferUtil.byIngredient`/`byItemTag` — the design originally proposed those, but this is simpler and sufficient without needing to verify their exact signatures. `PipeRouter.search` was rewritten from M1's shape to:
 
 1. BFS the whole reachable space (not stopping at first hit, unlike M1).
 2. For each candidate reached through a pipe with a sorting module applied: reject if the module's `color` is set and doesn't match the item's, or if the module's filter/mode rejects the resource. A candidate reached through a plain pipe always accepts (color/filter blind), at baseline priority 0.

@@ -102,7 +102,7 @@ class PipeExtractionGameTest {
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
 		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sortPipe.filterFor(Direction.SOUTH)[0] = ItemResource.of(ItemStack(Items.DIAMOND))
+		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(buildItemCard(ItemStack(Items.DIAMOND))), 1, false)
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -133,7 +133,7 @@ class PipeExtractionGameTest {
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
 		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sortPipe.filterFor(Direction.SOUTH)[0] = ItemResource.of(ItemStack(Items.DIAMOND))
+		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(buildItemCard(ItemStack(Items.DIAMOND))), 1, false)
 
 		// No route ever exists for the redstone (the only sorting-tagged path rejects it, and the
 		// source chest is excluded from being its own destination), so - unlike the "eventually
@@ -428,7 +428,7 @@ class PipeExtractionGameTest {
 		sync.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val syncState = sync.hooks.getOrPut(Direction.NORTH.name) { SyncHookType.createState() } as SortingHookState
 		syncState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sync.filterFor(Direction.NORTH)[0] = ItemResource.of(ItemStack(Items.DIAMOND))
+		sync.filterFor(Direction.NORTH).insert(ItemResource.of(buildItemCard(ItemStack(Items.DIAMOND))), 1, false)
 		placeCreativePressureSource(syncHookPos.above())
 
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
@@ -466,7 +466,7 @@ class PipeExtractionGameTest {
 		sync.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val syncState = sync.hooks.getOrPut(Direction.NORTH.name) { SyncHookType.createState() } as SortingHookState
 		syncState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sync.filterFor(Direction.NORTH)[0] = ItemResource.of(ItemStack(Items.REDSTONE))
+		sync.filterFor(Direction.NORTH).insert(ItemResource.of(buildItemCard(ItemStack(Items.REDSTONE))), 1, false)
 		placeCreativePressureSource(syncHookPos.above())
 
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
@@ -512,7 +512,7 @@ class PipeExtractionGameTest {
 		val modCardState = FilterCardState(modCard)
 		(modCardState.currentState() as ModConditionState).modId = "minecraft"
 		modCardState.touchCurrentState()
-		sortPipe.filterFor(Direction.SOUTH)[0] = ItemResource.of(modCard)
+		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(modCard), 1, false)
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -580,7 +580,7 @@ class PipeExtractionGameTest {
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
 		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sortPipe.filterFor(Direction.SOUTH)[0] = ItemResource.of(buildMinecraftAndDiamondCombinedCard())
+		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(buildMinecraftAndDiamondCombinedCard()), 1, false)
 
 		// No route ever exists for the redstone, so this needs to observe an absence holding
 		// steady rather than wait for a condition to become true, same as the plain sorting-pipe
@@ -618,7 +618,7 @@ class PipeExtractionGameTest {
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
 		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sortPipe.filterFor(Direction.SOUTH)[0] = ItemResource.of(buildMinecraftAndDiamondCombinedCard())
+		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(buildMinecraftAndDiamondCombinedCard()), 1, false)
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -629,6 +629,16 @@ class PipeExtractionGameTest {
 	}
 
 	/** Builds an item filter card matching a custom-named diamond pickaxe, with [ItemConditionState.matchComponents] set as requested. */
+	/** An [ItemRegistry.ItemFilterCard] matching [stack] by base item - a sorting hook's filter slot only accepts real filter cards now (see [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState.filter]), so plain-item identity filtering goes through one of these rather than dropping the item itself into a ghost grid. */
+	private fun buildItemCard(stack: ItemStack): ItemStack {
+		val itemCard = ItemStack(ItemRegistry.ItemFilterCard)
+		FilterCardState(itemCard).apply {
+			(currentState() as ItemConditionState).itemMatches[0] = ItemResource.of(stack)
+			touchCurrentState()
+		}
+		return itemCard
+	}
+
 	private fun buildNamedPickaxeItemCard(matchComponents: Boolean): ItemStack {
 		val namedPickaxe = ItemStack(Items.DIAMOND_PICKAXE)
 		namedPickaxe.set(DataComponents.CUSTOM_NAME, Component.literal("Special"))
@@ -666,7 +676,7 @@ class PipeExtractionGameTest {
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
 		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sortPipe.filterFor(Direction.SOUTH)[0] = ItemResource.of(buildNamedPickaxeItemCard(matchComponents = true))
+		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(buildNamedPickaxeItemCard(matchComponents = true)), 1, false)
 
 		runAfterDelay(100) {
 			val source = getBlockEntity(sourcePos) as ChestBlockEntity
@@ -703,7 +713,7 @@ class PipeExtractionGameTest {
 		sortPipe.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val sortState = sortPipe.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
 		sortState.routing = RoutingModule(mode = FilterMode.WHITELIST)
-		sortPipe.filterFor(Direction.SOUTH)[0] = ItemResource.of(buildNamedPickaxeItemCard(matchComponents = true))
+		sortPipe.filterFor(Direction.SOUTH).insert(ItemResource.of(buildNamedPickaxeItemCard(matchComponents = true)), 1, false)
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity

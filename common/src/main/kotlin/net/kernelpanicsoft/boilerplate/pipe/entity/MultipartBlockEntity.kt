@@ -91,6 +91,7 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 	var craftJobStatus: String by stringField { "" }
 
 	/** The [SortingHookState] filter grid attached to [direction] - callers must already know it carries a sorting hook. */
+	/** [direction]'s own sorting-hook filter slot - a real single-slot [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] restricted to filter cards, see [SortingHookState.filter]. */
 	fun filterFor(direction: Direction) = (hooks[direction.name] as SortingHookState).filter
 
 	/** Sums every attached hook's own [PipeHookType.basePressureCost] - `0` (the [PressureConsumer] default) for a segment with none set. */

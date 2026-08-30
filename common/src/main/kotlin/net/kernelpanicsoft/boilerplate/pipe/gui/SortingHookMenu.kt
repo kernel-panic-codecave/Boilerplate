@@ -1,11 +1,10 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
-import net.kernelpanicsoft.boilerplate.network.SItemResource
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -21,11 +20,14 @@ class SortingHookMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity,
 	/** [direction]'s current [RoutingModule], read once when the screen opens - see `docs/design/m2-sorting-routing.md`. */
 	fun currentRouting(): RoutingModule = (tile.hooks[direction.name] as? SortingHookState)?.routing ?: RoutingModule()
 
-	/** [direction]'s current ghost filter grid, read once when the screen opens - same "not wired into live sync" reasoning as [currentRouting]. */
-	fun currentFilter(): List<SItemResource> = (tile.hooks[direction.name] as? SortingHookState)?.filter?.toList() ?: List(9) { ItemResource.BLANK }
-
+	/**
+	 * A real, vanilla-[net.minecraft.world.inventory.Slot]-backed filter-card slot, exactly like
+	 * [net.kernelpanicsoft.boilerplate.warehouse.rack.AbstractRackMenu]'s own - this replaced the
+	 * ghost grid the sorting hook used to render through Compose, so a card here is genuinely taken
+	 * from (and returnable to) the player's inventory rather than referenced in place.
+	 */
 	override fun registerSlotHandlers() {
-		// No "filter" slot group - the ghost grid is rendered/edited entirely through Compose
-		// (see GhostSlotGrid), not a real vanilla Slot-backed handler.
+		val state = tile.hooks[direction.name] as? SortingHookState ?: return
+		handler("filter", state.filter) { it.item is FilterCardItem }
 	}
 }

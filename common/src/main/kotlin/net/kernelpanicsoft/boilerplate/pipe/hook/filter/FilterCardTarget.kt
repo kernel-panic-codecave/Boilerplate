@@ -4,15 +4,15 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.gui.item.ItemContainerAccess
 import net.kernelpanicsoft.archie.gui.item.PlayerInventoryItemAccess
-import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
-import net.kernelpanicsoft.boilerplate.pipe.entity.SDirection
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.Level
 
 /**
- * Describes where one [FilterCardItem] stack lives - a held stack ([PlayerSlot]), a hook's own
- * ghost filter grid ([HookFilterSlot]), or another filter card's own ghost children ([ChildSlot]),
- * which nests arbitrarily deep since its own [parent] is itself a [FilterCardTarget]. Used both to
+ * Describes where one [FilterCardItem] stack lives - a held stack ([PlayerSlot]) or another filter
+ * card's own ghost children ([ChildSlot]), which nests arbitrarily deep since its own [parent] is
+ * itself a [FilterCardTarget]. A sorting hook's own filter card no longer needs a case here: it
+ * lives in a real vanilla slot now (see [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState.filter]),
+ * so it's configured as a held card before being placed, exactly like a rack's. Used both to
  * open [FilterCardMenu] against a slot ([resolve]) and to overwrite a ghost slot directly without
  * opening anything ([write] - see [net.kernelpanicsoft.boilerplate.network.SetGhostSlotPacket]).
  * Travels over the network only (this mod's `@Sync`/NBT persistence never touches this type
@@ -36,18 +36,6 @@ sealed class FilterCardTarget {
 
 		override fun write(level: Level, player: Player, resource: ItemResource) {
 			// Not a ghost slot - nothing to overwrite.
-		}
-	}
-
-	/** Ghost slot [slot] of the [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState] filter grid on [pos]'s [direction] face. */
-	@Serializable
-	data class HookFilterSlot(val pos: SBlockPos, val direction: SDirection, val slot: Int) : FilterCardTarget() {
-		override fun resolve(level: Level, player: Player): ItemContainerAccess =
-			HookGhostSlotItemAccess(level, pos, direction, slot)
-
-		override fun write(level: Level, player: Player, resource: ItemResource) {
-			sortingHookStateAt(level, pos, direction)?.filter?.set(slot, resource) ?: return
-			markHookStateDirty(level, pos)
 		}
 	}
 

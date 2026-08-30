@@ -10,8 +10,10 @@ import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.network.GantrySyncPacket
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
+import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.kernelpanicsoft.boilerplate.power.PressureLine
@@ -624,7 +626,19 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 				val inserted = outboundBuffer.insert(resource, amount, false)
 				if (inserted <= 0) return
 				val target = job.deliverTo
-				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos, target.face, target.reservationId)
+				val shipped = target is DeliveryTarget.Pipe &&
+					shipOut(level, pos, resource, inserted, target.pos, target.face, target.reservationId)
+				// Nothing drains outboundBuffer except this one shipOut attempt, so anything left
+				// sitting there is gone for good as far as the player is concerned - out of the rack
+				// index, out of terminal search, and in a buffer no UI ever shows. Hand it back to
+				// inboundBuffer instead, where planPutAway will stow it into a rack again, and drop
+				// the reservation it was going to satisfy so the terminal doesn't keep showing a
+				// placeholder for a delivery that is never now coming.
+				if (!shipped) {
+					val recovered = outboundBuffer.extract(resource, inserted, false)
+					if (recovered > 0) inboundBuffer.insert(resource, recovered, false)
+					if (target is DeliveryTarget.Pipe) releaseReservation(level, target)
+				}
 			}
 			is GantryJob.Stow -> {
 				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
@@ -649,7 +663,15 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
-	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos, deliverFace: Direction? = null, reservationId: Long? = null) {
+	/**
+	 * Sends [amount] of [resource] out of [outboundBuffer] toward [deliverTo] down whichever adjacent
+	 * pipe can actually route there. Returns whether anything was actually dispatched - `false` means
+	 * the caller still owns those items and must put them somewhere, since nothing else ever drains
+	 * [outboundBuffer]; see [dropOff]'s own recovery. A transient miss here is genuinely reachable
+	 * (an adjacent pipe's own block entity not resolvable yet just after a world load, say), which is
+	 * exactly why the failure can't be ignored.
+	 */
+	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos, deliverFace: Direction? = null, reservationId: Long? = null): Boolean {
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
 			if (!level.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) continue
@@ -658,8 +680,19 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			val extracted = outboundBuffer.extract(resource, amount, false)
 			if (extracted <= 0) continue
 			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null, deliverFace, reservationId)
-			return
+			return true
 		}
+		return false
+	}
+
+	/** Drops the [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery] [target] was going to satisfy, for a retrieval that turned out to be undeliverable - otherwise the terminal keeps a reserved-slot placeholder up forever waiting on an item no longer on its way. */
+	private fun releaseReservation(level: ServerLevel, target: DeliveryTarget.Pipe) {
+		val reservationId = target.reservationId ?: return
+		val tile = level.getBlockEntity(target.pos) as? MultipartBlockEntity ?: return
+		val face = target.face
+		val states = if (face != null) listOfNotNull(tile.hooks[face.name] as? TerminalHookState)
+		else tile.hooks.mapNotNull { it.value as? TerminalHookState }
+		for (state in states) state.pendingDeliveries.removeIf { it.id == reservationId }
 	}
 
 	private fun planPutAway(level: ServerLevel) {

@@ -127,6 +127,13 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 		super.tick(level, pos, state)
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
+		// Consumed up front rather than cleared at the end: the encasement branch below returns
+		// early for a segment that has none, which left firstTick stuck true forever on any
+		// hook-only segment - re-running every hook's own start() on every single tick instead of
+		// once. Latent only because no hook type currently overrides start(), which is exactly the
+		// kind of thing that stops being latent the moment one does.
+		val isFirstTick = firstTick
+		firstTick = false
 		if (hooks.size > 0) {
 			var anyActiveChanged = false
 			for ((directionName, hookState) in hooks) {
@@ -136,7 +143,7 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 				hookState.active = drawHookPressure(serverLevel, pos, hookType)
 				if (hookState.active != wasActive) anyActiveChanged = true
 				if (!hookState.active) continue
-				if (firstTick || !wasActive) hookType.start(serverLevel, pos, direction, this, hookState)
+				if (isFirstTick || !wasActive) hookType.start(serverLevel, pos, direction, this, hookState)
 				hookType.tick(serverLevel, pos, direction, this, hookState)
 			}
 			hooks.touch()
@@ -147,10 +154,9 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 			if (anyActiveChanged) serverLevel.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
 		}
 		val encasementState = encasement.value ?: return
-		if (firstTick) encasementState.fromRegistry?.start(serverLevel, pos, this, encasementState)
+		if (isFirstTick) encasementState.fromRegistry?.start(serverLevel, pos, this, encasementState)
 		encasementState.fromRegistry?.tick(serverLevel, pos, this, encasementState)
 		encasement.touch()
-		if (firstTick) firstTick = false
 	}
 
 	/**

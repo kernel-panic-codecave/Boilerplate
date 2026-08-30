@@ -11,6 +11,7 @@ import net.kernelpanicsoft.boilerplate.network.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
+import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
@@ -160,11 +161,23 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * ([isActive]) - a client-side click can still slip through mid-flight (its own [hasPressure]
 	 * hasn't caught up yet, say), so this checks server-side too rather than trusting the client to
 	 * have actually held off.
+	 *
+	 * Registers a [PendingDelivery] the instant a source is actually found (
+	 * [RequestFulfillment.request]'s own `onDispatch`) - reserving a fresh id up front via
+	 * [TerminalHookState.nextReservationId] and threading it straight into the same `request` call
+	 * as `reservationId`, so the [TravelingItem]/gantry job this dispatches already carries the id
+	 * that ties its eventual arrival back to this exact reservation. Nothing is registered when
+	 * `request` finds no source at all - `onDispatch` simply never fires for that case.
 	 */
 	fun withdraw(stack: ResourceStack<ItemResource>) {
 		if (!isActive()) return
 		val level = level as? ServerLevel ?: return
-		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction)
+		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+		val reservationId = state.nextReservationId()
+		val startTick = level.gameTime
+		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction, reservationId) { estimatedTicks ->
+			state.pendingDeliveries += PendingDelivery(reservationId, stack.resource, stack.amount, startTick, estimatedTicks)
+		}
 		sendSearchResults()
 	}
 

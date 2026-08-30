@@ -31,6 +31,7 @@ import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.CraftingTerminalHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
@@ -133,6 +134,9 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	 * whatever exact count a specific step needs (EMI's own BOM sidebar fill, say) - capped at each
 	 * resource's own max stack size regardless of what's asked, since that's the most a single grid
 	 * cell could ever hold anyway.
+	 *
+	 * Registers a [PendingDelivery] per target the instant a source is actually found - see
+	 * [AbstractTerminalHookMenu.withdraw]'s own KDoc for the same pattern.
 	 */
 	fun supplyIngredients(targets: Map<Int, ItemResource>, amount: Long) {
 		val level = level as? ServerLevel ?: return
@@ -144,7 +148,11 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 			if (player.inventory.countItem(resource.cachedStack.item) >= need) continue
 			if (state.output.extract(resource, need, true) >= need) continue
 
-			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, need), tile.blockPos, direction)
+			val reservationId = state.nextReservationId()
+			val startTick = level.gameTime
+			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, need), tile.blockPos, direction, reservationId) { estimatedTicks ->
+				state.pendingDeliveries += PendingDelivery(reservationId, resource, need, startTick, estimatedTicks)
+			}
 		}
 	}
 

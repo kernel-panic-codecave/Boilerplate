@@ -49,6 +49,12 @@
         "adapter": "kotlin",
         "value": "net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin"
       }
+    ],
+    "jei_mod_plugin": [
+      {
+        "adapter": "kotlin",
+        "value": "net.kernelpanicsoft.boilerplate.compat.jei.BoilerplateJEIPlugin"
+      }
     ]
   },
   "depends": {

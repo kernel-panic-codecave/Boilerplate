@@ -30,19 +30,42 @@ class GantryState(startPos: Vec3) {
 
 	val isMoving: Boolean get() = waypoints.isNotEmpty()
 
-	/** Queues motion to the center of [target] via the rail-then-descend path through [clearanceY]. Replaces any motion already in progress. */
+	/**
+	 * Queues motion to the center of [target] via the rail-then-descend path through [clearanceY].
+	 * Replaces any motion already in progress.
+	 *
+	 * Waypoints identical to the point *preceding* them are dropped, so a leg that wouldn't move at
+	 * all (already at rail height, or moving along only one axis) costs nothing. Deliberately not a
+	 * blanket "drop anything equal to [pos]": that also dropped the final [destination] whenever it
+	 * happened to equal the starting position, which is exactly what a gantry told to go home right
+	 * after delivering *at* home does. The ascent to the rail survived the filter and the descent
+	 * back didn't, so the head climbed up and stayed there - see the early return below, which now
+	 * makes that case move nothing at all rather than bob up and back.
+	 */
 	fun moveTo(target: BlockPos, clearanceY: Int) {
 		val destination = Vec3.atCenterOf(target)
+		if (destination == pos) {
+			waypoints = ArrayDeque()
+			return
+		}
+
 		val rail = Vec3(pos.x, clearanceY.toDouble(), pos.z)
 		val overDestination = Vec3(destination.x, rail.y, destination.z)
-		waypoints = ArrayDeque(
-			listOf(
-				rail,
-				Vec3(overDestination.x, rail.y, rail.z),
-				overDestination,
-				destination,
-			).filter { it != pos },
+		val path = listOf(
+			rail,
+			Vec3(overDestination.x, rail.y, rail.z),
+			overDestination,
+			destination,
 		)
+
+		val queued = ArrayDeque<Vec3>()
+		var previous = pos
+		for (waypoint in path) {
+			if (waypoint == previous) continue
+			queued += waypoint
+			previous = waypoint
+		}
+		waypoints = queued
 	}
 
 	/**

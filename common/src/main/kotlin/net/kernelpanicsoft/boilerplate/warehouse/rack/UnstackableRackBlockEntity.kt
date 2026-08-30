@@ -27,7 +27,10 @@ class UnstackableRackBlockEntity(pos: BlockPos, state: BlockState) :
 	private val resources: MutableList<SItemResource> by listField(ItemResourceSerializer) { List(SLOTS) { ItemResource.BLANK } }
 	private val amounts: MutableList<Long> by listField(Long.serializer()) { List(SLOTS) { 0L } }
 
-	val storage: CommonStorage<ItemResource> = UncappedItemStorage(CAPACITY_PER_RECORD, resources, amounts) { setChanged() }
+	// Providers, not the lists themselves - these initializers run before loadAdditional has put
+	// anything in NBT, so a captured list is pinned to the empty defaults forever. See
+	// UncappedItemStorage's own KDoc.
+	val storage: CommonStorage<ItemResource> = UncappedItemStorage(SLOTS, CAPACITY_PER_RECORD, { resources }, { amounts }) { setChanged() }
 
 	override fun describeContents(): Component {
 		val used = resources.count { !it.isBlank }

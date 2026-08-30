@@ -23,7 +23,10 @@ class BulkRackBlockEntity(pos: BlockPos, state: BlockState) :
 	private val resources: MutableList<SItemResource> by listField(ItemResourceSerializer) { listOf(ItemResource.BLANK) }
 	private val amounts: MutableList<Long> by listField(Long.serializer()) { listOf(0L) }
 
-	val storage: CommonStorage<ItemResource> = UncappedItemStorage(CAPACITY, resources, amounts) { setChanged() }
+	// Providers, not the lists themselves - these initializers run before loadAdditional has put
+	// anything in NBT, so a captured list is pinned to the empty defaults forever. See
+	// UncappedItemStorage's own KDoc.
+	val storage: CommonStorage<ItemResource> = UncappedItemStorage(SLOTS, CAPACITY, { resources }, { amounts }) { setChanged() }
 
 	override fun describeContents(): Component {
 		val resource = resources[0]
@@ -32,6 +35,8 @@ class BulkRackBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	companion object {
+		/** One resource per rack - see this class's own KDoc. */
+		const val SLOTS = 1
 		const val CAPACITY = 1_000_000L
 	}
 }

@@ -148,7 +148,20 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			}
 
 			val resource = item.stack.resource
-			val inserted = storage.insert(resource, item.stack.amount, false)
+			// A reserved delivery lands in its own reserved slot specifically, bypassing the
+			// network-facing (reservation-blocking) view that ItemApi handed back - see
+			// ReservedSlotStorage. Everything else takes the ordinary any-slot path.
+			val reservation = reservationOwner?.pendingDeliveries
+				?.firstOrNull { it.id == item.reservationId }
+				// Never index blindly off persisted state: a slot count that shrank under a saved
+				// reservation would crash the tick loop outright. Falling through to the ordinary
+				// path just lands it in any free slot instead.
+				?.takeIf { it.slot in 0 until reservationOwner.output.size() }
+			val inserted = if (reservation != null) {
+				reservationOwner.output.insert(reservation.slot, resource, item.stack.amount, false)
+			} else {
+				storage.insert(resource, item.stack.amount, false)
+			}
 			when {
 				inserted >= item.stack.amount -> {
 					reservationOwner?.pendingDeliveries?.removeIf { it.id == item.reservationId }

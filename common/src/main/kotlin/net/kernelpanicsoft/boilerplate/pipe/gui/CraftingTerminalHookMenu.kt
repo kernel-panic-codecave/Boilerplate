@@ -136,7 +136,11 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	 * cell could ever hold anyway.
 	 *
 	 * Registers a [PendingDelivery] per target the instant a source is actually found - see
-	 * [AbstractTerminalHookMenu.withdraw]'s own KDoc for the same pattern.
+	 * [AbstractTerminalHookMenu.withdraw]'s own KDoc for the same pattern. Each claims a real inbox
+	 * slot up front and is capped to what that slot holds; a target that can't get one is skipped
+	 * outright rather than fetched into an inbox with no room for it, so a fill needing more
+	 * ingredients than the inbox has free slots supplies what fits and leaves the rest for a second
+	 * attempt once those have been cleared out.
 	 */
 	fun supplyIngredients(targets: Map<Int, ItemResource>, amount: Long) {
 		val level = level as? ServerLevel ?: return
@@ -148,10 +152,11 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 			if (player.inventory.countItem(resource.cachedStack.item) >= need) continue
 			if (state.output.extract(resource, need, true) >= need) continue
 
+			val (slot, slotLimit) = state.reserveOutputSlot(resource) ?: break
 			val reservationId = state.nextReservationId()
 			val startTick = level.gameTime
-			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, need), tile.blockPos, direction, reservationId) { estimatedTicks, dispatched ->
-				state.pendingDeliveries += PendingDelivery(reservationId, resource, dispatched, startTick, estimatedTicks)
+			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, minOf(need, slotLimit)), tile.blockPos, direction, reservationId) { estimatedTicks, dispatched ->
+				state.pendingDeliveries += PendingDelivery(reservationId, slot, resource, dispatched, startTick, estimatedTicks)
 			}
 		}
 		sendPendingDeliveries()

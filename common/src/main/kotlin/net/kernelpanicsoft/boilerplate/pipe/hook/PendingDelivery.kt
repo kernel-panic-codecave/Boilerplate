@@ -16,6 +16,14 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
  * since-cancelled reservation apart from a live one and redirect the real item back into the
  * network instead of landing here after all.
  *
+ * [slot] is a genuine claim on that one [TerminalHookState.output] index, not just where the
+ * placeholder happens to be drawn: the delivery lands there specifically on arrival, and
+ * [ReservedSlotStorage] blocks everything else on the network from inserting there in the meantime.
+ * A reservation is only ever handed out against a slot that's actually free
+ * ([TerminalHookState.reserveOutputSlot]), and a request that can't get one is refused outright
+ * rather than dispatched into an inbox with nowhere to put it - so [amount] is also capped at what
+ * that single slot can genuinely hold.
+ *
  * [totalTicks] is a genuine, fixed estimate for a provider-hook pull (real pipe travel at a known
  * speed - see `RequestFulfillment.request`'s own KDoc), but only a rough one for a warehouse
  * retrieval, whose own gantry speed is pressure-gated and can fluctuate - the progress bar for one
@@ -24,6 +32,7 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
 @Serializable
 data class PendingDelivery(
 	val id: Long,
+	val slot: Int,
 	val resource: SItemResource,
 	val amount: Long,
 	val startTick: Long,

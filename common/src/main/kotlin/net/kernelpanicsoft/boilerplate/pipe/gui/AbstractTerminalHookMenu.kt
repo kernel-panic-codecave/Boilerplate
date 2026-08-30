@@ -163,21 +163,40 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * hasn't caught up yet, say), so this checks server-side too rather than trusting the client to
 	 * have actually held off.
 	 *
+	 * Every dispatch claims a real, specific inbox slot up front
+	 * ([TerminalHookState.reserveOutputSlot]) and is capped to what that one slot can hold, so a
+	 * withdrawal larger than a single slot is split across as many slots as the inbox can actually
+	 * spare - and simply stops once it runs out, rather than dispatching items with nowhere to land.
+	 * Asking for more than the whole inbox can hold therefore withdraws what fits and no more.
+	 *
 	 * Registers a [PendingDelivery] the instant a source is actually found (
 	 * [RequestFulfillment.request]'s own `onDispatch`) - reserving a fresh id up front via
 	 * [TerminalHookState.nextReservationId] and threading it straight into the same `request` call
 	 * as `reservationId`, so the [TravelingItem]/gantry job this dispatches already carries the id
 	 * that ties its eventual arrival back to this exact reservation. Nothing is registered when
-	 * `request` finds no source at all - `onDispatch` simply never fires for that case.
+	 * `request` finds no source at all - `onDispatch` simply never fires for that case, which also
+	 * leaves the slot it had picked genuinely unreserved for the next attempt.
 	 */
 	fun withdraw(stack: ResourceStack<ItemResource>) {
 		if (!isActive()) return
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
-		val reservationId = state.nextReservationId()
-		val startTick = level.gameTime
-		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction, reservationId) { estimatedTicks, dispatched ->
-			state.pendingDeliveries += PendingDelivery(reservationId, stack.resource, dispatched, startTick, estimatedTicks)
+
+		var remaining = stack.amount
+		while (remaining > 0) {
+			val (slot, slotLimit) = state.reserveOutputSlot(stack.resource) ?: break
+			val take = minOf(remaining, slotLimit)
+			val reservationId = state.nextReservationId()
+			val startTick = level.gameTime
+			val dispatched = RequestFulfillment.request(
+				level, tile.blockPos, stack.withCount(take), tile.blockPos, direction, reservationId,
+			) { estimatedTicks, actual ->
+				state.pendingDeliveries += PendingDelivery(reservationId, slot, stack.resource, actual, startTick, estimatedTicks)
+			}
+			// Nothing left anywhere on the network - stop rather than spinning through the
+			// remaining free slots re-asking a question already answered.
+			if (dispatched <= 0) break
+			remaining -= dispatched
 		}
 		sendSearchResults()
 		sendPendingDeliveries()
@@ -227,18 +246,17 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 
 	/**
 	 * The [PendingDelivery] a reserved-slot placeholder at [outputSlots]' own cell [index] should
-	 * render, if any - [pendingDeliveries], in order, assigned only to genuinely empty
-	 * [outputSlots] cells (see [PendingDelivery]'s own KDoc for why a real item already sitting in
-	 * an output slot must never get a placeholder drawn over it), so a delivery's own placeholder
-	 * shifts to whichever empty cell comes next as slots fill and empty around it, rather than
-	 * being pinned to one fixed index.
+	 * render, if any - a direct lookup by [PendingDelivery.slot], since a reservation owns that exact
+	 * inbox index for its whole life rather than merely being drawn over whichever cell happens to
+	 * be free. Still guarded on the cell genuinely being empty: a placeholder must never paint over
+	 * a real item (see [PendingDelivery]'s own KDoc), and while nothing should be able to fill a
+	 * reserved slot behind its back ([net.kernelpanicsoft.boilerplate.pipe.hook.ReservedSlotStorage]),
+	 * drawing a ghost on top of a real stack is a bad enough failure to be worth ruling out here too.
 	 */
 	fun pendingDeliveryFor(index: Int): PendingDelivery? {
 		val slot = outputSlots.getOrNull(index) ?: return null
 		if (!slot.item.isEmpty) return null
-		var emptyCellsBefore = 0
-		for (i in 0 until index) if (outputSlots.getOrNull(i)?.item?.isEmpty == true) emptyCellsBefore++
-		return pendingDeliveries.getOrNull(emptyCellsBefore)
+		return pendingDeliveries.firstOrNull { it.slot == index }
 	}
 
 	/** The most recently received craft-preview result - `resource to maxCraftable` - or `null` before any preview's been requested. Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftPreview] applies a fresh [CraftPreviewPacket]. */

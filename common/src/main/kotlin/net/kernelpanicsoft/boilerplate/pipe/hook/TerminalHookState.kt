@@ -39,7 +39,37 @@ open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : Hoo
 	/** A fresh [PendingDelivery.id], never before used by this hook. */
 	fun nextReservationId(): Long = reservationCounter++
 
-	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> = output
+	/** [output] slot indices currently claimed by a [PendingDelivery] - see [ReservedSlotStorage]. */
+	val reservedSlots: Set<Int> get() = pendingDeliveries.mapTo(mutableSetOf()) { it.slot }
+
+	/**
+	 * The lowest [output] slot that's genuinely empty *and* not already claimed by a
+	 * [PendingDelivery], paired with the most of [resource] it could hold - or `null` when the inbox
+	 * has no room left to promise anyone, which is a request's cue to refuse rather than dispatch
+	 * something with nowhere to land.
+	 *
+	 * Reserving is not a side effect here: a slot only actually becomes reserved once a
+	 * [PendingDelivery] naming it is added to [pendingDeliveries], which callers do from
+	 * [net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment.request]'s own `onDispatch` -
+	 * so a request that finds no source never leaves a slot stranded as reserved-but-never-coming.
+	 * That also means a caller reserving several slots in one pass must add each delivery before
+	 * asking for the next slot, which the `onDispatch` ordering gives it for free.
+	 */
+	fun reserveOutputSlot(resource: ItemResource): Pair<Int, Long>? {
+		val reserved = reservedSlots
+		for (index in 0 until output.size()) {
+			if (index in reserved) continue
+			if (!output.getResource(index).isBlank) continue
+			val limit = output.getLimit(index, resource)
+			if (limit <= 0) continue
+			return index to limit
+		}
+		return null
+	}
+
+	/** Reservation-aware for everything *else* on the network - see [ReservedSlotStorage]. A reserved delivery's own arrival bypasses this and writes straight to [output]. */
+	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> =
+		ReservedSlotStorage(output) { reservedSlots }
 
 	companion object {
 		const val SLOT_COUNT = 9

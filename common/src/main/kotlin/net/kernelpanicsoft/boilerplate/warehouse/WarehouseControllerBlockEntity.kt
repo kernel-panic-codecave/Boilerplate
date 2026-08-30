@@ -307,6 +307,34 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	/**
+	 * A rough estimate, in ticks, for how long a retrieval of [slot] delivering to [deliverTo] will
+	 * take end to end - [gantry]'s own two legs (to [slot], then back to this controller) at its
+	 * current [effectiveGantrySpeed], plus the real pipe travel leg once it ships back out
+	 * ([shipOut], at [PipeBlockEntity.SEGMENT_SPEED]'s own fixed rate). Only ever a rough guess, not
+	 * a real reservation of gantry time: [effectiveGantrySpeed] is pressure-gated and can change
+	 * between now and whenever this job actually runs (other queued jobs ahead of it, say), and the
+	 * pipe leg assumes whichever neighboring pipe [shipOut] tries first is the one that ends up
+	 * working, same as [shipOut] itself assumes. `0` (gantry hard-stalled, [effectiveGantrySpeed]
+	 * `<= 0`) falls back to a fixed guess rather than dividing by zero.
+	 */
+	fun estimateRetrieveTicks(slot: WarehouseIndex.RackSlotRef, deliverTo: BlockPos): Int {
+		val speed = effectiveGantrySpeed()
+		if (speed <= 0.0) return FALLBACK_ESTIMATE_TICKS
+		val slotPos = Vec3.atCenterOf(slot.pos)
+		val gantryDistance = gantry.pos.distanceTo(slotPos) + slotPos.distanceTo(Vec3.atCenterOf(blockPos))
+		val gantryTicks = gantryDistance / speed
+
+		val serverLevel = level as? ServerLevel ?: return gantryTicks.toInt()
+		val pipeHops = Direction.entries.firstNotNullOfOrNull { direction ->
+			val neighborPos = blockPos.relative(direction)
+			if (!serverLevel.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) return@firstNotNullOfOrNull null
+			PipeRouter.findRouteTo(serverLevel, neighborPos, deliverTo)?.size
+		} ?: 0
+		val pipeTicks = pipeHops * (1.0 / PipeBlockEntity.SEGMENT_SPEED)
+		return (gantryTicks + pipeTicks).toInt()
+	}
+
+	/**
 	 * Claims up to [amount] of [resource] against this warehouse's own live [index] - not yet
 	 * reflected there (that only updates once a real extraction happens, in [pickUp]), so a second
 	 * concurrent claim can't double-count what this one already committed to. Walks
@@ -596,7 +624,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 				val inserted = outboundBuffer.insert(resource, amount, false)
 				if (inserted <= 0) return
 				val target = job.deliverTo
-				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos, target.face)
+				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos, target.face, target.reservationId)
 			}
 			is GantryJob.Stow -> {
 				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
@@ -621,7 +649,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
-	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos, deliverFace: Direction? = null) {
+	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos, deliverFace: Direction? = null, reservationId: Long? = null) {
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
 			if (!level.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) continue
@@ -629,7 +657,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			val route = PipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
 			val extracted = outboundBuffer.extract(resource, amount, false)
 			if (extracted <= 0) continue
-			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null, deliverFace)
+			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null, deliverFace, reservationId)
 			return
 		}
 	}
@@ -714,6 +742,9 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		private const val GANTRY_SYNC_RADIUS = 64.0
 		private const val MAX_FRAME_TIME_NS = 1_000_000L
 		private const val RACK_SEARCH_LIMIT = 256
+
+		/** [estimateRetrieveTicks]'s own fallback when [effectiveGantrySpeed] is hard-stalled (`<= 0`) - a genuine estimate would divide by zero. */
+		private const val FALLBACK_ESTIMATE_TICKS = 100
 
 		/** Zero-capacity stand-in for [onPressureTick] when [PressureLine.find] finds nothing reachable - correctly reads as "can't even cover basePressureCost" (see [pressureSpeedMultiplier]), gantry speed hard-gated to `0.0` rather than a real line's own shortfall. */
 		private val NO_PRESSURE_LINE = ArchieEnergyStorage(0)

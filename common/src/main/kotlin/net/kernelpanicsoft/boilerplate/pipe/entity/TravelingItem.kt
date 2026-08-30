@@ -33,6 +33,13 @@ import net.minecraft.world.item.DyeColor
  * [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter.findRoute], or a target that was
  * never ambiguous - a single rack, a chest), which keeps today's "whichever face the topology
  * happens to land on" resolution exactly as it was.
+ *
+ * [reservationId], when non-null, ties this delivery to a specific
+ * [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery] the destination terminal is
+ * showing a reserved-slot placeholder for (see that class's own KDoc) - checked on arrival
+ * ([net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity.tick]) so a since-cancelled
+ * reservation redirects the real item back into the network instead of landing in the terminal
+ * after all. `null` for a delivery with no reservation tracking it (a plain extractor push, say).
  */
 @Serializable
 data class TravelingItem(
@@ -42,6 +49,7 @@ data class TravelingItem(
 	var path: List<SBlockPos> = emptyList(),
 	val color: SDyeColor? = null,
 	val targetFace: SDirection? = null,
+	val reservationId: Long? = null,
 )
 
 typealias SDirection = @Serializable(with = DirectionSerializer::class) Direction

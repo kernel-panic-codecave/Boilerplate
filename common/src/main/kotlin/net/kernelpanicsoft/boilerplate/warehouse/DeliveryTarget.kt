@@ -22,6 +22,10 @@ sealed interface DeliveryTarget {
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType]s on different faces of
 	 * one block, say) - see [net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.targetFace]'s
 	 * own KDoc for why the topology-derived arrival direction can't be trusted to do that on its own.
+	 *
+	 * [reservationId], when set, is carried through to the [net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem]
+	 * this eventually spawns ([WarehouseControllerBlockEntity.shipOut]) - see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own KDoc for why.
 	 */
-	data class Pipe(val pos: BlockPos, val face: Direction? = null) : DeliveryTarget
+	data class Pipe(val pos: BlockPos, val face: Direction? = null, val reservationId: Long? = null) : DeliveryTarget
 }

@@ -30,6 +30,15 @@ open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : Hoo
 	 */
 	val output: ArchieItemStorage by itemField(SLOT_COUNT)
 
+	/** In-flight deliveries [output] doesn't have the real item for yet - see [PendingDelivery]'s own KDoc. Not tied to a specific [output] slot index; [AbstractTerminalHookScreen] assigns each to the next empty output slot purely for rendering, in order. */
+	val pendingDeliveries by listField(PendingDelivery.serializer()) { emptyList<PendingDelivery>() }
+
+	/** Backing counter for [nextReservationId] - a plain incrementing [Long], persisted so a reservation dispatched just before a save/reload still gets an id no future reservation this hook creates could collide with. */
+	private var reservationCounter: Long by longField()
+
+	/** A fresh [PendingDelivery.id], never before used by this hook. */
+	fun nextReservationId(): Long = reservationCounter++
+
 	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> = output
 
 	companion object {

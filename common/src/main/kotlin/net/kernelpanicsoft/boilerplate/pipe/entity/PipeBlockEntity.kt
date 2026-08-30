@@ -6,6 +6,7 @@ import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.boilerplate.network.PipeContentsSyncPacket
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache
+import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypesAt
@@ -118,10 +119,21 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				continue
 			}
 
+			val reservationOwner = item.reservationId?.let { reservationOwnerAt(serverLevel, nextPos, it) }
+			if (item.reservationId != null && reservationOwner == null) {
+				// The reservation this delivery was for was cancelled - redirect back into the
+				// network instead of landing at a terminal that no longer wants it.
+				redirectCancelled(serverLevel, pos, nextPos, item)
+				items.removeAt(index)
+				hopped = true
+				continue
+			}
+
 			val resource = item.stack.resource
 			val inserted = storage.insert(resource, item.stack.amount, false)
 			when {
 				inserted >= item.stack.amount -> {
+					reservationOwner?.pendingDeliveries?.removeIf { it.id == item.reservationId }
 					items.removeAt(index)
 					hopped = true
 				}
@@ -147,6 +159,33 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	private fun jam(level: ServerLevel, pos: BlockPos, item: TravelingItem) {
 		ItemEntity(level, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, item.stack.resource.toStack(item.stack.amount.toInt()))
 			.also { level.addFreshEntity(it) }
+	}
+
+	/** The [TerminalHookState] at [pos] still holding an active [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery] with [reservationId], if any - `null` once it's been cancelled (or its owning hook/block no longer exists at all). */
+	private fun reservationOwnerAt(level: ServerLevel, pos: BlockPos, reservationId: Long): TerminalHookState? {
+		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return null
+		for ((_, entry) in tile.hooks) {
+			val state = entry as? TerminalHookState ?: continue
+			if (state.pendingDeliveries.any { it.id == reservationId }) return state
+		}
+		return null
+	}
+
+	/**
+	 * Redirects a delivery whose own reservation was cancelled back into the network instead of
+	 * landing at the terminal it was originally headed for - the same push-model search
+	 * ([PipeRouter.findRoute]) an extractor uses, from [pos]'s own position, excluding
+	 * [cancelledDestination] so it can't just hand the item straight back to where it was already
+	 * refused. Falls back to [jam] (a dropped item entity) when nothing else on the network accepts
+	 * it, rather than the item silently vanishing.
+	 */
+	private fun redirectCancelled(level: ServerLevel, pos: BlockPos, cancelledDestination: BlockPos, item: TravelingItem) {
+		val route = PipeRouter.findRoute(level, pos, item.stack.resource, item.color, exclude = cancelledDestination)
+		if (route == null) {
+			jam(level, pos, item)
+			return
+		}
+		travelingItems += TravelingItem(item.stack, item.fromDirection, 0f, route, item.color, null)
 	}
 
 	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos, items: List<TravelingItem>) {

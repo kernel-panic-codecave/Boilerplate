@@ -8,6 +8,7 @@ import net.kernelpanicsoft.boilerplate.crafting.CraftingCpuManager
 import net.kernelpanicsoft.boilerplate.crafting.craftingBufferAt
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
@@ -55,12 +56,33 @@ object RequestFulfillment {
 	 * that can't be recovered from arrival topology alone. `null` (the default) preserves the old,
 	 * "whichever face the topology happens to land on" resolution for a caller with no specific
 	 * face in mind.
+	 *
+	 * [reservationId], when set, is carried through to whatever eventually delivers this
+	 * ([net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.reservationId] for a provider
+	 * pull, [net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget.Pipe.reservationId] for a
+	 * warehouse retrieval) - see [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own
+	 * KDoc for why. [onDispatch], when a source was actually found, reports an estimate of how many
+	 * ticks the delivery will take - genuinely accurate for a provider pull (real pipe travel at
+	 * [PipeBlockEntity.SEGMENT_SPEED]'s own fixed rate), only a rough one for a warehouse retrieval
+	 * ([WarehouseControllerBlockEntity.estimateRetrieveTicks]'s own gantry-plus-pipe estimate,
+	 * genuinely accounting for both legs but still just an estimate - the gantry's own speed is
+	 * pressure-gated and can change before the job actually runs) - so the caller can populate a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own `totalTicks` without this
+	 * function needing to know anything about that class itself.
 	 */
-	fun request(level: ServerLevel, from: BlockPos, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
+	fun request(
+		level: ServerLevel,
+		from: BlockPos,
+		stack: ResourceStack<ItemResource>,
+		deliverTo: BlockPos,
+		deliverFace: Direction? = null,
+		reservationId: Long? = null,
+		onDispatch: ((estimatedTicks: Int) -> Unit)? = null,
+	): Long {
 		val reachable = reachablePipes(level, from)
-		val fromProvider = fulfillFromProvider(level, providerSources(level, reachable), stack, deliverTo, deliverFace)
+		val fromProvider = fulfillFromProvider(level, providerSources(level, reachable), stack, deliverTo, deliverFace, reservationId, onDispatch)
 		if (fromProvider > 0) return fromProvider
-		return fulfillFromWarehouse(level, warehousesIn(level, reachable), stack, deliverTo, deliverFace)
+		return fulfillFromWarehouse(level, warehousesIn(level, reachable), stack, deliverTo, deliverFace, reservationId, onDispatch)
 	}
 
 	/**
@@ -95,7 +117,15 @@ object RequestFulfillment {
 	 * [reachableWarehouses]'s own equivalent split - a caller that only needs to know *what exists*
 	 * still sees it regardless of pressure; only a caller that would actually *move* it checks.
 	 */
-	internal fun fulfillFromProvider(level: ServerLevel, sources: List<ProviderSource>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
+	internal fun fulfillFromProvider(
+		level: ServerLevel,
+		sources: List<ProviderSource>,
+		stack: ResourceStack<ItemResource>,
+		deliverTo: BlockPos,
+		deliverFace: Direction? = null,
+		reservationId: Long? = null,
+		onDispatch: ((Int) -> Unit)? = null,
+	): Long {
 		for (source in sources) {
 			if (!source.hookState.active) continue
 			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
@@ -106,19 +136,29 @@ object RequestFulfillment {
 			val extracted = storage.extract(stack.resource, available, false)
 			if (extracted <= 0) continue
 			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
-			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace)
+			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace, reservationId)
+			onDispatch?.invoke((route.size / PipeBlockEntity.SEGMENT_SPEED).toInt())
 			return extracted
 		}
 		return 0
 	}
 
 	/** [fulfillFromProvider]'s own KDoc's "first willing source" shape, but over reachable warehouses - skips a controller [WarehouseControllerBlockEntity.hasPressure] says can't move its gantry at all, so this never queues a retrieve job that would just sit hard-gated at `0.0` speed forever. */
-	private fun fulfillFromWarehouse(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, stack: ResourceStack<ItemResource>, deliverTo: BlockPos, deliverFace: Direction? = null): Long {
+	private fun fulfillFromWarehouse(
+		level: ServerLevel,
+		warehouses: List<WarehouseControllerBlockEntity>,
+		stack: ResourceStack<ItemResource>,
+		deliverTo: BlockPos,
+		deliverFace: Direction? = null,
+		reservationId: Long? = null,
+		onDispatch: ((Int) -> Unit)? = null,
+	): Long {
 		for (controller in warehouses) {
 			if (!controller.hasPressure()) continue
 			val slot = controller.index.locations[stack.resource]?.firstOrNull() ?: continue
 			val amount = minOf(stack.amount, slot.amount)
-			controller.enqueueRetrieve(slot, stack.withCount(amount), DeliveryTarget.Pipe(deliverTo, deliverFace))
+			controller.enqueueRetrieve(slot, stack.withCount(amount), DeliveryTarget.Pipe(deliverTo, deliverFace, reservationId))
+			onDispatch?.invoke(controller.estimateRetrieveTicks(slot, deliverTo))
 			return amount
 		}
 		return 0

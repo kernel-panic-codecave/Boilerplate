@@ -148,11 +148,20 @@ class BoilerplateJEIPlugin : IModPlugin {
 		)
 	}
 
-	/** Every [RecipeIngredientRole.INPUT] slot of [recipeSlots] not already satisfiable from [menu]'s own accessible slots - the grid included, since something already sitting there isn't "missing" regardless of whether it counts as a fill *source*. */
+	/**
+	 * Every [RecipeIngredientRole.INPUT] slot of [recipeSlots] not already satisfiable from [menu]'s
+	 * own accessible slots - the grid included, since something already sitting there isn't "missing"
+	 * regardless of whether it counts as a fill *source*. Checks every alternative [resourcesOf] a
+	 * slot reports, not [IRecipeSlotView.getDisplayedItemStack] alone - a tag-backed ingredient (any
+	 * plank color, say) cycles which single alternative JEI happens to display every few seconds, and
+	 * checking only that one meant this looked "missing" whenever the display cycled to a variant the
+	 * player didn't have, even while a variant they *did* have was sitting right there as a different
+	 * alternative for the same slot.
+	 */
 	private fun missingInputSlots(menu: CraftingTerminalHookMenu, recipeSlots: IRecipeSlotsView): List<IRecipeSlotView> =
 		recipeSlots.getSlotViews(RecipeIngredientRole.INPUT).filter { view ->
-			val resource = view.displayedItemStack.map { ItemResource.of(it) }.orElse(null)
-			resource != null && !isLocallyAvailable(menu, resource)
+			val resources = resourcesOf(view)
+			resources.isNotEmpty() && resources.none { isLocallyAvailable(menu, it) }
 		}
 
 	private fun isLocallyAvailable(menu: CraftingTerminalHookMenu, resource: ItemResource): Boolean =
@@ -240,11 +249,11 @@ private class MissingIngredientError(private val menu: CraftingTerminalHookMenu,
 				translate(recipeX.toFloat(), recipeY.toFloat(), 0f)
 				for (view in missing)
 				{
-					val resource = view.displayedItemStack.map { ItemResource.of(it) }.orElse(null)
+					val resources = resourcesOf(view)
 					val color = when
 					{
-						resource != null && menu.results.any { it.resource == resource } -> JEI_COLOR_REQUESTABLE
-						resource != null && menu.craftableResources.contains(resource) -> JEI_COLOR_CRAFTABLE
+						resources.any { r -> menu.results.any { it.resource == r } } -> JEI_COLOR_REQUESTABLE
+						resources.any { menu.craftableResources.contains(it) } -> JEI_COLOR_CRAFTABLE
 						else -> JEI_COLOR_MISSING
 					}
 					view.drawHighlight(guiGraphics, color)
@@ -260,8 +269,12 @@ private class MissingIngredientError(private val menu: CraftingTerminalHookMenu,
 	}
 }
 
-/** Whether [view]'s displayed ingredient shows up in [menu]'s own already-synced [CraftingTerminalHookMenu.results] - reachable somewhere the terminal could request it from, even if not physically present yet. */
+/** Whether *any* of [view]'s possible alternatives ([resourcesOf], not just [IRecipeSlotView.getDisplayedItemStack]'s current cycling frame) shows up in [menu]'s own already-synced [CraftingTerminalHookMenu.results] - reachable somewhere the terminal could request it from, even if not physically present yet. */
 private fun isReachable(menu: CraftingTerminalHookMenu, view: IRecipeSlotView): Boolean {
-	val resource = view.displayedItemStack.map { ItemResource.of(it) }.orElse(null) ?: return false
-	return menu.results.any { it.resource == resource }
+	val reachable = menu.results.mapTo(HashSet()) { it.resource }
+	return resourcesOf(view).any { it in reachable }
 }
+
+/** Every possible [ItemResource] alternative [view] could be satisfied by - a tag-backed ingredient (any plank color, say) has several, not just whichever one [IRecipeSlotView.getDisplayedItemStack] happens to be cycling through right now. */
+private fun resourcesOf(view: IRecipeSlotView): List<ItemResource> =
+	view.itemStacks.map { ItemResource.of(it) }.toList()

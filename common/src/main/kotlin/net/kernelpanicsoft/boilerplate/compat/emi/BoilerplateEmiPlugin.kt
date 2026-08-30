@@ -87,12 +87,19 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * fire [CraftingTerminalHookMenu.requestIngredientSupply] itself - this is evaluated
 				 * every single frame a recipe view is open, not just on a click, so any real side effect
 				 * here (pulling real stock from storage) would fire from the player merely
-				 * *looking* at a recipe.
+				 * *looking* at a recipe. Checks every alternative [resourcesOf] an ingredient reports,
+				 * not [targetsOf]'s own single representative per cell - a tag-backed ingredient (any
+				 * plank color, say) has several, and checking only one meant this looked unreachable
+				 * whenever that one representative happened to be an alternative the player didn't
+				 * have, even while a *different* alternative they did have satisfied the same slot.
 				 */
 				override fun canCraft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
 					if (super.canCraft(recipe, context)) return true
 					val reachable = context.screenHandler.results.mapTo(HashSet()) { it.resource }
-					return targetsOf(recipe).values.all { it in reachable }
+					return recipe.inputs.all { ingredient ->
+						val resources = resourcesOf(ingredient)
+						resources.isEmpty() || resources.any { it in reachable }
+					}
 				}
 
 				/**
@@ -137,7 +144,9 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * availability map [StandardRecipeHandler]'s own private `getAvailable` does (not
 				 * reachable from here - a Java interface's `private static` method), since a
 				 * [SlotWidget]'s own [EmiIngredient] is only reliably matched back to a specific recipe
-				 * input by reference identity, not structural equality.
+				 * input by reference identity, not structural equality. Colors by whether *any* of
+				 * [resourcesOf] the widget's own ingredient applies, not just one representative - same
+				 * reasoning as [canCraft]'s own KDoc.
 				 */
 				override fun render(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>, widgets: List<Widget>, draw: GuiGraphics) {
 					val inputs = recipe.inputs
@@ -153,10 +162,10 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 						val stack = widget.stack
 						if (stack.isEmpty || available[stack] != false) continue
 
-						val resource = stack.emiStacks.firstOrNull { !it.isEmpty }?.itemStack?.takeUnless { it.isEmpty }?.let { ItemResource.of(it) }
+						val resources = resourcesOf(stack)
 						val color = when {
-							resource != null && menu.results.any { it.resource == resource } -> COLOR_REQUESTABLE
-							resource != null && menu.craftableResources.contains(resource) -> COLOR_CRAFTABLE
+							resources.any { r -> menu.results.any { it.resource == r } } -> COLOR_REQUESTABLE
+							resources.any { menu.craftableResources.contains(it) } -> COLOR_CRAFTABLE
 							else -> COLOR_MISSING
 						}
 						val bounds = widget.bounds
@@ -188,6 +197,18 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				?.itemStack?.takeUnless { it.isEmpty }
 				?.let { index to ItemResource.of(it) }
 		}.toMap()
+
+	/**
+	 * Every possible [ItemResource] alternative [ingredient] could be satisfied by, not just
+	 * [targetsOf]'s own single representative - a tag-backed ingredient (any plank color, say) has
+	 * several. Used for "is this obtainable at all" checks ([canCraft], [render]'s own coloring),
+	 * never for [CraftingTerminalHookMenu.requestIngredientSupply] itself (which still needs
+	 * [targetsOf]'s one concrete resource per cell to actually request).
+	 */
+	private fun resourcesOf(ingredient: EmiIngredient): List<ItemResource> =
+		ingredient.emiStacks.mapNotNull { stack ->
+			if (stack.isEmpty) null else stack.itemStack.takeUnless { it.isEmpty }?.let { ItemResource.of(it) }
+		}
 
 	companion object {
 		/** Genuinely not obtainable right now - not local, not reachable, no known pattern. Matches [StandardRecipeHandler]'s own default `renderMissing` color exactly. */

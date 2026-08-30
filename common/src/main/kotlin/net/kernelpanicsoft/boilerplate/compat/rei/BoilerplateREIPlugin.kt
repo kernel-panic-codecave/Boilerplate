@@ -124,17 +124,24 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			 * against a still-incomplete grid - deliberately closes the recipe view (REI's own click
 			 * handler does this for any successful result) rather than leaving it open pretending the
 			 * fill already happened; a second click once the supply has landed reaches the
-			 * `!targets.values.all { isLocallyAvailable(...) }` check below as `false` and falls
-			 * through to the real fill normally.
+			 * obtainability check below as `false` and falls through to the real fill normally.
+			 *
+			 * Every obtainability check here goes through [allResourcesOf] rather than [targetsOf]'s
+			 * own single-representative-per-cell map - a tag-backed ingredient (any plank color, say)
+			 * has several possible alternatives per cell, and checking only one (confirmed the hard
+			 * way, first found on JEI: whichever alternative happens to be first) meant a cell looked
+			 * "missing" even while a *different* alternative the player already had sat right there for
+			 * the same cell.
 			 */
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
 				val menu = context.menu as? CraftingTerminalHookMenu
 				val targets = targetsOf(context.display)
+				val allResources = allResourcesOf(context.display)
 
 				if (!context.isActuallyCrafting) {
-					if (menu != null && targets.isNotEmpty()) {
+					if (menu != null && allResources.isNotEmpty()) {
 						val reachable = menu.results.mapTo(HashSet()) { it.resource }
-						if (targets.values.all { it in reachable || isLocallyAvailable(menu, it) }) {
+						if (allResources.values.all { alts -> alts.any { it in reachable || isLocallyAvailable(menu, it) } }) {
 							return TransferHandler.Result.createSuccessful()
 								.renderer { graphics, _, _, _, widgets, _, display -> renderTargets(menu, display, graphics, widgets) }
 						}
@@ -142,7 +149,8 @@ class BoilerplateREIPlugin : REIClientPlugin {
 					return super.handle(context)
 				}
 
-				if (menu != null && targets.isNotEmpty() && !targets.values.all { isLocallyAvailable(menu, it) }) {
+				val stillMissing = menu != null && allResources.isNotEmpty() && !allResources.values.all { alts -> alts.any { isLocallyAvailable(menu, it) } }
+				if (menu != null && targets.isNotEmpty() && stillMissing) {
 					val amount = if (context.isStackedCrafting) Int.MAX_VALUE.toLong() else 1L
 					menu.requestIngredientSupply(targets, amount)
 					return TransferHandler.Result.createSuccessful()
@@ -174,17 +182,17 @@ class BoilerplateREIPlugin : REIClientPlugin {
 				bounds: Rectangle,
 			) {
 				val menu = context.menu as? CraftingTerminalHookMenu
-				val resourceByIndex = missing.associate { ingredient ->
-					ingredient.displayIndex to ingredient.get().firstOrNull { !it.isEmpty }?.let { ItemResource.of(it) }
+				val resourcesByIndex = missing.associate { ingredient ->
+					ingredient.displayIndex to ingredient.get().filter { !it.isEmpty }.map { ItemResource.of(it) }
 				}
 				var i = 0
 				for (widget in widgets) {
 					if (widget !is Slot || widget.noticeMark != Slot.INPUT) continue
 					val index = i++
 					if (!missingIndices.contains(index)) continue
-					val resource = resourceByIndex[index] ?: continue
+					val resources = resourcesByIndex[index]?.takeIf { it.isNotEmpty() } ?: continue
 					val innerBounds = widget.innerBounds
-					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, colorFor(menu, resource))
+					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, colorForAny(menu, resources))
 				}
 			}
 
@@ -192,8 +200,8 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			 * Same coloring [renderMissingInput] does, but driven straight from [display]/[widgets]
 			 * alone (no [missing]/[missingIndices] to lean on, since this only ever runs from
 			 * [handle]'s own optimistic-success [TransferHandler.Result.renderer] - REI never computes
-			 * those for a successful result) - anything not yet [isLocallyAvailable] gets colored via
-			 * [colorFor], same as the genuinely-missing case.
+			 * those for a successful result) - a cell not yet locally satisfied by *any* of its own
+			 * possible alternatives gets colored via [colorForAny], same as the genuinely-missing case.
 			 */
 			private fun renderTargets(menu: CraftingTerminalHookMenu, display: Display, graphics: GuiGraphics, widgets: List<Widget>) {
 				val inputEntries = display.inputEntries
@@ -201,19 +209,27 @@ class BoilerplateREIPlugin : REIClientPlugin {
 				for (widget in widgets) {
 					if (widget !is Slot || widget.noticeMark != Slot.INPUT) continue
 					val index = i++
-					val resource = inputEntries.getOrNull(index)
-						?.firstOrNull { it.type == VanillaEntryTypes.ITEM && !it.isEmpty }
-						?.let { ItemResource.of(it.castValue<ItemStack>()) }
+					val resources = inputEntries.getOrNull(index)
+						?.mapNotNull { entry -> if (entry.type == VanillaEntryTypes.ITEM && !entry.isEmpty) ItemResource.of(entry.castValue<ItemStack>()) else null }
+						?.takeIf { it.isNotEmpty() }
 						?: continue
-					if (isLocallyAvailable(menu, resource)) continue
+					if (resources.any { isLocallyAvailable(menu, it) }) continue
 					val innerBounds = widget.innerBounds
-					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, colorFor(menu, resource))
+					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, colorForAny(menu, resources))
 				}
 			}
 
-			private fun colorFor(menu: CraftingTerminalHookMenu?, resource: ItemResource): Int = when {
-				menu != null && menu.results.any { it.resource == resource } -> COLOR_REQUESTABLE
-				menu != null && menu.craftableResources.contains(resource) -> COLOR_CRAFTABLE
+			/**
+			 * Same as [colorFor] on [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin],
+			 * but over every possible alternative [resources] a cell could be satisfied by instead of
+			 * one fixed resource - a tag-backed ingredient (any plank color, say) has several, and
+			 * checking only [targetsOf]'s own single representative meant a cell looked "missing"
+			 * even while a *different* alternative the player already had sat right there for the
+			 * same cell.
+			 */
+			private fun colorForAny(menu: CraftingTerminalHookMenu?, resources: List<ItemResource>): Int = when {
+				menu != null && resources.any { r -> menu.results.any { it.resource == r } } -> COLOR_REQUESTABLE
+				menu != null && resources.any { menu.craftableResources.contains(it) } -> COLOR_CRAFTABLE
 				else -> COLOR_MISSING
 			}
 
@@ -244,6 +260,23 @@ class BoilerplateREIPlugin : REIClientPlugin {
 		return display.inputEntries.withIndex().mapNotNull { (i, ingredient) ->
 			ingredient.firstOrNull { it.type == VanillaEntryTypes.ITEM && !it.isEmpty }
 				?.let { (i / width * GRID_WIDTH + i % width) to ItemResource.of(it.castValue<ItemStack>()) }
+		}.toMap()
+	}
+
+	/**
+	 * Every possible [ItemResource] alternative each input slot of [display] could be satisfied by,
+	 * keyed the same grid-relative way [targetsOf] is - a tag-backed ingredient (any plank color,
+	 * say) has several, not just [targetsOf]'s own single representative. Used for "is this cell
+	 * obtainable at all" checks, never for [CraftingTerminalHookMenu.requestIngredientSupply] itself
+	 * (which still needs [targetsOf]'s one concrete resource per cell to actually request).
+	 */
+	private fun allResourcesOf(display: Display): Map<Int, List<ItemResource>> {
+		val width = (display as? SimpleGridMenuDisplay)?.width ?: GRID_WIDTH
+		return display.inputEntries.withIndex().mapNotNull { (i, ingredient) ->
+			val resources = ingredient.mapNotNull { entry ->
+				if (entry.type == VanillaEntryTypes.ITEM && !entry.isEmpty) ItemResource.of(entry.castValue<ItemStack>()) else null
+			}
+			if (resources.isEmpty()) null else (i / width * GRID_WIDTH + i % width) to resources
 		}.toMap()
 	}
 

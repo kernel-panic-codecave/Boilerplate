@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.kernelpanicsoft.boilerplate.warehouse.*
+import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerBlockEntityRenderer.Companion.HEAD_HALF_EXTENT
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
@@ -154,9 +155,10 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 	 * an item tracing a circle around nothing, which is the same "off to one side" reading; the ring
 	 * only means anything once there's more than one thing to separate.
 	 *
-	 * The item is drawn from its own cube's corner, so it needs the same half-unit centring correction
-	 * [drawAt] applies to a block model - without it every item sat a corner's worth off the head in
-	 * all three axes at once, which is what that looked like in play.
+	 * No half-unit centring correction here, unlike [drawAt]'s: this path's origin is already the
+	 * head's *centre* (`head - blockPos`, no `- 0.5`), and `ItemRenderer.render` centres the model
+	 * about it itself. Flywheel's [WarehouseControllerVisual] is the opposite on both counts - corner
+	 * origin, pre-centred mesh - and does need one; see its own note there.
 	 */
 	private fun renderCarriedItems(
 		tile: WarehouseControllerBlockEntity,
@@ -188,12 +190,6 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 				originZ + sin(angle) * radius,
 			)
 			poseStack.scale(CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE)
-			// Centre the item's own unit cube on the ring point, the same half-block correction
-			// [drawAt] makes for a block model. Deliberately *after* the scale, so it's half an
-			// item rather than half a world block - applying it before would shove the item a full
-			// half-block away instead of centring it, and would silently drift if
-			// [CARRIED_ITEM_SCALE] ever changed.
-			poseStack.translate(-0.5, -0.5, -0.5)
 			itemRenderer.renderStatic(stack.itemStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
 			poseStack.popPose()
 		}

@@ -77,8 +77,10 @@ class WarehouseControllerVisual(
 		 * mesh, so the same model works for every state.
 		 */
 		val OUTLINE_MODEL: Model by lazy {
-			val lo = -0.1f
-			val hi = 1.1f
+			// Hugs the head's own 10x10x10 element rather than the whole block cell it sits in - a
+			// -0.1..1.1 cage is nearly twice the head's size.
+			val lo = 0.5f - HEAD_HALF_EXTENT - OUTLINE_MARGIN
+			val hi = 0.5f + HEAD_HALF_EXTENT + OUTLINE_MARGIN
 			LineModelBuilder()
 				.line(lo, lo, lo, hi, lo, lo)
 				.line(hi, lo, lo, hi, lo, hi)
@@ -98,8 +100,14 @@ class WarehouseControllerVisual(
 		private val INDEXING_COLOR = intArrayOf(255, 204, 0)
 		private val MOVING_COLOR = intArrayOf(51, 204, 255)
 
-		private const val CARRIED_ITEM_Y_OFFSET = 0.65f
-		private const val CARRIED_ITEM_RADIUS = 0.3f
+		/** Half the head model's own extent - `block/gantry_head` spans `[3,3,3]`..`[13,13,13]`, so 5/16 either side of its block cell's centre. Every head-relative offset is derived from this rather than assuming a full 16x16x16 block. */
+		private const val HEAD_HALF_EXTENT = 5f / 16f
+		private const val OUTLINE_MARGIN = 0.02f
+
+		/** Clear of the head's own top face by a small gap. */
+		private const val CARRIED_ITEM_Y_OFFSET = HEAD_HALF_EXTENT + 0.12f
+		/** Kept inside the head's own footprint, so a batch orbits over it rather than out past its corners. */
+		private const val CARRIED_ITEM_RADIUS = HEAD_HALF_EXTENT * 0.7f
 		private const val CARRIED_ITEM_SCALE = 0.4f
 		private const val CARRIED_ITEM_SPIN_DEGREES_PER_TICK = 3.0
 
@@ -437,15 +445,26 @@ class WarehouseControllerVisual(
 
 		if (carried.isNotEmpty()) {
 			val spinDegrees = ((level?.gameTime ?: 0L) + partialTick) * CARRIED_ITEM_SPIN_DEGREES_PER_TICK
+			// headOffset is the head cell's *corner* - the convention every block-shaped mesh here
+			// wants, since those span [0,1] from their own origin. A carried item's mesh is not one
+			// of those: buildCarriedItemMesh bakes its own -0.5 in, so it's already centred about
+			// the origin. Placing it at the corner offset put every item half a block out along all
+			// three axes at once - i.e. off at the head's corner.
+			val headCenterX = headOffsetX + 0.5f
+			val headCenterY = headOffsetY + 0.5f
+			val headCenterZ = headOffsetZ + 0.5f
+			// One item on a ring is just an item circling nothing, which reads as the same
+			// off-to-one-side problem - centre it, and only orbit once there's more than one.
+			val radius = if (carried.size == 1) 0f else CARRIED_ITEM_RADIUS
 			for ((index, instance) in carriedItemInstances.withIndex()) {
 				val totalDegrees = (spinDegrees + index * (360.0 / carried.size)).toFloat()
 				val angle = Math.toRadians(totalDegrees.toDouble()).toFloat()
 				instance.apply {
 					setIdentityTransform()
 					translate(
-						headOffsetX + cos(angle) * CARRIED_ITEM_RADIUS,
-						headOffsetY + CARRIED_ITEM_Y_OFFSET,
-						headOffsetZ + sin(angle) * CARRIED_ITEM_RADIUS,
+						headCenterX + cos(angle) * radius,
+						headCenterY + CARRIED_ITEM_Y_OFFSET,
+						headCenterZ + sin(angle) * radius,
 					)
 					rotate(Axis.YP.rotationDegrees(totalDegrees))
 					scale(CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE)

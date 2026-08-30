@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.serialization.NBTHolder
-import net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap
+import net.kernelpanicsoft.archie.serialization.NestedNBTHolder
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterModeSerializer
 import net.kernelpanicsoft.boilerplate.registry.FilterConditionTypeRegistry
@@ -28,21 +28,24 @@ class FilterCardState(stack: ItemStack) {
 
 	var mode: FilterMode by holder.field(FilterModeSerializer) { FilterMode.WHITELIST }
 
-	private val conditionStates: NestedNBTHolderMap<FilterConditionState> by holder.nestedMapField { tag ->
-		val id = ResourceLocation.parse(tag.getString("type"))
-		FilterConditionTypeRegistry.byId(id)?.createState() ?: error("Unknown filter condition type $id")
+	private val conditionStates: NestedNBTHolder<FilterConditionState> by holder.nestedField { tag ->
+		// tryParse, not parse - see FilterCardMenu.conditionStates' own note: this factory is called
+		// unguarded from NestedNBTHolder.loadFrom, and a card written in the older map shape has no
+		// top-level "type" for parse() to accept.
+		val id = ResourceLocation.tryParse(tag.getString("type"))
+		id?.let { FilterConditionTypeRegistry.byId(it) }?.createState()
 	}
 
 	/** [type]'s own [FilterConditionState] - reconstructed fresh (default-valued) the first time this card's data is ever touched. */
 	fun currentState(): FilterConditionState? {
 		val conditionType = FilterConditionTypeRegistry.byId(type) ?: return null
-		return conditionStates.getOrPut(type.toString()) { conditionType.createState() }
+		return conditionStates.getOrSet { conditionType.createState() }
 	}
 
 	/**
-	 * Call after mutating [currentState]'s own field(s) in place - [NestedNBTHolderMap] only
+	 * Call after mutating [currentState]'s own field(s) in place - [NestedNBTHolder] only
 	 * marks itself (and by extension this card's own backing stack) dirty on a *structural* change
-	 * ([net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap.getOrPut]/`remove`), never on an
+	 * ([net.kernelpanicsoft.archie.serialization.NestedNBTHolder.value]), never on an
 	 * existing entry's own field write, per its own KDoc. Forgetting this after an edit leaves the
 	 * in-memory change fully applied but never actually persisted to the stack.
 	 */
@@ -69,8 +72,7 @@ class FilterCardState(stack: ItemStack) {
  * exactly like dropping one into a hook's own filter grid.
  */
 fun evaluateGhostSlot(resource: ItemResource, context: FilterContext): Boolean {
-	if (resource.isBlank) return false
-	return if (resource.item is FilterCardItem) {
+	return !resource.isBlank && if (resource.item is FilterCardItem) {
 		FilterCardState(resource.toStack(1)).accepts(context)
 	} else {
 		resource.isOf(context.resource.item)

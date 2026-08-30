@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import net.kernelpanicsoft.archie.gui.item.ComposeItemContainerMenu
-import net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap
+import net.kernelpanicsoft.archie.serialization.NestedNBTHolder
 import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterModeSerializer
@@ -40,15 +40,32 @@ class FilterCardMenu(id: Int, inventory: Inventory, val target: FilterCardTarget
 	@Sync
 	var mode: FilterMode by holder.field(FilterModeSerializer) { FilterMode.WHITELIST }
 
-	private val conditionStates: NestedNBTHolderMap<FilterConditionState> by holder.nestedMapField { tag ->
-		val id = ResourceLocation.parse(tag.getString("type"))
-		FilterConditionTypeRegistry.byId(id)?.createState() ?: error("Unknown filter condition type $id")
+	/**
+	 * Must stay the *exact* same nested shape as
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState.conditionStates] - this is
+	 * the write path (the open GUI), that one is the read path (route/request evaluation), and both
+	 * persist to the same `condition_states` key on the same stack. When this was a
+	 * [net.kernelpanicsoft.archie.serialization.NestedNBTHolderMap] keyed by type id while
+	 * `FilterCardState` had already moved to a scalar
+	 * [net.kernelpanicsoft.archie.serialization.NestedNBTHolder], every edit made in the GUI was
+	 * written in the map shape and then read back in the scalar shape, so the evaluator only ever
+	 * saw a default-valued state: a mod card set to `boilerplate` matched nothing at all, and a
+	 * whitelist card consequently rejected everything.
+	 */
+	private val conditionStates: NestedNBTHolder<FilterConditionState> by holder.nestedField { tag ->
+		// tryParse, not parse: NestedNBTHolder.loadFrom calls this factory unguarded, so a throw here
+		// escapes the property delegate itself and takes the whole menu down on open. A card written
+		// in the older map shape has no top-level "type" at all, making that the *normal* path for
+		// anything configured before this field changed shape - such a card resets to a default state
+		// (reconfigure it once) instead of crashing.
+		val id = ResourceLocation.tryParse(tag.getString("type"))
+		id?.let { FilterConditionTypeRegistry.byId(it) }?.createState()
 	}
 
 	/** [type]'s own [FilterConditionState] - see [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState.currentState]'s identical KDoc. */
 	fun currentConditionState(): FilterConditionState? {
 		val conditionType = FilterConditionTypeRegistry.byId(type) ?: return null
-		return conditionStates.getOrPut(type.toString()) { conditionType.createState() }
+		return conditionStates.getOrSet { conditionType.createState() }
 	}
 
 	/** Call after mutating [currentConditionState]'s own field(s) in place - see [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState.touchCurrentState]'s identical KDoc for why this isn't automatic. */

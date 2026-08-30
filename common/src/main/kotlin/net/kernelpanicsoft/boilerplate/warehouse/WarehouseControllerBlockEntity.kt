@@ -305,6 +305,9 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 */
 	private val defragQueue: ArrayDeque<GantryJob.Move> = ArrayDeque()
 
+	/** Where [bestRackFor]'s next capped search pass starts - see [searchWindow]. Runtime-only: it's a search hint, and starting back at the highest-priority candidates after a reload is exactly the right default anyway. */
+	private var rackSearchCursor = 0
+
 	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, stack: ResourceStack<ItemResource>, deliverTo: DeliveryTarget? = null) {
 		jobs += GantryJob.Retrieve(slot, stack, deliverTo)
 	}
@@ -711,27 +714,71 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 * put-away decision scan the entire thing synchronously, in one go, with no time-budgeting at all
 	 * (unlike [WarehouseIndex]'s own scan tasks). Giving up early here just means this item waits for
 	 * [planPutAway]'s next pass instead of the server visibly stalling on one job's search.
+	 *
+	 * That "waits for the next pass" only actually holds because of [rackSearchCursor]: the cap alone
+	 * would have every pass re-probe the same leading [RACK_SEARCH_LIMIT] candidates forever, so a
+	 * warehouse whose first 256 racks are all full could never reach rack 257 no matter how many
+	 * passes ran - the item would just be stuck, not deferred.
 	 */
 	private fun bestRackFor(level: ServerLevel, resource: ItemResource): Pair<BlockPos, Direction?>? {
+		// Descending: a higher RackBlockEntity.priority means "prefer this rack", which is the same
+		// direction RoutingModule.DEFAULT_ROUTE_PRIORITY relies on - it sits at -1 specifically to
+		// rank *below* an ordinary rack's own 0 baseline and only win when nothing else will take the
+		// item. Ascending inverted the whole scale: the least-preferred rack was always tried first,
+		// and a specialized rack's own intrinsicPriority (Unstackable 2 / Bulk 1 / General 0) lost to
+		// a plain general rack every time rather than beating it.
+		//
+		// Read once per candidate and sorted on the captured value rather than through a comparator
+		// selector - sortedBy re-invokes its selector on every comparison, which would mean an
+		// O(n log n) pile of getBlockEntity lookups across the whole index on every put-away
+		// decision, exactly the synchronous full scan RACK_SEARCH_LIMIT exists to avoid.
+		fun priorityOf(pos: BlockPos): Int = (level.getBlockEntity(pos) as? RackBlockEntity)?.priority ?: 0
+
+		fun probe(candidates: List<Pair<BlockPos, Direction?>>): Pair<BlockPos, Direction?>? {
+			for ((pos, direction) in searchWindow(candidates)) {
+				if (!level.hasChunk(pos.x shr 4, pos.z shr 4)) continue
+				val storage = ItemApi.BLOCK.find(level, pos, direction) ?: continue
+				if (storage.insert(resource, 1, true) > 0) return pos to direction
+			}
+			return null
+		}
+
 		// 1. Try racks that already contain matching items
-		for ((pos, direction) in index.locations[resource].orEmpty().asSequence().sortedBy {
-			(level.getBlockEntity(it.pos) as? RackBlockEntity)?.priority ?: 0
-		}.take(RACK_SEARCH_LIMIT)) {
-			if (!level.hasChunk(pos.x shr 4, pos.z shr 4)) continue
-			val storage = ItemApi.BLOCK.find(level, pos, direction) ?: continue
-			if (storage.insert(resource, 1, true) > 0) return pos to direction
-		}
+		val stocked = index.locations[resource].orEmpty()
+			.map { Triple(it.pos, it.direction, priorityOf(it.pos)) }
+			.sortedByDescending { it.third }
+			.map { it.first to it.second }
+		probe(stocked)?.let { rackSearchCursor = 0; return it }
 
-		// 2. Fallback: Search ONLY indexed container positions (ordered by proximity)
-		for ((pos, direction) in index.availableSlots.asSequence().sortedBy {
-			(level.getBlockEntity(it.first) as? RackBlockEntity)?.priority ?: 0
-		}.take(RACK_SEARCH_LIMIT)) {
-			if (!level.hasChunk(pos.x shr 4, pos.z shr 4)) continue
-			val storage = ItemApi.BLOCK.find(level, pos, direction) ?: continue
-			if (storage.insert(resource, 1, true) > 0) return pos to direction
-		}
+		// 2. Fallback: Search ONLY indexed container positions - availableSlots arrives
+		// proximity-sorted, and sortedByDescending is stable, so distance stays the tiebreak among
+		// racks sharing a priority.
+		val available = index.availableSlots
+			.map { it to priorityOf(it.first) }
+			.sortedByDescending { it.second }
+			.map { it.first }
+		probe(available)?.let { rackSearchCursor = 0; return it }
 
+		// Both passes came up empty, so shift the window along - the next call picks up past
+		// wherever this one gave up rather than re-probing the identical leading slice.
+		rackSearchCursor += RACK_SEARCH_LIMIT
 		return null
+	}
+
+	/**
+	 * The slice of [candidates] one search pass actually probes: at most [RACK_SEARCH_LIMIT] of them,
+	 * starting at [rackSearchCursor] and wrapping around the end.
+	 *
+	 * The cursor only ever moves when a whole pass fails, and resets to `0` the moment one succeeds,
+	 * so the ordinary case still probes the highest-priority candidates first and stops there. It's
+	 * purely the escape hatch for a warehouse whose leading window is genuinely all full: successive
+	 * failed passes walk the window forward until they reach racks that do have room, instead of
+	 * re-probing the same full ones indefinitely.
+	 */
+	private fun searchWindow(candidates: List<Pair<BlockPos, Direction?>>): List<Pair<BlockPos, Direction?>> {
+		if (candidates.size <= RACK_SEARCH_LIMIT) return candidates
+		val start = Math.floorMod(rackSearchCursor, candidates.size)
+		return List(RACK_SEARCH_LIMIT) { candidates[(start + it) % candidates.size] }
 	}
 
 	companion object {

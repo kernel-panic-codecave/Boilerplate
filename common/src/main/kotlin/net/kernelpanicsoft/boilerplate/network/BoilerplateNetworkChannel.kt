@@ -46,6 +46,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 			clientbound(CraftGridPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(PatternGridPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftingBufferStatusPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(PendingDeliveriesPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestTerminalSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }
@@ -70,6 +71,8 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(SetPatternKindPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftingBufferStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CancelCraftingBufferJobPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(RequestPendingDeliveriesPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(CancelPendingDeliveryPacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

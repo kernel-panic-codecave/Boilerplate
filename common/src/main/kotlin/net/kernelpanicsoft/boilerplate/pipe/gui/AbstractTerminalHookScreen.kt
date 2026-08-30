@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
+import net.kernelpanicsoft.archie.gui.Slot
 import net.kernelpanicsoft.archie.gui.Slots
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.TabContainerPanel
@@ -90,6 +91,14 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 	{
 		val layers = LocalLayerManager.current
 
+		LaunchedEffect(Unit) {
+			while (true)
+			{
+				BoilerplateNetworkChannel.toServer(RequestPendingDeliveriesPacket)
+				delay(STATUS_POLL_MILLIS.milliseconds)
+			}
+		}
+
 		Column(verticalArrangement = Arrangement.spacedBy(6)) {
 			if (!menu.hasPressure) {
 				Text(Component.literal("No pressure reachable"), dropShadow = false)
@@ -120,7 +129,16 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 				onHoveredStackChanged = { hoveredStack = it },
 				enabled = menu.hasPressure,
 			)
-			Slots("output", COLUMNS, 1)
+			Slots("output", COLUMNS, 1) {
+				Row {
+					repeat(COLUMNS) { i ->
+						Box {
+							Slot()
+							menu.pendingDeliveryFor(i)?.let { PendingDeliveryOverlay(it) }
+						}
+					}
+				}
+			}
 			additionalContent()
 		}
 	}

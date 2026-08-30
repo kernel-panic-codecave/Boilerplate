@@ -21,6 +21,7 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.MenuType
+import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
 
 /**
@@ -179,6 +180,63 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 			state.pendingDeliveries += PendingDelivery(reservationId, stack.resource, stack.amount, startTick, estimatedTicks)
 		}
 		sendSearchResults()
+		sendPendingDeliveries()
+	}
+
+	/** The most recently received [PendingDelivery] list - Compose state, so [AbstractTerminalHookScreen] recomposes whenever [updatePendingDeliveries] applies a fresh [PendingDeliveriesPacket]. */
+	var pendingDeliveries: List<PendingDelivery> by mutableStateOf(emptyList())
+		private set
+
+	/** Client-side: applies a freshly received [PendingDeliveriesPacket]. */
+	fun updatePendingDeliveries(deliveries: List<PendingDelivery>) {
+		pendingDeliveries = deliveries
+	}
+
+	/** Server-side: sends this hook's own current [TerminalHookState.pendingDeliveries] to this menu's own player - see [RequestPendingDeliveriesPacket]. */
+	fun sendPendingDeliveries() {
+		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PendingDeliveriesPacket(state.pendingDeliveries.toList()))
+	}
+
+	/** Server-side: cancels the [PendingDelivery] named by [reservationId], if this hook still has one - see [CancelPendingDeliveryPacket]'s own KDoc for what happens to the item already in flight. */
+	fun cancelDelivery(reservationId: Long) {
+		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
+		state.pendingDeliveries.removeIf { it.id == reservationId }
+		sendPendingDeliveries()
+	}
+
+	/**
+	 * The real vanilla [Slot]s backing [TerminalHookState.output], in cell order - whichever
+	 * menu-slot range [registerSlotHandlers] most recently assigned to the `"output"` slot group,
+	 * resolved through [slotData] since neither this menu nor [CraftingTerminalHookMenu] expose
+	 * that range directly. Empty before the first [net.kernelpanicsoft.archie.gui.Slots] layout
+	 * pass reports positions at all.
+	 */
+	open val outputSlots: List<Slot> get() {
+		var start = 0
+		for ((id, group) in slotData.groups) {
+			if (!group.enabled) continue
+			val count = group.size.width * group.size.height
+			if (id == "output") return slots.drop(start).take(count)
+			start += count
+		}
+		return emptyList()
+	}
+
+	/**
+	 * The [PendingDelivery] a reserved-slot placeholder at [outputSlots]' own cell [index] should
+	 * render, if any - [pendingDeliveries], in order, assigned only to genuinely empty
+	 * [outputSlots] cells (see [PendingDelivery]'s own KDoc for why a real item already sitting in
+	 * an output slot must never get a placeholder drawn over it), so a delivery's own placeholder
+	 * shifts to whichever empty cell comes next as slots fill and empty around it, rather than
+	 * being pinned to one fixed index.
+	 */
+	fun pendingDeliveryFor(index: Int): PendingDelivery? {
+		val slot = outputSlots.getOrNull(index) ?: return null
+		if (!slot.item.isEmpty) return null
+		var emptyCellsBefore = 0
+		for (i in 0 until index) if (outputSlots.getOrNull(i)?.item?.isEmpty == true) emptyCellsBefore++
+		return pendingDeliveries.getOrNull(emptyCellsBefore)
 	}
 
 	/** The most recently received craft-preview result - `resource to maxCraftable` - or `null` before any preview's been requested. Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftPreview] applies a fresh [CraftPreviewPacket]. */

@@ -154,6 +154,7 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 				state.pendingDeliveries += PendingDelivery(reservationId, resource, need, startTick, estimatedTicks)
 			}
 		}
+		sendPendingDeliveries()
 	}
 
 	private fun craftOneRun(level: ServerLevel, state: CraftingTerminalHookState, intoCursor: Boolean): Boolean {
@@ -190,7 +191,7 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 	private val slotsReady: Boolean get() = slots.size >= TOTAL_SLOT_COUNT
 
 	/** [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output]'s own real, vanilla-[Slot]-backed cells - the terminal's "inbox," registered before `grid` - see [slotsReady]'s own readiness caveat. */
-	val outputSlots: List<Slot> get() = if (slotsReady) slots.subList(OUTPUT_SLOT_START, OUTPUT_SLOT_START + OUTPUT_SLOT_COUNT) else emptyList()
+	override val outputSlots: List<Slot> get() = if (slotsReady) slots.subList(OUTPUT_SLOT_START, OUTPUT_SLOT_START + OUTPUT_SLOT_COUNT) else emptyList()
 
 	/** The real, vanilla-[Slot]-backed 3x3 grid cells - see [slotsReady]'s own readiness caveat. */
 	val gridSlots: List<Slot> get() = if (slotsReady) slots.subList(GRID_SLOT_START, GRID_SLOT_START + GRID_SLOT_COUNT) else emptyList()

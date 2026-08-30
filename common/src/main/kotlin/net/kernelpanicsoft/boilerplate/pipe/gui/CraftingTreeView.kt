@@ -73,6 +73,7 @@ fun CraftingTreeView(roots: List<CraftJobTreeNode>, modifier: Modifier = Modifie
 
 	val registry = remember(roots) {
 		val consumers = consumerIds(roots)
+		val owners = structuralOwners(roots, consumers)
 		val declared = mutableSetOf<Any>()
 		tree(::CraftJobNodeBuilder) {
 			for ((index, root) in roots.withIndex()) {
@@ -80,7 +81,7 @@ fun CraftingTreeView(roots: List<CraftJobTreeNode>, modifier: Modifier = Modifie
 				declared += key
 				node(key) {
 					payload = root
-					wireChildren(root, key, consumers, declared)
+					wireChildren(root, key, consumers, owners, declared)
 				}
 			}
 		}
@@ -120,30 +121,61 @@ private fun consumerIds(roots: List<CraftJobTreeNode>): Map<Any, Set<Any>> {
 }
 
 /**
- * Declares [craftNode]'s own children on the [CraftJobNodeBuilder] currently building it - a child
- * resource seen for the first time anywhere in this [tree] call nests as a genuine structural child
- * ([NodeBuilder.children]); a repeat is skipped rather than redeclared (which would crash on its id).
+ * Which single consumer each resource should nest *structurally* under - the deepest one, since
+ * [NodeTreeView] places a node one column past its deepest parent anyway.
  *
- * Whichever consumer declares a shared resource, *every* other consumer of it still gets an edge -
- * added from the shared node's own side with [NodeBuilder.dependsOn], naming the consumer. That
- * direction matters and is the whole point of [consumers] being precomputed: `dependsOn` adds the
- * named node as a **prerequisite**, i.e. a parent, so calling it the other way round (on the
- * consumer, naming the ingredient) declares the ingredient as the consumer's *parent* - the exact
- * inverse of what this tree means, since here a node's children are the things it's made from.
+ * [assignRows][NodeTreeView] lays rows out over the owning parent/child relationships only, so the
+ * choice is what decides whether the picture looks tidy. Nesting a shared resource under whichever
+ * consumer merely reached it first leaves its *owning* edge spanning columns and strands its
+ * siblings on separate rows; nesting it under its deepest consumer makes that edge a short hop
+ * between neighbouring columns, and only the remaining (genuinely shallower) consumers need an edge
+ * that spans. For logs -> planks -> sticks with sticks + planks -> pickaxe that's the difference
+ * between a scattered layout and one straight chain with a single arc over it.
+ *
+ * Depth here is the longest path from a root, not the first one found - a resource reachable by both
+ * a short and a long route belongs at the far end of the long one.
+ */
+private fun structuralOwners(roots: List<CraftJobTreeNode>, consumers: Map<Any, Set<Any>>): Map<Any, Any> {
+	val depth = mutableMapOf<Any, Int>()
+	fun walk(node: CraftJobTreeNode, id: Any, at: Int) {
+		val known = depth[id]
+		if (known != null && known >= at) return
+		depth[id] = at
+		for (child in node.children) walk(child, child.resource, at + 1)
+	}
+	for ((index, root) in roots.withIndex()) walk(root, "root-$index", 0)
+
+	return consumers.mapValues { (_, ids) -> ids.maxByOrNull { depth[it] ?: 0 } ?: ids.first() }
+}
+
+/**
+ * Declares [craftNode]'s own children on the [CraftJobNodeBuilder] currently building it. A child
+ * nests as a genuine structural child ([NodeBuilder.children]) only under the consumer [owners]
+ * picked for it; every other consumer skips it rather than redeclaring (which would crash on its
+ * id), and picks the edge back up from the shared node's own side instead.
+ *
+ * Those remaining edges are added with [NodeBuilder.dependsOn] *on the shared node, naming the
+ * consumer*. The direction matters and is the whole point of [consumers] being precomputed:
+ * `dependsOn` adds the named node as a **prerequisite**, i.e. a parent, so calling it the other way
+ * round (on the consumer, naming the ingredient) declares the ingredient as the consumer's *parent* -
+ * the exact inverse of what this tree means, since here a node's children are the things it's made
+ * from.
  *
  * That inversion put a shared ingredient one column too shallow: for logs -> planks -> sticks and
  * sticks + planks -> pickaxe, planks got declared under the pickaxe first, then sticks' own repeat
  * of it registered planks as *sticks'* prerequisite - laying sticks out one past planks, so the
- * sticks appeared to come before the planks they're cut from. Wiring both consumer edges into planks
- * instead puts it one past the deepest of them (sticks), which is the real production order.
+ * sticks appeared to come before the planks they're cut from.
  */
 private fun CraftJobNodeBuilder.wireChildren(
 	craftNode: CraftJobTreeNode,
 	craftNodeId: Any,
 	consumers: Map<Any, Set<Any>>,
+	owners: Map<Any, Any>,
 	declared: MutableSet<Any>,
 ) {
-	val newChildren = craftNode.children.filter { declared.add(it.resource) }
+	val newChildren = craftNode.children.filter { child ->
+		(owners[child.resource] ?: craftNodeId) == craftNodeId && declared.add(child.resource)
+	}
 	children {
 		for (child in newChildren) {
 			node(child.resource) {
@@ -151,7 +183,7 @@ private fun CraftJobNodeBuilder.wireChildren(
 				for (consumer in consumers[child.resource].orEmpty()) {
 					if (consumer != craftNodeId) dependsOn(consumer)
 				}
-				wireChildren(child, child.resource, consumers, declared)
+				wireChildren(child, child.resource, consumers, owners, declared)
 			}
 		}
 	}

@@ -150,8 +150,8 @@ class CraftingTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBlo
 
 			val reservationId = state.nextReservationId()
 			val startTick = level.gameTime
-			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, need), tile.blockPos, direction, reservationId) { estimatedTicks ->
-				state.pendingDeliveries += PendingDelivery(reservationId, resource, need, startTick, estimatedTicks)
+			RequestFulfillment.request(level, tile.blockPos, ResourceStack(resource, need), tile.blockPos, direction, reservationId) { estimatedTicks, dispatched ->
+				state.pendingDeliveries += PendingDelivery(reservationId, resource, dispatched, startTick, estimatedTicks)
 			}
 		}
 		sendPendingDeliveries()

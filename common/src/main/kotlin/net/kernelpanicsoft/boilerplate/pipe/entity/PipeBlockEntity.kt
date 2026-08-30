@@ -66,6 +66,16 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 * once here and touched only through index-based mutation, with [TravelingItem.copy] standing
 	 * in for field mutation - in-place mutation of an element already in the list, or removal via
 	 * an `Iterator`, silently affects only a throwaway copy.
+	 *
+	 * The same one-snapshot rule cuts the other way for *additions*, and far more destructively:
+	 * nothing anywhere down this loop may append to **this** pipe's own [travelingItems] through a
+	 * second property access (`travelingItems += ...`), because each intercepted mutation persists a
+	 * whole-list write of whichever snapshot it was made against. An append through a fresh access
+	 * lands in storage and is then immediately overwritten by this loop's next `items` mutation
+	 * writing the original snapshot - which never contained it - back over the top, destroying the
+	 * item outright. Anything this loop needs to add goes through [items] itself (see
+	 * [redirectedDelivery]). Appending to a *different* pipe's [travelingItems] ([nextTile]'s, on a
+	 * hop) is fine - that's a separate holder with its own storage.
 	 */
 	open fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
@@ -86,7 +96,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 			val nextPos = item.path.firstOrNull()
 			if (nextPos == null) {
-				jam(serverLevel, pos, item)
+				jamAndRelease(serverLevel, pos, item)
 				items.removeAt(index)
 				hopped = true
 				continue
@@ -100,7 +110,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			if (PipeRouter.isPipe(serverLevel, nextPos) && !boundary && !isFinalHop) {
 				val nextTile = serverLevel.getBlockEntity(nextPos) as? PipeBlockEntity
 				if (nextTile == null) {
-					jam(serverLevel, pos, item)
+					jamAndRelease(serverLevel, pos, item)
 					items.removeAt(index)
 					hopped = true
 					continue
@@ -113,18 +123,26 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 			val storage = ItemApi.BLOCK.find(serverLevel, nextPos, item.targetFace ?: direction?.opposite)
 			if (storage == null) {
-				jam(serverLevel, pos, item)
+				jamAndRelease(serverLevel, pos, item)
 				items.removeAt(index)
 				hopped = true
 				continue
 			}
 
-			val reservationOwner = item.reservationId?.let { reservationOwnerAt(serverLevel, nextPos, it) }
+			val reservationOwner = reservationOwnerAt(serverLevel, nextPos, item)
 			if (item.reservationId != null && reservationOwner == null) {
 				// The reservation this delivery was for was cancelled - redirect back into the
-				// network instead of landing at a terminal that no longer wants it.
-				redirectCancelled(serverLevel, pos, nextPos, item)
-				items.removeAt(index)
+				// network instead of landing at a terminal that no longer wants it. Spliced into
+				// `items` in place rather than pushed through `travelingItems` - see
+				// [redirectedDelivery]'s own KDoc for why that distinction matters here.
+				val redirected = redirectedDelivery(serverLevel, pos, nextPos, item)
+				if (redirected == null) {
+					jam(serverLevel, pos, item)
+					items.removeAt(index)
+				} else {
+					items[index] = redirected
+					index++
+				}
 				hopped = true
 				continue
 			}
@@ -161,31 +179,75 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			.also { level.addFreshEntity(it) }
 	}
 
-	/** The [TerminalHookState] at [pos] still holding an active [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery] with [reservationId], if any - `null` once it's been cancelled (or its owning hook/block no longer exists at all). */
-	private fun reservationOwnerAt(level: ServerLevel, pos: BlockPos, reservationId: Long): TerminalHookState? {
+	/**
+	 * [jam]s [item], additionally releasing whatever reservation it was carrying - a jammed delivery
+	 * physically becomes a dropped [ItemEntity] and is never arriving at the terminal that reserved a
+	 * slot for it, so leaving the reservation behind would strand its placeholder on screen forever
+	 * with nothing left in the world that could ever clear it.
+	 *
+	 * The reservation lives at the delivery's own *final* destination ([TravelingItem.path]'s last
+	 * entry), not necessarily the next hop this jam happened at.
+	 */
+	private fun jamAndRelease(level: ServerLevel, pos: BlockPos, item: TravelingItem) {
+		if (item.reservationId != null) {
+			item.path.lastOrNull()?.let { destination ->
+				reservationOwnerAt(level, destination, item)?.pendingDeliveries?.removeIf { it.id == item.reservationId }
+			}
+		}
+		jam(level, pos, item)
+	}
+
+	/**
+	 * The [TerminalHookState] at [pos] still holding an active
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery] with [item]'s own
+	 * [TravelingItem.reservationId], if any - `null` once it's been cancelled (or its owning
+	 * hook/block no longer exists at all), and `null` for an [item] carrying no reservation at all.
+	 *
+	 * Resolved against [TravelingItem.targetFace]'s own hook specifically whenever the delivery names
+	 * one, *not* by scanning every hook for a matching id: reservation ids come from a counter kept
+	 * per [TerminalHookState] ([TerminalHookState.nextReservationId]), so two terminal hooks on
+	 * different faces of the same block hand out the very same ids as each other. A blind scan would
+	 * happily match one terminal's delivery against the *other* terminal's identically-numbered
+	 * reservation and clear the wrong placeholder - leaving one terminal showing a ghost for a
+	 * delivery that already landed and the other silently losing its own.
+	 */
+	private fun reservationOwnerAt(level: ServerLevel, pos: BlockPos, item: TravelingItem): TerminalHookState? {
+		val reservationId = item.reservationId ?: return null
 		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return null
+		fun TerminalHookState.holdsReservation() = pendingDeliveries.any { it.id == reservationId }
+
+		val targetFace = item.targetFace
+		if (targetFace != null) {
+			// Only ever this face's own hook - a same-id reservation on any other face belongs to a
+			// different terminal entirely and must not be matched, so no fallback scan here.
+			return (tile.hooks[targetFace.name] as? TerminalHookState)?.takeIf { it.holdsReservation() }
+		}
 		for ((_, entry) in tile.hooks) {
 			val state = entry as? TerminalHookState ?: continue
-			if (state.pendingDeliveries.any { it.id == reservationId }) return state
+			if (state.holdsReservation()) return state
 		}
 		return null
 	}
 
 	/**
-	 * Redirects a delivery whose own reservation was cancelled back into the network instead of
-	 * landing at the terminal it was originally headed for - the same push-model search
-	 * ([PipeRouter.findRoute]) an extractor uses, from [pos]'s own position, excluding
-	 * [cancelledDestination] so it can't just hand the item straight back to where it was already
-	 * refused. Falls back to [jam] (a dropped item entity) when nothing else on the network accepts
-	 * it, rather than the item silently vanishing.
+	 * The replacement [TravelingItem] for a delivery whose own reservation was cancelled - rerouted
+	 * back into the network instead of landing at the terminal it was originally headed for, via the
+	 * same push-model search ([PipeRouter.findRoute]) an extractor uses, from [pos]'s own position,
+	 * excluding [cancelledDestination] so it can't just hand the item straight back to where it was
+	 * already refused. `null` when nothing else on the network accepts it, leaving the caller to
+	 * [jam] it rather than the item silently vanishing.
+	 *
+	 * Deliberately *returns* the rerouted item for [tick] to splice into its own already-held
+	 * [travelingItems] snapshot, rather than appending to [travelingItems] directly: Archie's
+	 * [listField] decodes a fresh list on every property access and persists a whole-list write back
+	 * on every intercepted mutation, so an append made through a *second* access mid-loop is written
+	 * to storage and then immediately clobbered by the next `items.removeAt`/`items.set` writing the
+	 * first snapshot (which never contained it) back over the top. That's an item genuinely destroyed,
+	 * not merely mis-ordered - see [tick]'s own KDoc for the same one-snapshot rule.
 	 */
-	private fun redirectCancelled(level: ServerLevel, pos: BlockPos, cancelledDestination: BlockPos, item: TravelingItem) {
-		val route = PipeRouter.findRoute(level, pos, item.stack.resource, item.color, exclude = cancelledDestination)
-		if (route == null) {
-			jam(level, pos, item)
-			return
-		}
-		travelingItems += TravelingItem(item.stack, item.fromDirection, 0f, route, item.color, null)
+	private fun redirectedDelivery(level: ServerLevel, pos: BlockPos, cancelledDestination: BlockPos, item: TravelingItem): TravelingItem? {
+		val route = PipeRouter.findRoute(level, pos, item.stack.resource, item.color, exclude = cancelledDestination) ?: return null
+		return TravelingItem(item.stack, item.fromDirection, 0f, route, item.color, null, null)
 	}
 
 	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos, items: List<TravelingItem>) {

@@ -176,8 +176,8 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
 		val reservationId = state.nextReservationId()
 		val startTick = level.gameTime
-		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction, reservationId) { estimatedTicks ->
-			state.pendingDeliveries += PendingDelivery(reservationId, stack.resource, stack.amount, startTick, estimatedTicks)
+		RequestFulfillment.request(level, tile.blockPos, stack, tile.blockPos, direction, reservationId) { estimatedTicks, dispatched ->
+			state.pendingDeliveries += PendingDelivery(reservationId, stack.resource, dispatched, startTick, estimatedTicks)
 		}
 		sendSearchResults()
 		sendPendingDeliveries()
@@ -192,14 +192,16 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		pendingDeliveries = deliveries
 	}
 
-	/** Server-side: sends this hook's own current [TerminalHookState.pendingDeliveries] to this menu's own player - see [RequestPendingDeliveriesPacket]. */
+	/** Server-side: sends this hook's own current [TerminalHookState.pendingDeliveries] to this menu's own player - see [RequestPendingDeliveriesPacket]. Guarded on actually being server-side, matching [sendSearchResults] - this menu class is instantiated on both sides, and the [ServerPlayer] cast below would hard-crash a client that reached it. */
 	fun sendPendingDeliveries() {
+		if (level !is ServerLevel) return
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PendingDeliveriesPacket(state.pendingDeliveries.toList()))
 	}
 
 	/** Server-side: cancels the [PendingDelivery] named by [reservationId], if this hook still has one - see [CancelPendingDeliveryPacket]'s own KDoc for what happens to the item already in flight. */
 	fun cancelDelivery(reservationId: Long) {
+		if (level !is ServerLevel) return
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
 		state.pendingDeliveries.removeIf { it.id == reservationId }
 		sendPendingDeliveries()

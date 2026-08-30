@@ -66,9 +66,12 @@ object RequestFulfillment {
 	 * [PipeBlockEntity.SEGMENT_SPEED]'s own fixed rate), only a rough one for a warehouse retrieval
 	 * ([WarehouseControllerBlockEntity.estimateRetrieveTicks]'s own gantry-plus-pipe estimate,
 	 * genuinely accounting for both legs but still just an estimate - the gantry's own speed is
-	 * pressure-gated and can change before the job actually runs) - so the caller can populate a
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own `totalTicks` without this
-	 * function needing to know anything about that class itself.
+	 * pressure-gated and can change before the job actually runs) - along with how much was actually
+	 * dispatched, which is routinely *less* than [stack]'s own requested amount (only the first
+	 * willing source is served, and it can easily hold less), so the caller can populate a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own `totalTicks`/`amount` with
+	 * what's genuinely coming rather than what was asked for, without this function needing to know
+	 * anything about that class itself.
 	 */
 	fun request(
 		level: ServerLevel,
@@ -77,7 +80,7 @@ object RequestFulfillment {
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
-		onDispatch: ((estimatedTicks: Int) -> Unit)? = null,
+		onDispatch: ((estimatedTicks: Int, dispatched: Long) -> Unit)? = null,
 	): Long {
 		val reachable = reachablePipes(level, from)
 		val fromProvider = fulfillFromProvider(level, providerSources(level, reachable), stack, deliverTo, deliverFace, reservationId, onDispatch)
@@ -124,7 +127,7 @@ object RequestFulfillment {
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
-		onDispatch: ((Int) -> Unit)? = null,
+		onDispatch: ((Int, Long) -> Unit)? = null,
 	): Long {
 		for (source in sources) {
 			if (!source.hookState.active) continue
@@ -137,7 +140,7 @@ object RequestFulfillment {
 			if (extracted <= 0) continue
 			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
 			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace, reservationId)
-			onDispatch?.invoke((route.size / PipeBlockEntity.SEGMENT_SPEED).toInt())
+			onDispatch?.invoke((route.size / PipeBlockEntity.SEGMENT_SPEED).toInt(), extracted)
 			return extracted
 		}
 		return 0
@@ -151,14 +154,14 @@ object RequestFulfillment {
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
-		onDispatch: ((Int) -> Unit)? = null,
+		onDispatch: ((Int, Long) -> Unit)? = null,
 	): Long {
 		for (controller in warehouses) {
 			if (!controller.hasPressure()) continue
 			val slot = controller.index.locations[stack.resource]?.firstOrNull() ?: continue
 			val amount = minOf(stack.amount, slot.amount)
 			controller.enqueueRetrieve(slot, stack.withCount(amount), DeliveryTarget.Pipe(deliverTo, deliverFace, reservationId))
-			onDispatch?.invoke(controller.estimateRetrieveTicks(slot, deliverTo))
+			onDispatch?.invoke(controller.estimateRetrieveTicks(slot, deliverTo), amount)
 			return amount
 		}
 		return 0

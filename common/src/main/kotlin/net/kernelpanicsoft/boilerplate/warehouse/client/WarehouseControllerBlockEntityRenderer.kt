@@ -144,6 +144,15 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 	 * up to [WarehouseControllerBlockEntity]'s own carry capacity, not just one), orbiting a little
 	 * ring above the head rather than stacked on it, so more than one is actually distinguishable at
 	 * once.
+	 *
+	 * Every offset here is expressed against [HEAD_HALF_EXTENT] rather than a full block: the head is
+	 * a 10x10x10 model ([HEAD_MODEL_ID]'s own `[3,3,3]`..`[13,13,13]` element), so full-block-sized
+	 * constants put the ring well outside it - which reads as the item floating off a corner rather
+	 * than sitting on the head.
+	 *
+	 * A single carried item sits centred on the head instead of orbiting. One item on a ring is just
+	 * an item tracing a circle around nothing, which is the same "off to one side" reading; the ring
+	 * only means anything once there's more than one thing to separate.
 	 */
 	private fun renderCarriedItems(
 		tile: WarehouseControllerBlockEntity,
@@ -164,14 +173,15 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		val originY = head.y - tile.blockPos.y + CARRIED_ITEM_Y_OFFSET
 		val originZ = head.z - tile.blockPos.z
 
+		val radius = if (carried.size == 1) 0f else CARRIED_ITEM_RADIUS
 		for ((index, stack) in carried.withIndex()) {
 			val angle = Math.toRadians(spinDegrees + index * (360.0 / carried.size)).toFloat()
 
 			poseStack.pushPose()
 			poseStack.translate(
-				originX + cos(angle) * CARRIED_ITEM_RADIUS,
+				originX + cos(angle) * radius,
 				originY,
-				originZ + sin(angle) * CARRIED_ITEM_RADIUS,
+				originZ + sin(angle) * radius,
 			)
 			poseStack.scale(CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE)
 			itemRenderer.renderStatic(stack.itemStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
@@ -273,6 +283,9 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 	private data class ClipVertex(val x: Float, val y: Float, val z: Float, val u: Float, val v: Float, val brightness: Float, val packedLight: Int)
 
 	companion object {
+		/** Half the head model's own extent - it spans `[3,3,3]`..`[13,13,13]`, so 5/16 either side of the block centre [drawAt] places it at. Every offset scaled to the head is derived from this rather than assuming a full 16x16x16 block. */
+		private const val HEAD_HALF_EXTENT = 5.0 / 16.0
+
 		private val WEST_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.WEST)
 		private val EAST_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.EAST)
 		private val NORTH_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.NORTH)
@@ -280,11 +293,18 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		private val UP_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.UP)
 		private val DOWN_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN)
 
-		/** [GantryVisualState]'s outline box - slightly larger than a full block, centered on the head. */
-		private val OUTLINE_BOX = AABB(-0.6, -0.6, -0.6, 0.6, 0.6, 0.6)
+		/** [GantryVisualState]'s outline box - a hair proud of the head's own [HEAD_HALF_EXTENT] surface, centred on it. Sized off the real 10x10x10 model rather than a full block, which drew a cage roughly twice the head's size around it. */
+		private val OUTLINE_BOX = AABB(
+			-HEAD_HALF_EXTENT - OUTLINE_MARGIN, -HEAD_HALF_EXTENT - OUTLINE_MARGIN, -HEAD_HALF_EXTENT - OUTLINE_MARGIN,
+			HEAD_HALF_EXTENT + OUTLINE_MARGIN, HEAD_HALF_EXTENT + OUTLINE_MARGIN, HEAD_HALF_EXTENT + OUTLINE_MARGIN,
+		)
 
-		private const val CARRIED_ITEM_Y_OFFSET = 0.65
-		private const val CARRIED_ITEM_RADIUS = 0.3f
+		private const val OUTLINE_MARGIN = 0.02
+
+		/** Clear of the head's own top face ([HEAD_HALF_EXTENT]) by a small gap, rather than the near-full-block height this used to assume. */
+		private const val CARRIED_ITEM_Y_OFFSET = HEAD_HALF_EXTENT + 0.12
+		/** Kept inside the head's own footprint so a batch orbits *over* it rather than out past its corners. */
+		private const val CARRIED_ITEM_RADIUS = (HEAD_HALF_EXTENT * 0.7).toFloat()
 		private const val CARRIED_ITEM_SCALE = 0.4f
 		private const val CARRIED_ITEM_SPIN_DEGREES_PER_TICK = 3.0
 

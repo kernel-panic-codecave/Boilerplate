@@ -308,6 +308,9 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	/** Where [bestRackFor]'s next capped search pass starts - see [searchWindow]. Runtime-only: it's a search hint, and starting back at the highest-priority candidates after a reload is exactly the right default anyway. */
 	private var rackSearchCursor = 0
 
+	/** What [tickGantrySync] last told clients the gantry was carrying, so it can notice the set changing while the gantry is parked - see its own KDoc for why that case would otherwise never be sent at all. */
+	private var lastSyncedCarried: List<ResourceStack<ItemResource>> = emptyList()
+
 	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, stack: ResourceStack<ItemResource>, deliverTo: DeliveryTarget? = null) {
 		jobs += GantryJob.Retrieve(slot, stack, deliverTo)
 	}
@@ -508,14 +511,29 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		index.scheduleRescan(level, currentBounds, scale, blockPos)
 	}
 
+	/**
+	 * Pushes the gantry's own dead-reckoning state to nearby clients - throttled to
+	 * [GANTRY_SYNC_INTERVAL_TICKS] while it's actually moving, but *also* sent immediately, moving or
+	 * not, whenever what it's carrying changes.
+	 *
+	 * That second trigger is essential rather than an optimisation. A stationary gantry used to sync
+	 * nothing at all, and [dropOff] only ever runs from [tickJobs], which only runs while the gantry
+	 * is *not* moving - so the delivery that empties [deliveryQueue] was guaranteed to happen during
+	 * exactly the window nothing was being sent. The client kept whatever it last heard and went on
+	 * rendering the carried item orbiting an idle head forever.
+	 */
 	private fun tickGantrySync(level: ServerLevel, pos: BlockPos) {
-		if (!gantry.isMoving) return
+		val carried = deliveryQueue.map { ResourceStack(it.resource, it.amount) }
+		val carriedChanged = carried != lastSyncedCarried
+		if (!gantry.isMoving && !carriedChanged) return
+
 		ticksSinceGantrySync++
-		if (ticksSinceGantrySync < GANTRY_SYNC_INTERVAL_TICKS) return
+		if (!carriedChanged && ticksSinceGantrySync < GANTRY_SYNC_INTERVAL_TICKS) return
 		ticksSinceGantrySync = 0
+		lastSyncedCarried = carried
 		BoilerplateNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, GANTRY_SYNC_RADIUS,
-			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath, deliveryQueue.map { ResourceStack(it.resource, it.amount) }),
+			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath, carried),
 		)
 	}
 

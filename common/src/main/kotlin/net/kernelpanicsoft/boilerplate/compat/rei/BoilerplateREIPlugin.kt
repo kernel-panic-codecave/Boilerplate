@@ -114,6 +114,18 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			 * [CraftingTerminalHookMenu.requestIngredientSupply] can actually fulfill it (that's a
 			 * separate, deferred feature - see `docs/design/m6-polish-parity.md`) - manually attaching
 			 * the same tri-color renderer so the highlight still shows once the button reports success.
+			 *
+			 * On a real click, only takes over from [super.handle] when *something* is still
+			 * genuinely not local yet - [requestIngredientSupply] only ever tops up what's missing,
+			 * it never itself moves anything into the grid, so falling through to [super.handle]
+			 * unconditionally-skipped would mean a fully-local recipe (nothing to fetch at all) never
+			 * actually gets filled via this button at all. When at least one target still needs
+			 * fetching, reports success without calling [super.handle] instead of letting it run
+			 * against a still-incomplete grid - deliberately closes the recipe view (REI's own click
+			 * handler does this for any successful result) rather than leaving it open pretending the
+			 * fill already happened; a second click once the supply has landed reaches the
+			 * `!targets.values.all { isLocallyAvailable(...) }` check below as `false` and falls
+			 * through to the real fill normally.
 			 */
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
 				val menu = context.menu as? CraftingTerminalHookMenu
@@ -130,9 +142,10 @@ class BoilerplateREIPlugin : REIClientPlugin {
 					return super.handle(context)
 				}
 
-				val amount = if (context.isStackedCrafting) Int.MAX_VALUE.toLong() else 1L
-				if (menu != null && targets.isNotEmpty()) {
+				if (menu != null && targets.isNotEmpty() && !targets.values.all { isLocallyAvailable(menu, it) }) {
+					val amount = if (context.isStackedCrafting) Int.MAX_VALUE.toLong() else 1L
 					menu.requestIngredientSupply(targets, amount)
+					return TransferHandler.Result.createSuccessful()
 				}
 				return super.handle(context)
 			}

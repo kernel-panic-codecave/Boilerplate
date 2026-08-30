@@ -6,33 +6,14 @@ import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
-import net.kernelpanicsoft.boilerplate.crafting.craftingBufferAt
-import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob
-import net.kernelpanicsoft.boilerplate.crafting.CraftingRequest
-import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
-import net.kernelpanicsoft.boilerplate.crafting.SubmittedJobRef
-import net.kernelpanicsoft.boilerplate.network.CraftJobTreeNode
-import net.kernelpanicsoft.boilerplate.network.CraftJobTreePacket
-import net.kernelpanicsoft.boilerplate.network.CraftPreviewPacket
-import net.kernelpanicsoft.boilerplate.network.CraftableListPacket
-import net.kernelpanicsoft.boilerplate.network.CraftingRequestPacket
-import net.kernelpanicsoft.boilerplate.network.RequestCraftJobTreePacket
-import net.kernelpanicsoft.boilerplate.network.RequestCraftPreviewPacket
-import net.kernelpanicsoft.boilerplate.network.RequestCraftableListPacket
-import net.kernelpanicsoft.boilerplate.network.RequestTerminalSearchResultsPacket
-import net.kernelpanicsoft.boilerplate.network.SItemResource
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
-import net.kernelpanicsoft.boilerplate.network.TerminalItemDepositRequestPacket
-import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
-import net.kernelpanicsoft.boilerplate.network.TerminalSearchResultsPacket
-import net.kernelpanicsoft.boilerplate.network.TerminalItemWithdrawRequestPacket
+import net.kernelpanicsoft.boilerplate.crafting.*
+import net.kernelpanicsoft.boilerplate.network.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
-import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -40,7 +21,6 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.MenuType
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.level.block.entity.BlockEntity
 
 /**
  * Menu for the warehouse terminal hook attached to [tile]: search/withdraw across *every* source
@@ -79,7 +59,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		protected set
 
 	/** This hook's own [HookHolderState.active], server-side - `false` gates [withdraw] and empties [sendSearchResults] entirely, same as any other [net.kernelpanicsoft.boilerplate.pipe.hook.PipeHookType] without enough reachable pressure to tick. */
-	private fun isActive(): Boolean = (tile.hooks[direction.name] as? HookHolderState)?.active ?: false
+	private fun isActive(): Boolean = tile.hooks[direction.name]?.active ?: false
 
 	/** [tile]'s own [MultipartBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
 	val craftJobStatus: String get() = tile.craftJobStatus
@@ -315,8 +295,27 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		if (clearCarried) carried = ItemStack.EMPTY
 	}
 
+	/**
+	 * Menu-slot ranges (this menu's own local indices, not [slots]' global ones offset by nothing
+	 * extra here since the menu range always starts at 0) that a shift-click from the player's own
+	 * inventory should never land in - [CraftingTerminalHookMenu.shiftClickForbiddenSlotRanges]
+	 * excludes the grid, so a shift-clicked ingredient goes to the network instead of silently
+	 * pre-filling a recipe the player never asked to start. Empty by default: a terminal with no
+	 * grid (or any other menu-local slot range shift-clicking shouldn't target) has nothing to
+	 * forbid, so its own local slots (output/inbox) stay eligible exactly as before.
+	 */
 	open val shiftClickForbiddenSlotRanges: List<IntRange> = emptyList()
 
+	/**
+	 * Shift-click handling: menu slots move into the player inventory/hotbar, and player slots move
+	 * into whichever of this menu's own slots [shiftClickForbiddenSlotRanges] doesn't forbid, falling
+	 * back to [requestDeposit] (straight into network storage, not a local slot) when none of those
+	 * accept it - either because they're genuinely full, or because [shiftClickForbiddenSlotRanges]
+	 * excluded all of them (this terminal's own output slots already reject placement outright via
+	 * their own `mayPlace` filter, so for [CraftingTerminalHookMenu] specifically, excluding the grid
+	 * leaves nothing left to land in locally - every shift-click goes to storage, matching a
+	 * dedicated "quick deposit" action rather than silently pre-filling the grid).
+	 */
 	override fun quickMoveStack(
 		player: Player,
 		index: Int
@@ -346,31 +345,23 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 			in menuStart until menuEndExclusive ->
 				moveItemStackTo(stackInSlot, playerStart, playerEndExclusive, true)
 
-			// From player main inventory/hotbar -> menu first, then network fallback
+			// From player main inventory/hotbar -> whichever menu slots aren't forbidden first, then network fallback
 			in inventoryStart until playerEndExclusive ->
 			{
-				var  ret = true
-				if (shiftClickForbiddenSlotRanges.any { index in it })
+				val allowedMenuRanges = allowedSubRanges(menuStart until menuEndExclusive, shiftClickForbiddenSlotRanges)
+				val movedToMenu = allowedMenuRanges.any { range -> moveItemStackTo(stackInSlot, range.first, range.last + 1, false) }
+				if (!movedToMenu)
 				{
-					ret = false
-				}
-				if (ret)
-				{
-					val movedToMenu =
-						menuEndExclusive > menuStart && moveItemStackTo(stackInSlot, menuStart, menuEndExclusive, false)
-					if (!movedToMenu)
+					if (player.level().isClientSide)
 					{
-						if (player.level().isClientSide)
-						{
-							requestDeposit(
-								ResourceStack(ItemResource.of(stackInSlot), stackInSlot.count.toLong()),
-								clearSlot = index
-							)
-						}
-						return ItemStack.EMPTY
+						requestDeposit(
+							ResourceStack(ItemResource.of(stackInSlot), stackInSlot.count.toLong()),
+							clearSlot = index
+						)
 					}
+					return ItemStack.EMPTY
 				}
-				ret
+				true
 			}
 
 			else -> false
@@ -381,5 +372,22 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		if (stackInSlot.isEmpty) slot.set(ItemStack.EMPTY) else slot.setChanged()
 		slot.onTake(player, stackInSlot)
 		return copied
+	}
+
+	/** [fullRange] with every index covered by any of [forbidden] removed, as the largest possible contiguous sub-ranges - the gaps [quickMoveStack] actually tries [moveItemStackTo] against, in order. */
+	private fun allowedSubRanges(fullRange: IntRange, forbidden: List<IntRange>): List<IntRange> {
+		val forbiddenIndices = forbidden.flatten().toHashSet()
+		val result = mutableListOf<IntRange>()
+		var start: Int? = null
+		for (i in fullRange) {
+			if (i !in forbiddenIndices) {
+				if (start == null) start = i
+			} else if (start != null) {
+				result += start..(i - 1)
+				start = null
+			}
+		}
+		if (start != null) result += start..fullRange.last
+		return result
 	}
 }

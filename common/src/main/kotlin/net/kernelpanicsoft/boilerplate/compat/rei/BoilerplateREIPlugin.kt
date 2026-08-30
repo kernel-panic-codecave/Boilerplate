@@ -42,6 +42,7 @@ import net.minecraft.world.item.ItemStack
  * autocrafting (the Pattern Provider network, M4) has no relationship to any registered vanilla
  * recipe at all and would need a wholly new custom category - deferred, see the design doc.
  */
+@Suppress("UnstableApiUsage")
 class BoilerplateREIPlugin : REIClientPlugin {
 	/**
 	 * Lets REI's own "transfer recipe" button fill [CraftingTerminalHookMenu.registerSlotHandlers]'s

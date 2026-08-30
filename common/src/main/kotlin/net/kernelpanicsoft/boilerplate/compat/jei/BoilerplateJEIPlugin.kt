@@ -18,6 +18,8 @@ import mezz.jei.api.recipe.transfer.IRecipeTransferInfo
 import mezz.jei.api.registration.IGuiHandlerRegistration
 import mezz.jei.api.registration.IRecipeTransferRegistration
 import mezz.jei.api.runtime.IClickableIngredient
+import net.kernelpanicsoft.archie.gui.util.extension.invoke
+import net.kernelpanicsoft.archie.gui.util.extension.pose
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
@@ -32,7 +34,7 @@ import net.minecraft.world.inventory.MenuType
 import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.crafting.CraftingRecipe
 import net.minecraft.world.item.crafting.RecipeHolder
-import java.util.Optional
+import java.util.*
 
 /**
  * JEI's own `common-api` artifact (`mezz.jei:jei-1.21.1-common-api`) is loader-agnostic, same as
@@ -214,22 +216,41 @@ private const val JEI_COLOR_CRAFTABLE = 0x660080FF
  * the same treatment there.
  */
 private class MissingIngredientError(private val menu: CraftingTerminalHookMenu, private val missing: List<IRecipeSlotView>) : IRecipeTransferError {
-	override fun getType(): IRecipeTransferError.Type = IRecipeTransferError.Type.USER_FACING
+	/**
+	 * [IRecipeTransferError.Type.COSMETIC] ("still allow the usage of the recipe transfer button...
+	 * however the button is active and can be used," per its own KDoc) whenever every [missing] slot
+	 * is at least reachable via [CraftingTerminalHookMenu.results] - a request would actually fetch
+	 * it, so the button shouldn't be stuck disabled the way [IRecipeTransferError.Type.USER_FACING]
+	 * (`allowsTransfer = false`) would leave it. This is JEI's own dry-run-driven button-enablement
+	 * gate, the exact same problem as [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin.canCraft]/
+	 * [net.kernelpanicsoft.boilerplate.compat.rei.BoilerplateREIPlugin]'s own `handle` fix - without
+	 * this, the button stays permanently disabled the moment any ingredient needs the network.
+	 * Deliberately doesn't count [CraftingTerminalHookMenu.craftableResources] here (a pattern
+	 * existing doesn't mean [CraftingTerminalHookMenu.requestIngredientSupply] can actually fulfill
+	 * it - a separate, deferred feature, see `docs/design/m6-polish-parity.md`) - falls back to
+	 * [IRecipeTransferError.Type.USER_FACING] (correctly blocking) when something is genuinely
+	 * neither local nor reachable.
+	 */
+	override fun getType(): IRecipeTransferError.Type =
+		if (missing.all { isReachable(menu, it) }) IRecipeTransferError.Type.COSMETIC else IRecipeTransferError.Type.USER_FACING
 
 	override fun showError(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, recipeSlotsView: IRecipeSlotsView, recipeX: Int, recipeY: Int) {
-		val poseStack = guiGraphics.pose()
-		poseStack.pushPose()
-		poseStack.translate(recipeX.toFloat(), recipeY.toFloat(), 0f)
-		for (view in missing) {
-			val resource = view.displayedItemStack.map { ItemResource.of(it) }.orElse(null)
-			val color = when {
-				resource != null && menu.results.any { it.resource == resource } -> JEI_COLOR_REQUESTABLE
-				resource != null && menu.craftableResources.contains(resource) -> JEI_COLOR_CRAFTABLE
-				else -> JEI_COLOR_MISSING
+		guiGraphics {
+			pose {
+				translate(recipeX.toFloat(), recipeY.toFloat(), 0f)
+				for (view in missing)
+				{
+					val resource = view.displayedItemStack.map { ItemResource.of(it) }.orElse(null)
+					val color = when
+					{
+						resource != null && menu.results.any { it.resource == resource } -> JEI_COLOR_REQUESTABLE
+						resource != null && menu.craftableResources.contains(resource) -> JEI_COLOR_CRAFTABLE
+						else -> JEI_COLOR_MISSING
+					}
+					view.drawHighlight(guiGraphics, color)
+				}
 			}
-			view.drawHighlight(guiGraphics, color)
 		}
-		poseStack.popPose()
 	}
 
 	override fun getMissingCountHint(): Int = missing.size
@@ -237,4 +258,10 @@ private class MissingIngredientError(private val menu: CraftingTerminalHookMenu,
 	override fun getTooltip(tooltip: ITooltipBuilder) {
 		tooltip.add(Component.translatable("jei.tooltip.error.recipe.transfer.missing"))
 	}
+}
+
+/** Whether [view]'s displayed ingredient shows up in [menu]'s own already-synced [CraftingTerminalHookMenu.results] - reachable somewhere the terminal could request it from, even if not physically present yet. */
+private fun isReachable(menu: CraftingTerminalHookMenu, view: IRecipeSlotView): Boolean {
+	val resource = view.displayedItemStack.map { ItemResource.of(it) }.orElse(null) ?: return false
+	return menu.results.any { it.resource == resource }
 }

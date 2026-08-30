@@ -99,12 +99,38 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			 * no specific quantity - so `true` maps to [Int.MAX_VALUE], relying on
 			 * [CraftingTerminalHookMenu.supplyIngredients]'s own per-resource cap to bound it
 			 * sensibly, same as [RequestIngredientSupplyPacket.amount]'s own KDoc describes.
+			 *
+			 * The preview call also decides whether the "+" button is even clickable at all -
+			 * `AutoCraftingEvaluator.evaluateAutoCrafting` (confirmed against its real source) ties the
+			 * button's own `setEnabled` directly to this call's `isSuccessful()`, evaluated with
+			 * `isActuallyCrafting = false`. [SimpleTransferHandler]'s own default only considers
+			 * current local stock (`getInventorySlots`), with no concept of "the terminal could go get
+			 * this" - so without an override here, the button stays permanently disabled the moment
+			 * any ingredient needs to come from the network, exactly the [BoilerplateEmiPlugin.canCraft]
+			 * problem again. Optimistically reports success when every target is already local or
+			 * reachable via [CraftingTerminalHookMenu.results] - deliberately *not* counting
+			 * [CraftingTerminalHookMenu.craftableResources] here, since a pattern existing doesn't mean
+			 * [CraftingTerminalHookMenu.requestIngredientSupply] can actually fulfill it (that's a
+			 * separate, deferred feature - see `docs/design/m6-polish-parity.md`) - manually attaching
+			 * the same tri-color renderer so the highlight still shows once the button reports success.
 			 */
 			override fun handle(context: TransferHandler.Context): TransferHandler.Result {
 				val menu = context.menu as? CraftingTerminalHookMenu
 				val targets = targetsOf(context.display)
+
+				if (!context.isActuallyCrafting) {
+					if (menu != null && targets.isNotEmpty()) {
+						val reachable = menu.results.mapTo(HashSet()) { it.resource }
+						if (targets.values.all { it in reachable || isLocallyAvailable(menu, it) }) {
+							return TransferHandler.Result.createSuccessful()
+								.renderer { graphics, _, _, _, widgets, _, display -> renderTargets(menu, display, graphics, widgets) }
+						}
+					}
+					return super.handle(context)
+				}
+
 				val amount = if (context.isStackedCrafting) Int.MAX_VALUE.toLong() else 1L
-				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty()) {
+				if (menu != null && targets.isNotEmpty()) {
 					menu.requestIngredientSupply(targets, amount)
 				}
 				return super.handle(context)
@@ -113,15 +139,13 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			/**
 			 * Overrides [SimpleTransferHandler]'s own default (a flat red on every missing input,
 			 * confirmed against its real source) rather than layering on top of it, same treatment as
-			 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own `render` override:
-			 * orange when the ingredient shows up in [CraftingTerminalHookMenu.results] (a request
-			 * would actually fetch it), blue when it shows up in
-			 * [CraftingTerminalHookMenu.craftableResources] instead (a known pattern exists somewhere
-			 * reachable), red only when neither applies. Rebuilds the same "which widget is which
-			 * missing input" walk [SimpleTransferHandler]'s own default `renderMissingInput` does -
-			 * [missingIndices] are [InputIngredient.getDisplayIndex] values assigned in the same order
-			 * as the [Slot.INPUT]-marked [widgets], not directly usable as a list index into anything
-			 * else.
+			 * [net.kernelpanicsoft.boilerplate.compat.emi.BoilerplateEmiPlugin]'s own `render` override -
+			 * see [colorFor]. Rebuilds the same "which widget is which missing input" walk
+			 * [SimpleTransferHandler]'s own default `renderMissingInput` does - [missingIndices] are
+			 * [InputIngredient.getDisplayIndex] values assigned in the same order as the
+			 * [Slot.INPUT]-marked [widgets], not directly usable as a list index into anything else.
+			 * Only reached when [handle]'s own optimistic success path above didn't already take over -
+			 * i.e. something here is genuinely still short even accounting for what's reachable.
 			 */
 			override fun renderMissingInput(
 				context: TransferHandler.Context,
@@ -144,16 +168,47 @@ class BoilerplateREIPlugin : REIClientPlugin {
 					if (widget !is Slot || widget.noticeMark != Slot.INPUT) continue
 					val index = i++
 					if (!missingIndices.contains(index)) continue
-					val resource = resourceByIndex[index]
-					val color = when {
-						menu != null && resource != null && menu.results.any { it.resource == resource } -> COLOR_REQUESTABLE
-						menu != null && resource != null && menu.craftableResources.contains(resource) -> COLOR_CRAFTABLE
-						else -> COLOR_MISSING
-					}
+					val resource = resourceByIndex[index] ?: continue
 					val innerBounds = widget.innerBounds
-					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, color)
+					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, colorFor(menu, resource))
 				}
 			}
+
+			/**
+			 * Same coloring [renderMissingInput] does, but driven straight from [display]/[widgets]
+			 * alone (no [missing]/[missingIndices] to lean on, since this only ever runs from
+			 * [handle]'s own optimistic-success [TransferHandler.Result.renderer] - REI never computes
+			 * those for a successful result) - anything not yet [isLocallyAvailable] gets colored via
+			 * [colorFor], same as the genuinely-missing case.
+			 */
+			private fun renderTargets(menu: CraftingTerminalHookMenu, display: Display, graphics: GuiGraphics, widgets: List<Widget>) {
+				val inputEntries = display.inputEntries
+				var i = 0
+				for (widget in widgets) {
+					if (widget !is Slot || widget.noticeMark != Slot.INPUT) continue
+					val index = i++
+					val resource = inputEntries.getOrNull(index)
+						?.firstOrNull { it.type == VanillaEntryTypes.ITEM && !it.isEmpty }
+						?.let { ItemResource.of(it.castValue<ItemStack>()) }
+						?: continue
+					if (isLocallyAvailable(menu, resource)) continue
+					val innerBounds = widget.innerBounds
+					graphics.fill(innerBounds.x, innerBounds.y, innerBounds.maxX, innerBounds.maxY, colorFor(menu, resource))
+				}
+			}
+
+			private fun colorFor(menu: CraftingTerminalHookMenu?, resource: ItemResource): Int = when {
+				menu != null && menu.results.any { it.resource == resource } -> COLOR_REQUESTABLE
+				menu != null && menu.craftableResources.contains(resource) -> COLOR_CRAFTABLE
+				else -> COLOR_MISSING
+			}
+
+			/** Whether [resource] already sits in a real slot [menu] can see - the grid included, since something already sitting there isn't "missing" regardless of whether it counts as a fill *source* (see [getInventorySlots]'s own KDoc). */
+			private fun isLocallyAvailable(menu: CraftingTerminalHookMenu, resource: ItemResource): Boolean =
+				(menu.outputSlots + menu.gridSlots + menu.inventorySlots).any { slot ->
+					val stack = slot.item
+					!stack.isEmpty && ItemResource.of(stack) == resource
+				}
 		})
 	}
 

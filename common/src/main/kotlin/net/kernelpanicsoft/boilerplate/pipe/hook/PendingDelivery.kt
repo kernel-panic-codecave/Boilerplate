@@ -24,10 +24,12 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
  * rather than dispatched into an inbox with nowhere to put it - so [amount] is also capped at what
  * that single slot can genuinely hold.
  *
- * [totalTicks] is a genuine, fixed estimate for a provider-hook pull (real pipe travel at a known
- * speed - see `RequestFulfillment.request`'s own KDoc), but only a rough one for a warehouse
- * retrieval, whose own gantry speed is pressure-gated and can fluctuate - the progress bar for one
- * of those is closer to "roughly how long this usually takes" than a precise countdown.
+ * [totalTicks] is an upper bound for a provider-hook pull (real pipe travel at the *baseline*
+ * segment speed - see `RequestFulfillment.request`'s own KDoc; a pressurised run arrives sooner),
+ * and only a rough estimate for a warehouse retrieval, whose own gantry speed is pressure-gated and
+ * can fluctuate. Either way the progress bar is closer to "roughly how long this usually takes" than
+ * a precise countdown - it erring slow is deliberate, since an item arriving before its bar fills
+ * just clears the placeholder early, where the reverse would leave a full bar sitting there.
  */
 @Serializable
 data class PendingDelivery(

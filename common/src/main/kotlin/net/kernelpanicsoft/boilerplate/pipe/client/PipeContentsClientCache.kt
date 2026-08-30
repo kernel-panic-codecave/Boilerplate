@@ -14,18 +14,20 @@ import net.minecraft.core.BlockPos
  * on a dedicated server, it's simply never written to there.
  */
 object PipeContentsClientCache {
-	private data class Entry(val items: List<TravelingItem>, val receivedAtMillis: Long)
+	private data class Entry(val items: List<TravelingItem>, val receivedAtMillis: Long, val speedMultiplier: Float)
 
 	private val entries = HashMap<BlockPos, Entry>()
 
-	fun update(pos: BlockPos, items: List<TravelingItem>) {
-		entries[pos] = Entry(items, System.currentTimeMillis())
+	fun update(pos: BlockPos, items: List<TravelingItem>, speedMultiplier: Float) {
+		entries[pos] = Entry(items, System.currentTimeMillis(), speedMultiplier)
 	}
 
 	fun get(pos: BlockPos): List<TravelingItem> {
 		val entry = entries[pos] ?: return emptyList()
 		val elapsedSeconds = (System.currentTimeMillis() - entry.receivedAtMillis) / 1000f
-		val progressed = elapsedSeconds * PipeBlockEntity.SEGMENT_SPEED * 20f
+		// Dead reckon at the rate the *server* is actually running this segment at, not the baseline -
+		// see PipeContentsSyncPacket.speedMultiplier.
+		val progressed = elapsedSeconds * PipeBlockEntity.SEGMENT_SPEED * entry.speedMultiplier * 20f
 		if (progressed <= 0f) return entry.items
 		return entry.items.map { it.copy(progress = (it.progress + progressed).coerceAtMost(1f)) }
 	}

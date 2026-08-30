@@ -78,3 +78,16 @@ Every `PipeHookType` also declares a nonzero `basePressureCost` (differentiated 
 - Exact unit/cost balance and the multiplier curve's floor/ceiling — pure playtesting.
 - Whether over-pressure should be dangerous (tank rupture/explosion, BuildCraft/IC2-boiler-style) — thematically fun, but real scope/safety-design surface. Optional stretch, not assumed.
 - Whether pressure should be networked (current lean, per the vision's framing of pressure as *the* throughput gate) vs. a simpler per-machine local resource — not force-closed here.
+
+## Pipe travel speed
+
+Item pipes move their contents faster the more pressure their own line currently holds — `PipeBlockEntity.refreshSpeedMultiplier` maps available pressure onto a `1.0`x..`MAX_SPEED_MULTIPLIER` scaling of `SEGMENT_SPEED`, saturating at `PRESSURE_FOR_MAX_SPEED` (2,000, against a compressor's own 4,000 capacity, so one well-fed compressor saturates a run).
+
+Two things make this deliberately unlike every other `PressureConsumer` in the mod:
+
+- **It reads without drawing.** The line is probed with a simulate-only `extract(..., true)`, so a pipe run never competes with real machinery for supply. Pipes aren't machines consuming a budget; they move faster through a well-pressurised network the way real pneumatic tube does.
+- **It never gates.** `PressureConsumer.onPressureTick` returns a hard `0.0` when a line can't cover `basePressureCost`, and its callers skip their tick entirely. A pipe can't do that — items already in flight have nowhere to wait, and stranding a network's entire contents the moment a compressor runs dry is a far harsher failure than everything simply continuing at the old speed. So pressure here is purely a bonus on top of an always-available baseline.
+
+`PressureLine.find` walks its network's members looking for an endpoint, which is far too expensive per pipe per tick, so the multiplier is cached and refreshed every `PRESSURE_REFRESH_INTERVAL_TICKS` — and only while a segment actually holds something.
+
+The multiplier is synced to clients on `PipeContentsSyncPacket` so `PipeContentsClientCache`'s dead reckoning runs at the same rate the server does. It also makes every pipe-travel *estimate* (`RequestFulfillment`'s `onDispatch` ticks, `WarehouseControllerBlockEntity.estimateRetrieveTicks`' pipe leg) a worst case rather than a fixed figure, since those all assume the baseline. That direction is the safe one: a reserved-slot placeholder whose item arrives before its progress bar fills just clears early, where the reverse would leave a full bar sitting there.

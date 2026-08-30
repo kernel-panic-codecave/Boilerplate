@@ -62,8 +62,9 @@ object RequestFulfillment {
 	 * pull, [net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget.Pipe.reservationId] for a
 	 * warehouse retrieval) - see [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own
 	 * KDoc for why. [onDispatch], when a source was actually found, reports an estimate of how many
-	 * ticks the delivery will take - genuinely accurate for a provider pull (real pipe travel at
-	 * [PipeBlockEntity.SEGMENT_SPEED]'s own fixed rate), only a rough one for a warehouse retrieval
+	 * ticks the delivery will take - a worst case for a provider pull (real pipe travel at
+	 * [PipeBlockEntity.SEGMENT_SPEED]'s own *baseline* rate, which a pressurised run beats by up to
+	 * [PipeBlockEntity.MAX_SPEED_MULTIPLIER]), only a rough one for a warehouse retrieval
 	 * ([WarehouseControllerBlockEntity.estimateRetrieveTicks]'s own gantry-plus-pipe estimate,
 	 * genuinely accounting for both legs but still just an estimate - the gantry's own speed is
 	 * pressure-gated and can change before the job actually runs) - along with how much was actually

@@ -318,7 +318,8 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 * A rough estimate, in ticks, for how long a retrieval of [slot] delivering to [deliverTo] will
 	 * take end to end - [gantry]'s own two legs (to [slot], then back to this controller) at its
 	 * current [effectiveGantrySpeed], plus the real pipe travel leg once it ships back out
-	 * ([shipOut], at [PipeBlockEntity.SEGMENT_SPEED]'s own fixed rate). Only ever a rough guess, not
+	 * ([shipOut], at [PipeBlockEntity.SEGMENT_SPEED]'s own baseline rate - a pressurised run covers it
+	 * faster, so the pipe half is a worst case). Only ever a rough guess, not
 	 * a real reservation of gantry time: [effectiveGantrySpeed] is pressure-gated and can change
 	 * between now and whenever this job actually runs (other queued jobs ahead of it, say), and the
 	 * pipe leg assumes whichever neighboring pipe [shipOut] tries first is the one that ends up

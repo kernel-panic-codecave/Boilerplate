@@ -11,6 +11,7 @@ import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypesAt
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
+import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
 import net.kernelpanicsoft.boilerplate.registry.Registrars
 import net.kernelpanicsoft.boilerplate.registry.TileRegistry
@@ -49,6 +50,18 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 	private var ticksSinceSync = 0
 
+	/**
+	 * How much faster than [SEGMENT_SPEED] this segment is currently moving items, from whatever
+	 * pressure its own line has *available* - see [refreshSpeedMultiplier]. Synced to clients
+	 * ([net.kernelpanicsoft.boilerplate.network.PipeContentsSyncPacket]) so their dead reckoning
+	 * runs at the same rate rather than drifting against the server between syncs.
+	 */
+	var speedMultiplier: Float = 1f
+		private set
+
+	/** Ticks since [refreshSpeedMultiplier] last actually resolved a line - starts due, so the first tick with anything in it reads for real. */
+	private var ticksSincePressureCheck = PRESSURE_REFRESH_INTERVAL_TICKS
+
 	override fun setRemoved() {
 		super.setRemoved()
 		val serverLevel = level as? ServerLevel ?: return
@@ -84,10 +97,12 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		var hopped = false
 
 		val items = travelingItems
+		if (items.isNotEmpty()) refreshSpeedMultiplier(serverLevel)
+		val segmentSpeed = SEGMENT_SPEED * speedMultiplier
 		var index = 0
 		while (index < items.size) {
 			val item = items[index]
-			val progress = item.progress + SEGMENT_SPEED
+			val progress = item.progress + segmentSpeed
 			if (progress < 1f) {
 				items[index] = item.copy(progress = progress)
 				index++
@@ -187,6 +202,43 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		}
 	}
 
+	/**
+	 * Re-reads this segment's own pressure line and maps whatever it currently *holds* onto
+	 * [speedMultiplier] - `1.0`x with no line or an empty one, rising to [MAX_SPEED_MULTIPLIER] once
+	 * [PRESSURE_FOR_MAX_SPEED] is available.
+	 *
+	 * Deliberately a **simulate-only** read (`extract(..., true)`): pipes are scaled *by* pressure,
+	 * they don't spend it. Every other [net.kernelpanicsoft.boilerplate.power.PressureConsumer] in
+	 * the mod draws what it uses, so this is the one place that reads the line without touching it -
+	 * a pipe run isn't machinery competing for supply, it just moves faster through a well-pressurised
+	 * network.
+	 *
+	 * Also deliberately never gates: an unpressurised pipe still runs at the baseline `1.0`x rather
+	 * than stopping. Pressure here is purely a bonus, unlike
+	 * [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick]'s hard `0.0` floor -
+	 * items already in flight have nowhere to wait, and stranding a network's entire contents the
+	 * moment a compressor runs dry is a much harsher failure than everything simply moving at its
+	 * old speed.
+	 *
+	 * Throttled to [PRESSURE_REFRESH_INTERVAL_TICKS], and only run at all while this segment
+	 * actually holds something: [PressureLine.find] walks its network's members looking for an
+	 * endpoint, which is far too expensive to repeat per pipe per tick.
+	 */
+	private fun refreshSpeedMultiplier(level: ServerLevel) {
+		ticksSincePressureCheck++
+		if (ticksSincePressureCheck < PRESSURE_REFRESH_INTERVAL_TICKS) return
+		ticksSincePressureCheck = 0
+
+		val line = PressureLine.find(level, blockPos)
+		if (line == null) {
+			speedMultiplier = 1f
+			return
+		}
+		val available = line.extract(PRESSURE_FOR_MAX_SPEED, true)
+		val fraction = (available.toDouble() / PRESSURE_FOR_MAX_SPEED).coerceIn(0.0, 1.0)
+		speedMultiplier = (1.0 + fraction * (MAX_SPEED_MULTIPLIER - 1.0)).toFloat()
+	}
+
 	private fun jam(level: ServerLevel, pos: BlockPos, item: TravelingItem) {
 		ItemEntity(level, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, item.stack.resource.toStack(item.stack.amount.toInt()))
 			.also { level.addFreshEntity(it) }
@@ -266,13 +318,22 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos, items: List<TravelingItem>) {
 		BoilerplateNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, SYNC_RADIUS,
-			PipeContentsSyncPacket(pos, items.toList()),
+			PipeContentsSyncPacket(pos, items.toList(), speedMultiplier),
 		)
 	}
 
 	companion object {
-		/** Progress gained per tick; 1f / SEGMENT_SPEED ticks to cross one pipe segment. */
+		/** Progress gained per tick at `1.0`x; 1f / SEGMENT_SPEED ticks to cross one pipe segment. Scaled up by [speedMultiplier] - see [refreshSpeedMultiplier]. */
 		const val SEGMENT_SPEED = 1f / 20f
+
+		/** Available pressure at or above which a segment runs at [MAX_SPEED_MULTIPLIER]. In the same units as a compressor's own 4,000 capacity, so one well-fed compressor saturates a run. */
+		const val PRESSURE_FOR_MAX_SPEED = 2_000L
+
+		/** The most [refreshSpeedMultiplier] will scale [SEGMENT_SPEED] by, however much pressure is available. */
+		const val MAX_SPEED_MULTIPLIER = 3.0
+
+		/** How often a segment holding items re-resolves its own pressure line - see [refreshSpeedMultiplier] for why this isn't every tick. */
+		const val PRESSURE_REFRESH_INTERVAL_TICKS = 20
 		const val SYNC_INTERVAL_TICKS = 4
 		const val SYNC_RADIUS = 32.0
 

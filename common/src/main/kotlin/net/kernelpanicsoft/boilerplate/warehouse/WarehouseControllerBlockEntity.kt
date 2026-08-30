@@ -15,6 +15,7 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.minecraft.world.entity.item.ItemEntity
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
@@ -535,6 +536,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	private fun tickJobs(level: ServerLevel, pos: BlockPos) {
 		if (pickupQueue.isEmpty() && deliveryQueue.isEmpty()) {
+			drainStrandedOutbound(level, pos)
 			startNextBatch(level, pos)
 			return
 		}
@@ -620,46 +622,81 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
+	/**
+	 * Hands off whatever the gantry physically finished carrying. By the time this runs the stack has
+	 * already left its rack ([pickUp]) *and* been taken off [deliveryQueue], so nothing else in the
+	 * world still references it - every single branch here has to place all of [amount] somewhere or
+	 * that remainder is destroyed outright, which is why each one ends at [recoverCarried] rather
+	 * than at an ignored insert count.
+	 */
 	private fun dropOff(level: ServerLevel, pos: BlockPos, job: GantryJob, resource: ItemResource, amount: Long) {
 		when (job) {
 			is GantryJob.Retrieve -> {
-				val inserted = outboundBuffer.insert(resource, amount, false)
-				if (inserted <= 0) return
 				val target = job.deliverTo
-				val shipped = target is DeliveryTarget.Pipe &&
+				val inserted = outboundBuffer.insert(resource, amount, false)
+				// A full (or partly full) outbound buffer is not a reason to lose the overflow.
+				recoverCarried(level, pos, resource, amount - inserted)
+
+				val shipped = inserted > 0 && target is DeliveryTarget.Pipe &&
 					shipOut(level, pos, resource, inserted, target.pos, target.face, target.reservationId)
-				// Nothing drains outboundBuffer except this one shipOut attempt, so anything left
-				// sitting there is gone for good as far as the player is concerned - out of the rack
-				// index, out of terminal search, and in a buffer no UI ever shows. Hand it back to
-				// inboundBuffer instead, where planPutAway will stow it into a rack again, and drop
-				// the reservation it was going to satisfy so the terminal doesn't keep showing a
-				// placeholder for a delivery that is never now coming.
-				if (!shipped) {
-					val recovered = outboundBuffer.extract(resource, inserted, false)
-					if (recovered > 0) inboundBuffer.insert(resource, recovered, false)
-					if (target is DeliveryTarget.Pipe) releaseReservation(level, target)
-				}
+				if (shipped) return
+
+				// Nothing else ever drains outboundBuffer, so anything still sitting there is gone
+				// for good as far as the player is concerned - out of the rack index, out of terminal
+				// search, and in a buffer no UI ever shows. Take it straight back out again.
+				if (inserted > 0) recoverCarried(level, pos, resource, outboundBuffer.extract(resource, inserted, false))
+				// Nothing is on its way any more, so stop the terminal showing a placeholder for it.
+				if (target is DeliveryTarget.Pipe) releaseReservation(level, target)
 			}
-			is GantryJob.Stow -> {
-				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
-					val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
-					val inserted = storage?.insert(resource, amount, false) ?: 0
-					index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
-					if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
-				} else {
-					inboundBuffer.insert(resource, amount, false)
-				}
-			}
-			is GantryJob.Move -> {
-				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
-					val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
-					val inserted = storage?.insert(resource, amount, false) ?: 0
-					index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
-					if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
-				} else {
-					inboundBuffer.insert(resource, amount, false)
-				}
-			}
+			is GantryJob.Stow -> stowCarried(level, pos, resource, amount, job.targetPos, job.targetDirection)
+			is GantryJob.Move -> stowCarried(level, pos, resource, amount, job.targetPos, job.targetDirection)
+		}
+	}
+
+	/** Puts a carried stack into the rack at [targetPos]/[targetDirection], with whatever wouldn't fit (or all of it, for an unloaded target) falling through to [recoverCarried]. Shared by [GantryJob.Stow] and [GantryJob.Move], which differ only in where the stack came from. */
+	private fun stowCarried(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, targetPos: BlockPos, targetDirection: Direction?) {
+		var remaining = amount
+		if (level.hasChunk(targetPos.x shr 4, targetPos.z shr 4)) {
+			val storage = ItemApi.BLOCK.find(level, targetPos, targetDirection)
+			val inserted = storage?.insert(resource, remaining, false) ?: 0
+			index.recordInsertion(resource, targetPos, targetDirection, inserted)
+			remaining -= inserted
+		}
+		recoverCarried(level, pos, resource, remaining)
+	}
+
+	/**
+	 * Last resort for a carried stack with nowhere to go: back into [inboundBuffer] for [planPutAway]
+	 * to re-stow, and failing even that (a full buffer too), dropped into the world as real item
+	 * entities. Deliberately never a silent no-op - the alternative at this point in the gantry cycle
+	 * isn't "try again later", it's the items ceasing to exist.
+	 */
+	private fun recoverCarried(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long) {
+		if (amount <= 0) return
+		var remaining = amount - inboundBuffer.insert(resource, amount, false)
+		if (remaining <= 0) return
+		val maxStack = resource.cachedStack.maxStackSize.coerceAtLeast(1).toLong()
+		while (remaining > 0) {
+			val take = minOf(remaining, maxStack)
+			level.addFreshEntity(ItemEntity(level, pos.x + 0.5, pos.y + 1.0, pos.z + 0.5, resource.toStack(take.toInt())))
+			remaining -= take
+		}
+	}
+
+	/**
+	 * Empties anything left stranded in [outboundBuffer] back into circulation, run only while the
+	 * gantry has nothing else on - a shipment that actually goes out is inserted and shipped within a
+	 * single [dropOff] call, so anything still here once the queues are idle was left behind by a
+	 * failed hand-off and would otherwise sit there permanently. Recovers buffers already stranded by
+	 * earlier builds, not just ones this one could still produce.
+	 */
+	private fun drainStrandedOutbound(level: ServerLevel, pos: BlockPos) {
+		for (slot in 0 until outboundBuffer.size()) {
+			val resource = outboundBuffer.getResource(slot)
+			if (resource.isBlank) continue
+			val amount = outboundBuffer.getAmount(slot)
+			if (amount <= 0) continue
+			recoverCarried(level, pos, resource, outboundBuffer.extract(slot, resource, amount, false))
 		}
 	}
 

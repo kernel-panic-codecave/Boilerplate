@@ -105,7 +105,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					hopped = true
 					continue
 				}
-				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace)
+				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace, item.reservationId)
 				items.removeAt(index)
 				hopped = true
 				continue

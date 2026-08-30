@@ -53,8 +53,6 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 		registry.addRecipeHandler(
 			GuiRegistry.CraftingTerminalHook,
 			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
-				private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Long>? = null
-
 				/**
 				 * Deliberately excludes [CraftingTerminalHookMenu.gridSlots] - EMI's own default
 				 * [craft] ([EmiRecipeFiller.clientFill], confirmed against its real source) always
@@ -113,16 +111,17 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * EMI's own BOM sidebar fill asks for when filling the grid for one particular step of
 				 * a larger recipe tree, genuinely not always 1 or "as much as possible" - and reports
 				 * failure for *this* click - a second click succeeds once that supply has actually
-				 * landed and synced back.
+				 * landed and synced back. Fires on *every* call reaching this branch, no
+				 * same-targets debounce: `craft` only ever runs once per real click (confirmed against
+				 * `EmiRecipeFiller.performFill`'s own source - it isn't re-evaluated every frame the
+				 * way `canCraft` is), so a debounce here doesn't guard against a flood, only against a
+				 * second, later click for the *same* recipe - which needs to fire again just as much
+				 * as the first, since [targetsOf] is stable and would otherwise compare equal forever.
 				 */
 				override fun craft(recipe: EmiRecipe, context: EmiCraftContext<CraftingTerminalHookMenu>): Boolean {
 					if (super.canCraft(recipe, context)) return super.craft(recipe, context)
 					val targets = targetsOf(recipe)
-					val amount = context.amount.toLong()
-					if (targets.isNotEmpty() && (targets to amount) != lastRequestedTargets) {
-						lastRequestedTargets = targets to amount
-						context.screenHandler.requestIngredientSupply(targets, amount)
-					}
+					if (targets.isNotEmpty()) context.screenHandler.requestIngredientSupply(targets, context.amount.toLong())
 					return true
 				}
 

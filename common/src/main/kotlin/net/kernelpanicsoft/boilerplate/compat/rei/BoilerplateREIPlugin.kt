@@ -67,8 +67,6 @@ class BoilerplateREIPlugin : REIClientPlugin {
 	 */
 	override fun registerTransferHandlers(registry: TransferHandlerRegistry) {
 		registry.register(object : SimpleTransferHandler {
-			private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Long>? = null
-
 			override fun checkApplicable(context: TransferHandler.Context): TransferHandler.ApplicabilityResult =
 				if (context.menu is CraftingTerminalHookMenu && CATEGORY == context.display.categoryIdentifier && context.containerScreen != null) {
 					TransferHandler.ApplicabilityResult.createApplicable()
@@ -91,11 +89,11 @@ class BoilerplateREIPlugin : REIClientPlugin {
 			 * per this method's own interface KDoc) and a real click. Gated on
 			 * [TransferHandler.Context.isActuallyCrafting] deliberately - firing
 			 * [CraftingTerminalHookMenu.requestIngredientSupply] from a mere preview would pull real
-			 * stock from storage just from the player hovering the "+"
-			 * button, never having clicked anything. [targetsOf] is stable for a given [Display] (it
-			 * just reads the recipe's own ingredients, not current stock), so comparing against
-			 * [lastRequestedTargets] only guards against resending the same request on a rapid
-			 * double-click, not against the preview case (already excluded above).
+			 * stock from storage just from the player hovering the "+" button, never having clicked
+			 * anything. No same-targets debounce needed beyond that: `handle` only ever runs once per
+			 * real click, not re-evaluated every frame the way the preview case is (already excluded
+			 * above), so nothing here floods - and [targetsOf] is stable for a given [Display], so a
+			 * debounce would incorrectly suppress a genuine second click for the *same* recipe too.
 			 * [TransferHandler.Context.isStackedCrafting] is REI's own "shift-click fills as much as
 			 * possible" signal - unlike EMI's own `EmiCraftContext.amount`, it's only ever a boolean,
 			 * no specific quantity - so `true` maps to [Int.MAX_VALUE], relying on
@@ -106,8 +104,7 @@ class BoilerplateREIPlugin : REIClientPlugin {
 				val menu = context.menu as? CraftingTerminalHookMenu
 				val targets = targetsOf(context.display)
 				val amount = if (context.isStackedCrafting) Int.MAX_VALUE.toLong() else 1L
-				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty() && (targets to amount) != lastRequestedTargets) {
-					lastRequestedTargets = targets to amount
+				if (context.isActuallyCrafting && menu != null && targets.isNotEmpty()) {
 					menu.requestIngredientSupply(targets, amount)
 				}
 				return super.handle(context)

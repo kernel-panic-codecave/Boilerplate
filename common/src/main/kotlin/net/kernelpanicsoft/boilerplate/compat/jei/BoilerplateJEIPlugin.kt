@@ -92,8 +92,6 @@ class BoilerplateJEIPlugin : IModPlugin {
 		val delegate = helper.createUnregisteredRecipeTransferHandler(transferInfo)
 		registration.addRecipeTransferHandler(
 			object : IRecipeTransferHandler<CraftingTerminalHookMenu, RecipeHolder<CraftingRecipe>> {
-				private var lastRequestedTargets: Pair<Map<Int, ItemResource>, Long>? = null
-
 				override fun getContainerClass() = CraftingTerminalHookMenu::class.java
 				override fun getMenuType(): Optional<MenuType<CraftingTerminalHookMenu>> = Optional.of(GuiRegistry.CraftingTerminalHook)
 				override fun getRecipeType() = RecipeTypes.CRAFTING
@@ -109,10 +107,12 @@ class BoilerplateJEIPlugin : IModPlugin {
 				 * `craft` pair, [delegate] doesn't trust this dry run's answer as vouched-for - both
 				 * calls reach the *same* method, which independently reverifies sufficiency each time -
 				 * so gating here doesn't risk starving the real commit the way an honest `canCraft`
-				 * would there. [targetsOf] is stable for a given [recipe] (it just reads the recipe
-				 * itself, not current stock), so comparing against [lastRequestedTargets] only guards a
-				 * rapid double-click, not the dry run (already excluded above). [maxTransfer] is JEI's
-				 * own "shift-click fills as much as possible" signal - unlike EMI's own
+				 * would there. No same-targets debounce needed beyond the [doTransfer] gate itself:
+				 * this only ever runs once per real click with `doTransfer = true`, not re-evaluated
+				 * every frame the way the dry run is (already excluded above), so nothing floods - and
+				 * [targetsOf] is stable for a given [recipe], so a debounce would incorrectly suppress
+				 * a genuine second click for the *same* recipe too. [maxTransfer] is JEI's own
+				 * "shift-click fills as much as possible" signal - unlike EMI's own
 				 * `EmiCraftContext.amount`, it's only ever a boolean, no specific quantity - so `true`
 				 * maps to [Int.MAX_VALUE], relying on [CraftingTerminalHookMenu.supplyIngredients]'s
 				 * own per-resource cap to bound it sensibly, same as
@@ -133,9 +133,8 @@ class BoilerplateJEIPlugin : IModPlugin {
 					doTransfer: Boolean,
 				): IRecipeTransferError? {
 					val targets = targetsOf(helper, recipe)
-					val amount = if (maxTransfer) Int.MAX_VALUE.toLong() else 1L
-					if (doTransfer && targets.isNotEmpty() && (targets to amount) != lastRequestedTargets) {
-						lastRequestedTargets = targets to amount
+					if (doTransfer && targets.isNotEmpty()) {
+						val amount = if (maxTransfer) Int.MAX_VALUE.toLong() else 1L
 						container.requestIngredientSupply(targets, amount)
 					}
 					val error = delegate.transferRecipe(container, recipe, recipeSlots, player, maxTransfer, doTransfer) ?: return null

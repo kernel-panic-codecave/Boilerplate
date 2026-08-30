@@ -27,7 +27,7 @@ class GantryPathGameTest {
 	fun GameTestHelper.testMoveToWhereItAlreadyIsQueuesNothing() {
 		val home = BlockPos(1, 2, 1)
 		val gantry = GantryState(Vec3.atCenterOf(home))
-		gantry.moveTo(home, clearanceY = 5)
+		gantry.moveTo(home, clearanceY = 5.0)
 
 		assertTrue(!gantry.isMoving) {
 			"Expected no motion at all when already at the target, got ${gantry.remainingPath.size} waypoints: ${gantry.remainingPath}"
@@ -40,7 +40,7 @@ class GantryPathGameTest {
 	fun GameTestHelper.testMoveToAlwaysEndsAtTheDestination() {
 		val gantry = GantryState(Vec3.atCenterOf(BlockPos(1, 2, 1)))
 		val target = BlockPos(3, 2, 4)
-		gantry.moveTo(target, clearanceY = 5)
+		gantry.moveTo(target, clearanceY = 5.0)
 
 		assertTrue(gantry.remainingPath.last() == Vec3.atCenterOf(target)) {
 			"Expected the path to end at the destination, got ${gantry.remainingPath.last()} (full path ${gantry.remainingPath})"
@@ -53,7 +53,7 @@ class GantryPathGameTest {
 	fun GameTestHelper.testAdvancingThroughTheWholePathReachesTheDestination() {
 		val gantry = GantryState(Vec3.atCenterOf(BlockPos(1, 2, 1)))
 		val target = BlockPos(3, 2, 4)
-		gantry.moveTo(target, clearanceY = 5)
+		gantry.moveTo(target, clearanceY = 5.0)
 		gantry.advance(1000.0)
 
 		assertTrue(!gantry.isMoving) { "Expected the path to be exhausted, got ${gantry.remainingPath.size} waypoints left" }
@@ -66,7 +66,7 @@ class GantryPathGameTest {
 	fun GameTestHelper.testVerticalOnlyMoveStillReachesTheDestination() {
 		val gantry = GantryState(Vec3.atCenterOf(BlockPos(2, 5, 2)))
 		val target = BlockPos(2, 2, 2)
-		gantry.moveTo(target, clearanceY = 5)
+		gantry.moveTo(target, clearanceY = 5.0)
 		gantry.advance(1000.0)
 
 		assertTrue(gantry.pos == Vec3.atCenterOf(target)) { "Expected a straight-down move to land on the destination, got ${gantry.pos}" }

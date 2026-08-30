@@ -12,7 +12,9 @@ import net.minecraft.world.phys.Vec3
  * Motion is deliberately not general 3D pathfinding: [moveTo] always resolves to a single ascent
  * to [clearanceY] (if not already there), then horizontal motion along X, then along Z, then a
  * final vertical descent/ascent onto the target - an idealized industrial gantry confined to its
- * rail envelope, not a voxel path through the player's build. [clearanceY] is the caller's own
+ * rail envelope, not a voxel path through the player's build. [clearanceY] is a world-space Y for
+ * the head's own *centre*, the same space [pos] and every waypoint are in - not a block index. It is
+ * the caller's own
  * responsibility to pick high enough to clear whatever's actually between the two points -
  * [WarehouseControllerBlockEntity] picks the lowest height that clears every rack it currently
  * knows about rather than always the bound volume's own top, since those can differ enormously (a
@@ -42,14 +44,14 @@ class GantryState(startPos: Vec3) {
 	 * back didn't, so the head climbed up and stayed there - see the early return below, which now
 	 * makes that case move nothing at all rather than bob up and back.
 	 */
-	fun moveTo(target: BlockPos, clearanceY: Int) {
+	fun moveTo(target: BlockPos, clearanceY: Double) {
 		val destination = Vec3.atCenterOf(target)
 		if (destination == pos) {
 			waypoints = ArrayDeque()
 			return
 		}
 
-		val rail = Vec3(pos.x, clearanceY.toDouble(), pos.z)
+		val rail = Vec3(pos.x, clearanceY, pos.z)
 		val overDestination = Vec3(destination.x, rail.y, destination.z)
 		val path = listOf(
 			rail,

@@ -32,7 +32,6 @@ import net.minecraft.world.level.block.Block.UPDATE_ALL
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.chunk.status.ChunkStatus
 import net.minecraft.world.phys.Vec3
-import kotlin.math.ceil
 
 class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(TileRegistry.WarehouseController, pos, state), PressureConsumer {
@@ -396,20 +395,32 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	}
 
 	/**
-	 * The height [gantry] actually needs to ascend to before crossing horizontally to reach
-	 * [target] - just high enough to clear every rack [index] currently knows about (a block placed
-	 * at Y occupies world space up to `Y + 1`), never above [bounds]'s own rail height, and never
-	 * below wherever the gantry already is or [target] itself (going *below* either would be a
-	 * descent, not the ascent [GantryState.moveTo]'s own waypoints assume). A warehouse bound with
-	 * far more headroom than its racks actually use (space reserved for future expansion, say) no
-	 * longer pays for a trip all the way to the literal top and back on every single job -
-	 * [index] not yet knowing about any rack at all (nothing scanned yet) falls back to [bounds]'s
-	 * own floor, since there's nothing yet to clear.
+	 * The height [gantry]'s own centre needs to ride at while crossing horizontally to reach
+	 * [target] - just high enough to clear every rack [index] currently knows about, never above
+	 * [bounds]'s own rail, and never below wherever the gantry already is or [target] itself (going
+	 * *below* either would be a descent, not the ascent [GantryState.moveTo]'s own waypoints
+	 * assume). A warehouse bound with far more headroom than its racks actually use (space reserved
+	 * for future expansion, say) doesn't pay for a trip all the way to the literal top and back on
+	 * every single job - [index] not yet knowing about any rack at all (nothing scanned yet) falls
+	 * back to [bounds]'s own floor, since there's nothing yet to clear.
+	 *
+	 * Every term here is a world-space Y for the head's *centre*, which is what [GantryState.moveTo]
+	 * consumes. That used to be four different conventions in one expression: a rack *surface*
+	 * (`rackY + 1`), a rounded-up world position, and two raw block indices, handed to `moveTo` as-is
+	 * while every other waypoint it builds is a [Vec3.atCenterOf] block centre. The result was a
+	 * traverse running half a block lower than the rail it was nominally following, and a head whose
+	 * lower half sat inside the very rack it was clearing - [HEAD_CLEARANCE] is what actually keeps
+	 * it above one.
 	 */
-	private fun clearanceYFor(target: BlockPos, bounds: Bounds): Int {
-		val tallestKnownRackTop = (index.knownContainers.maxOfOrNull { it.y } ?: bounds.min.y) + 1
-		val currentY = ceil(gantry.pos.y).toInt()
-		return tallestKnownRackTop.coerceAtLeast(maxOf(currentY, target.y)).coerceAtMost(bounds.max.y)
+	private fun clearanceYFor(target: BlockPos, bounds: Bounds): Double {
+		val tallestKnownRackTop = (index.knownContainers.maxOfOrNull { it.y } ?: bounds.min.y) + 1.0
+		// The beams themselves are drawn at their own block centre, so the head has to hang the same
+		// [HEAD_CLEARANCE] *below* that to sit under the rail rather than inside it - which works out
+		// to exactly the raw `bounds.max.y` ceiling this used before, now in the same units as
+		// everything else here rather than by accident of the old mixed conventions.
+		val highestHeadCentre = bounds.max.y + 0.5 - HEAD_CLEARANCE
+		val neverDescend = maxOf(gantry.pos.y, target.y + 0.5)
+		return (tallestKnownRackTop + HEAD_CLEARANCE).coerceAtLeast(neverDescend).coerceAtMost(highestHeadCentre)
 	}
 
 	/**
@@ -826,6 +837,14 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		private const val GANTRY_SYNC_RADIUS = 64.0
 		private const val MAX_FRAME_TIME_NS = 1_000_000L
 		private const val RACK_SEARCH_LIMIT = 256
+
+		/**
+		 * How far above a rack's own top surface the gantry head's *centre* has to ride to actually
+		 * clear it - the head is a 10x10x10 model centred on its position, so half of it (5/16) hangs
+		 * below, and this covers that with a little margin rather than riding exactly level with the
+		 * rack top and clipping through it.
+		 */
+		private const val HEAD_CLEARANCE = 0.5
 
 		/** [estimateRetrieveTicks]'s own fallback when [effectiveGantrySpeed] is hard-stalled (`<= 0`) - a genuine estimate would divide by zero. */
 		private const val FALLBACK_ESTIMATE_TICKS = 100

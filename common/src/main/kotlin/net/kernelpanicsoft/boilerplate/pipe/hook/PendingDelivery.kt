@@ -24,12 +24,17 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
  * rather than dispatched into an inbox with nowhere to put it - so [amount] is also capped at what
  * that single slot can genuinely hold.
  *
- * [totalTicks] is an upper bound for a provider-hook pull (real pipe travel at the *baseline*
- * segment speed - see `RequestFulfillment.request`'s own KDoc; a pressurised run arrives sooner),
- * and only a rough estimate for a warehouse retrieval, whose own gantry speed is pressure-gated and
- * can fluctuate. Either way the progress bar is closer to "roughly how long this usually takes" than
- * a precise countdown - it erring slow is deliberate, since an item arriving before its bar fills
- * just clears the placeholder early, where the reverse would leave a full bar sitting there.
+ * What's persisted is the trip's own *geometry* - [pipeHops] and [gantryBlocks], both fixed for the
+ * life of the delivery - rather than a duration. [totalTicks] is derived from those against whatever
+ * the pipes and gantry are managing *right now*, recomputed every time
+ * `AbstractTerminalHookMenu.sendPendingDeliveries` builds a packet, so the progress bar tracks a
+ * rolling estimate instead of one frozen at dispatch. Both speeds are pressure-driven and change
+ * while a delivery is in flight - pressurise the network mid-trip and the bar speeds up to match,
+ * rather than continuing to count down against a figure that stopped being true.
+ *
+ * The stored [totalTicks] is only ever the estimate as of the last recompute; nothing reads it
+ * except as a starting value, and it is deliberately not kept up to date in NBT (that would mean
+ * writing every terminal's hook state four times a second for a purely cosmetic number).
  */
 @Serializable
 data class PendingDelivery(
@@ -39,4 +44,8 @@ data class PendingDelivery(
 	val amount: Long,
 	val startTick: Long,
 	val totalTicks: Int,
+	/** Pipe segments this delivery still has to cross - fixed for the trip; the *time* that takes is not. */
+	val pipeHops: Int = 0,
+	/** Blocks of gantry travel this delivery needs, `0.0` for a provider pull that never involves one. */
+	val gantryBlocks: Double = 0.0,
 )

@@ -329,18 +329,31 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	fun estimateRetrieveTicks(slot: WarehouseIndex.RackSlotRef, deliverTo: BlockPos): Int {
 		val speed = effectiveGantrySpeed()
 		if (speed <= 0.0) return FALLBACK_ESTIMATE_TICKS
-		val slotPos = Vec3.atCenterOf(slot.pos)
-		val gantryDistance = gantry.pos.distanceTo(slotPos) + slotPos.distanceTo(Vec3.atCenterOf(blockPos))
-		val gantryTicks = gantryDistance / speed
+		val gantryTicks = retrieveGantryBlocks(slot) / speed
+		val pipeTicks = retrievePipeHops(deliverTo) * (1.0 / PipeBlockEntity.SEGMENT_SPEED)
+		return (gantryTicks + pipeTicks).toInt()
+	}
 
-		val serverLevel = level as? ServerLevel ?: return gantryTicks.toInt()
-		val pipeHops = Direction.entries.firstNotNullOfOrNull { direction ->
+	/**
+	 * The gantry's own two legs for retrieving [slot], in blocks - out to the rack, then back to this
+	 * controller. Pure geometry, so it stays valid for the whole trip; how long it *takes* depends on
+	 * [effectiveGantrySpeed], which is pressure-gated and moves under it. Split out from
+	 * [estimateRetrieveTicks] so a [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery] can
+	 * store the distance and re-derive the duration against current conditions.
+	 */
+	fun retrieveGantryBlocks(slot: WarehouseIndex.RackSlotRef): Double {
+		val slotPos = Vec3.atCenterOf(slot.pos)
+		return gantry.pos.distanceTo(slotPos) + slotPos.distanceTo(Vec3.atCenterOf(blockPos))
+	}
+
+	/** Pipe segments between this controller and [deliverTo], via whichever neighbouring pipe [shipOut] would use - the same fixed-for-the-trip geometry half as [retrieveGantryBlocks]. */
+	fun retrievePipeHops(deliverTo: BlockPos): Int {
+		val serverLevel = level as? ServerLevel ?: return 0
+		return Direction.entries.firstNotNullOfOrNull { direction ->
 			val neighborPos = blockPos.relative(direction)
 			if (!serverLevel.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) return@firstNotNullOfOrNull null
 			PipeRouter.findRouteTo(serverLevel, neighborPos, deliverTo)?.size
 		} ?: 0
-		val pipeTicks = pipeHops * (1.0 / PipeBlockEntity.SEGMENT_SPEED)
-		return (gantryTicks + pipeTicks).toInt()
 	}
 
 	/**
@@ -432,7 +445,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	private fun pressureSpeedMultiplier(): Double = onPressureTick((level as? ServerLevel)?.let { PressureLine.find(it, blockPos) } ?: NO_PRESSURE_LINE)
 
 	/** [scaleClass]'s own [WarehouseScale.baseSpeedPerTick], scaled by [pressureSpeedMultiplier] - the rate [tick] actually advances [gantry] by while it's moving. */
-	private fun effectiveGantrySpeed(): Double = scaleClass.baseSpeedPerTick * pressureSpeedMultiplier()
+	fun effectiveGantrySpeed(): Double = scaleClass.baseSpeedPerTick * pressureSpeedMultiplier()
 
 	/**
 	 * Whether this controller currently has enough reachable pressure to move its gantry at all - a

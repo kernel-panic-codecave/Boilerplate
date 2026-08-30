@@ -9,6 +9,7 @@ import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.boilerplate.crafting.*
 import net.kernelpanicsoft.boilerplate.network.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
@@ -191,8 +192,13 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 			val startTick = level.gameTime
 			val dispatched = RequestFulfillment.request(
 				level, tile.blockPos, stack.withCount(take), tile.blockPos, direction, reservationId,
-			) { estimatedTicks, actual ->
-				state.pendingDeliveries += PendingDelivery(reservationId, slot, stack.resource, actual, startTick, estimatedTicks)
+			) { pipeHops, gantryBlocks, actual ->
+				state.pendingDeliveries += PendingDelivery(
+					reservationId, slot, stack.resource, actual, startTick,
+					totalTicks = estimateTicks(pipeHops, gantryBlocks),
+					pipeHops = pipeHops,
+					gantryBlocks = gantryBlocks,
+				)
 			}
 			// Nothing left anywhere on the network - stop rather than spinning through the
 			// remaining free slots re-asking a question already answered.
@@ -216,7 +222,35 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	fun sendPendingDeliveries() {
 		if (level !is ServerLevel) return
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
-		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PendingDeliveriesPacket(state.pendingDeliveries.toList()))
+		// Re-derived per send rather than read back as stored: both speeds move while a delivery is in
+		// flight, so this is what makes the placeholder's countdown a rolling estimate. The recomputed
+		// value is deliberately not written back - see PendingDelivery's own KDoc.
+		val rolling = state.pendingDeliveries.map { it.copy(totalTicks = estimateTicks(it.pipeHops, it.gantryBlocks)) }
+		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PendingDeliveriesPacket(rolling))
+	}
+
+	/**
+	 * How long a delivery of this shape would take *right now* - [pipeHops] at whatever this
+	 * terminal's own segment is currently managing ([net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity.speedMultiplier],
+	 * itself pressure-driven), plus [gantryBlocks] at whichever reachable warehouse's current
+	 * [WarehouseControllerBlockEntity.effectiveGantrySpeed] is going to run the job.
+	 *
+	 * The terminal's own segment stands in for the whole route's pressure: a delivery crosses many
+	 * segments whose lines can differ, and tracking each one's would mean re-walking the route every
+	 * poll for a progress bar. A hard-stalled gantry (`speed <= 0`) falls back to a fixed guess rather
+	 * than dividing by zero.
+	 */
+	protected fun estimateTicks(pipeHops: Int, gantryBlocks: Double): Int {
+		val pipeTicks = pipeHops / (PipeBlockEntity.SEGMENT_SPEED * tile.speedMultiplier).toDouble()
+		if (gantryBlocks <= 0.0) return pipeTicks.toInt()
+
+		val level = level as? ServerLevel ?: return pipeTicks.toInt()
+		val gantrySpeed = RequestFulfillment.reachableWarehouses(level, tile.blockPos)
+			.firstOrNull()
+			?.effectiveGantrySpeed()
+			?: 0.0
+		if (gantrySpeed <= 0.0) return (pipeTicks + STALLED_GANTRY_ESTIMATE_TICKS).toInt()
+		return (pipeTicks + gantryBlocks / gantrySpeed).toInt()
 	}
 
 	/** Server-side: cancels the [PendingDelivery] named by [reservationId], if this hook still has one - see [CancelPendingDeliveryPacket]'s own KDoc for what happens to the item already in flight. */
@@ -416,6 +450,11 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * forbid, so its own local slots (output/inbox) stay eligible exactly as before.
 	 */
 	open val shiftClickForbiddenSlotRanges: List<IntRange> = emptyList()
+
+	companion object {
+		/** Stand-in gantry duration while a warehouse is hard-stalled at `0` speed - a placeholder that would otherwise divide by zero and show an instantly-full bar. */
+		private const val STALLED_GANTRY_ESTIMATE_TICKS = 100
+	}
 
 	/**
 	 * Shift-click handling: menu slots move into the player inventory/hotbar, and player slots move

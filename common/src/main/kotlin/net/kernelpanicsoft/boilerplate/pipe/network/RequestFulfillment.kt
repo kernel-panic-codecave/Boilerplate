@@ -61,18 +61,17 @@ object RequestFulfillment {
 	 * ([net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.reservationId] for a provider
 	 * pull, [net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget.Pipe.reservationId] for a
 	 * warehouse retrieval) - see [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own
-	 * KDoc for why. [onDispatch], when a source was actually found, reports an estimate of how many
-	 * ticks the delivery will take - a worst case for a provider pull (real pipe travel at
-	 * [PipeBlockEntity.SEGMENT_SPEED]'s own *baseline* rate, which a pressurised run beats by up to
-	 * [PipeBlockEntity.MAX_SPEED_MULTIPLIER]), only a rough one for a warehouse retrieval
-	 * ([WarehouseControllerBlockEntity.estimateRetrieveTicks]'s own gantry-plus-pipe estimate,
-	 * genuinely accounting for both legs but still just an estimate - the gantry's own speed is
-	 * pressure-gated and can change before the job actually runs) - along with how much was actually
-	 * dispatched, which is routinely *less* than [stack]'s own requested amount (only the first
-	 * willing source is served, and it can easily hold less), so the caller can populate a
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery]'s own `totalTicks`/`amount` with
-	 * what's genuinely coming rather than what was asked for, without this function needing to know
-	 * anything about that class itself.
+	 * KDoc for why. [onDispatch], when a source was actually found, reports the trip's own *geometry* -
+	 * how many pipe segments it crosses and how many blocks of gantry travel it needs (`0.0` for a
+	 * provider pull, which never involves one) - rather than a duration. Both halves are driven by
+	 * pressure and change while the delivery is still in flight, so a caller holding the geometry can
+	 * re-derive a current estimate whenever it likes instead of being stuck with one frozen at
+	 * dispatch; see [net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery].
+	 *
+	 * Reported alongside how much was actually dispatched, which is routinely *less* than [stack]'s
+	 * own requested amount (only the first willing source is served, and it can easily hold less), so
+	 * the caller can record what's genuinely coming rather than what was asked for - all without this
+	 * function needing to know anything about `PendingDelivery` itself.
 	 */
 	fun request(
 		level: ServerLevel,
@@ -81,7 +80,7 @@ object RequestFulfillment {
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
-		onDispatch: ((estimatedTicks: Int, dispatched: Long) -> Unit)? = null,
+		onDispatch: ((pipeHops: Int, gantryBlocks: Double, dispatched: Long) -> Unit)? = null,
 	): Long {
 		val reachable = reachablePipes(level, from)
 		val fromProvider = fulfillFromProvider(level, providerSources(level, reachable), stack, deliverTo, deliverFace, reservationId, onDispatch)
@@ -128,7 +127,7 @@ object RequestFulfillment {
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
-		onDispatch: ((Int, Long) -> Unit)? = null,
+		onDispatch: ((Int, Double, Long) -> Unit)? = null,
 	): Long {
 		for (source in sources) {
 			if (!source.hookState.active) continue
@@ -141,7 +140,7 @@ object RequestFulfillment {
 			if (extracted <= 0) continue
 			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
 			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace, reservationId)
-			onDispatch?.invoke((route.size / PipeBlockEntity.SEGMENT_SPEED).toInt(), extracted)
+			onDispatch?.invoke(route.size, 0.0, extracted)
 			return extracted
 		}
 		return 0
@@ -155,14 +154,14 @@ object RequestFulfillment {
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
-		onDispatch: ((Int, Long) -> Unit)? = null,
+		onDispatch: ((Int, Double, Long) -> Unit)? = null,
 	): Long {
 		for (controller in warehouses) {
 			if (!controller.hasPressure()) continue
 			val slot = controller.index.locations[stack.resource]?.firstOrNull() ?: continue
 			val amount = minOf(stack.amount, slot.amount)
 			controller.enqueueRetrieve(slot, stack.withCount(amount), DeliveryTarget.Pipe(deliverTo, deliverFace, reservationId))
-			onDispatch?.invoke(controller.estimateRetrieveTicks(slot, deliverTo), amount)
+			onDispatch?.invoke(controller.retrievePipeHops(deliverTo), controller.retrieveGantryBlocks(slot), amount)
 			return amount
 		}
 		return 0

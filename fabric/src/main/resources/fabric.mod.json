@@ -9,7 +9,8 @@
   ],
   "contact": {
     "homepage": "${mod_url}",
-    "sources": "${mod_source}"
+    "sources": "${mod_source}",
+    "issues": "${mod_issues}"
   },
   "custom": {
     "catalogue": {

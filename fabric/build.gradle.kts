@@ -89,7 +89,7 @@ dependencies {
 	{
 		"jei" -> modLocalRuntime(libs.jei.fabric)
 		"rei" -> modLocalRuntime(libs.rei.fabric)
-		"emi" -> modLocalRuntime(libs.emi.fabric)
+		"emi" -> {modLocalRuntime(libs.emi.fabric); modLocalRuntime(libs.jei.fabric)}
 	}
 
 

@@ -1,6 +1,6 @@
 modLoader = "klf"
 loaderVersion = "[${versions.kotlin_neoforge_range},)"
-issueTrackerURL = ""
+issueTrackerURL = "${mod_issues}"
 license = "${mod_license}"
 
 [[mixins]]

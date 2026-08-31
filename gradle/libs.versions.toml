@@ -20,7 +20,7 @@ archie = "1.0.0-SNAPSHOT"
 fabric-loader = "0.16.9"
 fabric-api = "0.116.6+1.21.1"
 
-neoforge = "21.1.80"
+neoforge = "21.1.238"
 neoforge-range = "21.1.80"
 
 flywheel = "1.0.6"
@@ -33,9 +33,6 @@ emi = "1.1.24+1.21.1"
 jei = "19.44.0.413"
 
 compose = "1.7.1"
-androidx-annotation = "1.8.0"
-androidx-collection = "1.4.0"
-okio = "3.9.0"
 
 shadow = "9.6.1"
 
@@ -88,10 +85,6 @@ emi-xplat = { module = "dev.emi:emi-xplat-intermediary", version.ref = "emi" }
 jei-common-api = { module = "mezz.jei:jei-1.21.1-common-api", version.ref = "jei" }
 jei-fabric = { module = "mezz.jei:jei-1.21.1-fabric", version.ref = "jei" }
 jei-neoforge = { module = "mezz.jei:jei-1.21.1-neoforge", version.ref = "jei" }
-
-androidx-annotation = { module = "androidx.annotation:annotation-jvm", version.ref = "androidx-annotation" }
-androidx-collection = { module = "androidx.collection:collection-jvm", version.ref = "androidx-collection" }
-okio = { module = "com.squareup.okio:okio-jvm", version.ref = "okio" }
 
 junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }

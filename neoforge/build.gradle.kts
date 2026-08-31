@@ -1,5 +1,3 @@
-import net.kernelpanicsoft.archie.plugin.runtimeLibrary
-
 plugins {
 	alias(libs.plugins.shadow)
 	alias(libs.plugins.archie)
@@ -62,11 +60,6 @@ loom {
 			property("archie.gametest", "true")
 			property("archie.gametest.modid", "boilerplate")
 		}
-		// "gradlew runDatagen" - see BoilerplateBlockStateProvider. Writes to common's own
-		// src/main/generated (wired in as an extra resources root there), not src/main/resources
-		// directly - Minecraft's datagen cache deletes anything in its output directory it didn't
-		// just write, which would otherwise destroy the hand-placed textures/gametest structures
-		// living alongside it.
 		create("datagen") {
 			data()
 			name = "Minecraft Datagen"
@@ -94,9 +87,6 @@ dependencies {
 	modCompileOnly(libs.archie.datagen.neoforge)
 	modLocalRuntime(libs.archie.datagen.neoforge)
 
-	// Only for NeoForgeEmiEntrypoint's own @EmiEntrypoint marker - the real plugin logic compiles
-	// against emi-xplat in common/build.gradle.kts instead, but that modCompileOnly doesn't
-	// propagate transitively to this module's own compile classpath.
 	modCompileOnly("${libs.emi.neoforge.get()}:api")
 
 	when (rootProject.property("recipe_viewer") as? String)
@@ -106,11 +96,8 @@ dependencies {
 		"emi" -> modLocalRuntime(libs.emi.neoforge)
 	}
 
-	runtimeLibrary(libs.okio)
-	runtimeLibrary(libs.androidx.annotation)
-	runtimeLibrary(libs.androidx.collection)
-
 	modLocalRuntime("curse.maven:nbtedit-678133:6125444")
+	modLocalRuntime("curse.maven:mekanism-268560:7904058")
 
 	"common"(project(":boilerplate-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":boilerplate-common", "transformProductionNeoForge")) { isTransitive = false }

@@ -34,12 +34,25 @@ object TravelingItemRenderer {
 		partialTick: Float,
 	) {
 		for ((stack, fromDirection, progress, path) in items) {
+			// Progress is dead-reckoned past `1f` once an item has reached/handed off at the exit
+			// face, and the neighbor segment's own copy of it starts from the same face on the same
+			// server tick - so anything still mid-path that's already at/past the face is that
+			// neighbor's to draw now, and drawing it again here would park a ghost on the boundary
+			// plane (see [PipeContentsClientCache]'s KDoc). An item on its *final* leg
+			// (`path.size == 1`) is a delivery at its destination, not a handoff: it holds at the
+			// face mouth until the deposit's next sync removes it, reading it as "arrived, waiting
+			// on room".
+			val renderProgress = when {
+				progress >= 1f && path.size > 1 -> continue
+				progress >= 1f -> 1f
+				else -> progress
+			}
 			val from = tipOf(fromDirection)
 			val toDirection = path.firstOrNull()?.let { next ->
 				Direction.fromDelta(next.x - pos.x, next.y - pos.y, next.z - pos.z)
 			}
 			val to = toDirection?.let(::tipOf) ?: CENTER
-			val itemPos = pathPosition(from, to, progress.toDouble())
+			val itemPos = pathPosition(from, to, renderProgress.toDouble())
 			val seed = pos.asLong().toInt()
 			val centeringOffset = centeringOffset(itemRenderer, stack.resource.cachedStack, level, seed)
 

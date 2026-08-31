@@ -101,7 +101,7 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 	) {
 		val level = tile.level ?: return
 		val bounds = tile.bounds ?: return
-		val head = GantryClientCache.get(tile.blockPos, WarehouseScale.fromBounds(bounds).baseSpeedPerTick)?.pos
+		val head = GantryClientCache.get(tile.blockPos, level.gameTime + partialTick.toDouble())?.pos
 			?: Vec3.atCenterOf(tile.blockPos)
 
 		val consumer = bufferSource.getBuffer(RenderType.cutout())

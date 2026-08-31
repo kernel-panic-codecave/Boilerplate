@@ -279,7 +279,7 @@ class WarehouseControllerVisual(
 			return
 		}
 
-		val head = GantryClientCache.get(blockEntity.blockPos, WarehouseScale.fromBounds(bounds).baseSpeedPerTick)?.pos
+		val head = GantryClientCache.get(blockEntity.blockPos, (level?.gameTime ?: 0L) + partialTick.toDouble())?.pos
 			?: Vec3.atCenterOf(blockEntity.blockPos)
 
 		val origin = blockEntity.blockPos
@@ -502,7 +502,7 @@ class WarehouseControllerVisual(
 
 	override fun updateLight(partialTick: Float) {
 		val bounds = blockEntity.bounds ?: return
-		val headWorld = GantryClientCache.get(blockEntity.blockPos, WarehouseScale.fromBounds(bounds).baseSpeedPerTick)?.pos
+		val headWorld = GantryClientCache.get(blockEntity.blockPos, (level?.gameTime ?: 0L) + partialTick.toDouble())?.pos
 			?: Vec3.atCenterOf(blockEntity.blockPos)
 
 		val railYInt = bounds.max.y

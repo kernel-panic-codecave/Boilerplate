@@ -44,7 +44,7 @@ class MultipartTravelingItemRenderer(context: BlockEntityRendererProvider.Contex
 		if (!pipeBlock.showsTravelingItems) return
 
 		TravelingItemRenderer.render(
-			PipeContentsClientCache.get(tile.blockPos),
+			PipeContentsClientCache.get(tile.blockPos, level.gameTime + partialTick.toDouble()),
 			itemRenderer,
 			level,
 			tile.blockPos,

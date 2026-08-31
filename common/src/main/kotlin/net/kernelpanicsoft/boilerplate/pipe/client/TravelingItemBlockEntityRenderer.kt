@@ -23,7 +23,7 @@ class TravelingItemBlockEntityRenderer(context: BlockEntityRendererProvider.Cont
 	override fun render(tile: GlassPipeBlockEntity, partialTick: Float, poseStack: PoseStack, bufferSource: MultiBufferSource, packedLight: Int, packedOverlay: Int) {
 		val level = tile.level ?: return
 		TravelingItemRenderer.render(
-			PipeContentsClientCache.get(tile.blockPos), itemRenderer, level, tile.blockPos,
+			PipeContentsClientCache.get(tile.blockPos, level.gameTime + partialTick.toDouble()), itemRenderer, level, tile.blockPos,
 			poseStack, bufferSource, packedLight, packedOverlay, partialTick,
 		)
 	}

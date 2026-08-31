@@ -4,15 +4,15 @@ import net.minecraft.server.level.ServerLevel
 
 /**
  * A tier's own gantry throughput, both halves of it: [baseSpeedPerTick] (the [GantryState.tick]
- * rate before [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick]'s
- * multiplier, currently always `1.0` - a no-op until M5 gives that hook a real pressure network to
- * draw from) and [basePressureCost]/[maxPressureDraw] (this tier's own [PressureConsumer][net.kernelpanicsoft.boilerplate.power.PressureConsumer]
- * values, wired now even though nothing draws pressure from a real network yet, same as every other
- * M1-M4 system's [PressureConsumer][net.kernelpanicsoft.boilerplate.power.PressureConsumer]
- * conformance). A bigger warehouse's gantry needs to physically cover far more ground per job on
- * average, so it moves faster - and costs more to run that fast - the bigger the tier; exact
- * unit/cost balance is explicitly deferred to playtesting (`docs/design/m5-pressure-power.md`), not
- * meant to be load-bearing yet.
+ * rate before [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick]'s multiplier -
+ * live once a pressure line reaches the controller, e.g. a well-fed one roughly doubles a
+ * COMPACT/REGIONAL gantry's speed per its own draw ratios) and [basePressureCost]/[maxPressureDraw]
+ * (this tier's own [PressureConsumer][net.kernelpanicsoft.boilerplate.power.PressureConsumer]
+ * values - what gates the multiplier at all: no reachable line hard-gates the gantry to `0.0`).
+ * A bigger warehouse's gantry needs to physically cover far more ground per job on average, so it
+ * moves faster - and costs more to run that fast - the bigger the tier; exact unit/cost balance is
+ * explicitly deferred to playtesting (`docs/design/m5-pressure-power.md`), not meant to be
+ * load-bearing yet.
  */
 enum class WarehouseScale(
 	val maxBlockCount: Long,

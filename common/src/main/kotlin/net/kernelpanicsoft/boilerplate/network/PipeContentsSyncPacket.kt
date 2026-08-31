@@ -14,10 +14,20 @@ import net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache
  * client's dead reckoning advances at the same rate the server actually is. Without it a
  * well-pressurised pipe visibly drifts: the client interpolates at the `1.0`x baseline, falls
  * further behind for the whole gap between syncs, then snaps forward when the next one lands.
+ *
+ * [serverTick] is the sender's server-world game time at the moment [progress] values were sampled,
+ * anchoring the client's per-block dead reckoning to the server's own tick stream instead of each
+ * packet's receipt time - so a hop from one segment to the next hands off seamlessly, and a render
+ * hiccup can't run a client-side item ahead of the server for it to snap back later.
  */
 @Serializable
-data class PipeContentsSyncPacket(val pos: SBlockPos, val items: List<TravelingItem>, val speedMultiplier: Float = 1f) {
+data class PipeContentsSyncPacket(
+	val pos: SBlockPos,
+	val items: List<TravelingItem>,
+	val speedMultiplier: Float = 1f,
+	val serverTick: Long = 0L,
+) {
 	fun handleOnClient() {
-		PipeContentsClientCache.update(pos, items, speedMultiplier)
+		PipeContentsClientCache.update(pos, items, speedMultiplier, serverTick)
 	}
 }

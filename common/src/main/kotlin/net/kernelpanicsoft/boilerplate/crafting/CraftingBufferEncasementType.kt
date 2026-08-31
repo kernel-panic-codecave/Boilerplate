@@ -72,7 +72,7 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	override fun createState(): CraftingBufferEncasementState = CraftingBufferEncasementState()
 
@@ -392,7 +392,7 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 			val amount = storage.get(i).amount
 			if (resource.isBlank || amount <= 0) continue
 			anythingLeft = true
-			val route = PipeRouter.findRoute(level, pos, resource, null, exclude = pos) ?: continue
+			val route = PipeRouter.findRoute(level, pos, resource, null, exclude = setOf(pos)) ?: continue
 			val extracted = storage.extract(resource, amount, false)
 			if (extracted <= 0) continue
 			tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), entryFaceFor(pos, route), 0f, route, null)

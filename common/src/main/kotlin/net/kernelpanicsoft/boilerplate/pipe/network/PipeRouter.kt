@@ -3,22 +3,36 @@ package net.kernelpanicsoft.boilerplate.pipe.network
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookType
+import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter.step
 import net.kernelpanicsoft.boilerplate.registry.HookTypeRegistry
+import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.DyeColor
 import net.minecraft.world.level.LevelAccessor
 import java.util.UUID
+import kotlin.Boolean
+import kotlin.Int
+import kotlin.Pair
+import kotlin.collections.ArrayDeque
+import kotlin.collections.component1
+import kotlin.collections.component2
+import kotlin.collections.plus
+import kotlin.collections.plusAssign
+import kotlin.let
+import kotlin.takeIf
+import kotlin.to
 
 /**
  * Resolves a route from a pipe position to the best network-reachable inventory that will accept
  * a resource, via unweighted BFS. Routes are cached per
  * `(networkId, network.version, resource, color, exclude)` and invalidated automatically whenever
- * the network's topology or routing modules change (both bump [ItemPipeNetwork.version]).
+ * the network's topology or routing modules change (both bump [ItemPipeNetwork.version]). Only
+ * found routes are cached - a "nothing accepts" miss is transient and carries no invalidation
+ * event of its own, so caching it would wedge pushes until an unrelated topology change.
  *
  * Unlike M1, candidates aren't accepted on first hit: the whole reachable space is explored so
  * that a sorting hook's [net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule.priority]
@@ -49,32 +63,49 @@ object PipeRouter {
 		val version: Int,
 		val resource: ItemResource,
 		val color: DyeColor?,
-		val exclude: BlockPos?,
+		val exclude: Set<BlockPos>?,
 	)
 
 	private data class Candidate(val path: List<BlockPos>, val priority: Int)
+
+	/** One destination-face probe - [face] is the probed face of [pos] (the side of the neighbor block the current pipe looks at), so the same block's different faces are each evaluated independently rather than collapsed onto whichever face the search happens to reach first. */
+	private data class ProbeKey(val pos: BlockPos, val face: Direction)
 
 	private val cache = HashMap<CacheKey, List<BlockPos>?>()
 
 	/**
 	 * Returns the hop path (pipes, ending with the accepting inventory position) from [from], or
-	 * null if nothing on the network accepts [resource]. [exclude], when given, is never itself
-	 * considered a candidate destination - an extractor pulling from an adjacent inventory passes
-	 * that inventory's position here, so a route can't just hand the item straight back to where
-	 * it came from. [color] is the traveling item's consignment color (M2); sorting pipes with a
-	 * color set only accept a matching (or colorless) item.
+	 * null if nothing on the network accepts [resource]. Destination blocks are probed *per face*:
+	 * each side of a candidate inventory is evaluated independently (that side's own storage, and
+	 * whichever [net.kernelpanicsoft.boilerplate.pipe.hook.PipeAttachmentType] hook sits on the
+	 * crossing face of the current pipe), so a block adjacent to several pipes isn't collapsed onto
+	 * whichever face the search happens to reach first. Positions in [exclude] are never
+	 * considered candidate destinations and can't be walked through - an extractor pulling from an
+	 * adjacent inventory passes that inventory's position here so a route can't just hand the item
+	 * straight back to where it came from, and an
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState]'s pass-through inserts pass
+	 * both its own position and the machine physically feeding it, so a hopper on the face doesn't
+	 * get its own items bounced straight back into it. [color] is the traveling item's consignment
+	 * color (M2); sorting pipes with a color set only accept a matching (or colorless) item.
 	 */
-	fun findRoute(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor? = null, exclude: BlockPos? = null): List<BlockPos>? {
+	fun findRoute(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor? = null, exclude: Collection<BlockPos> = emptySet()): List<BlockPos>? {
 		val manager = PipeNetworkManager.get(level)
 		val networkId = manager.networkIdAt(from) ?: return null
 		val network = manager.network(networkId) ?: return null
 
-		val key = CacheKey(networkId, network.version, resource, color, exclude)
+		val excluded = exclude.toSet().takeIf { it.isNotEmpty() }
+		val key = CacheKey(networkId, network.version, resource, color, excluded)
 		cache[key]?.let { return it }
 		if (cache.containsKey(key)) return null // cached miss
 
-		val route = search(level, from, resource, color, exclude)
-		cache[key] = route
+		val trace = if (DebugRouteTrace.enabled) DebugRouteTrace.startSearch(from) else null
+		val route = search(level, from, resource, color, excluded, trace)
+		trace?.route = route ?: emptyList()
+		// Misses are deliberately not cached: a null here means "nothing accepts right now", a
+		// transient state that - unlike a topology or routing change - bumps no version to
+		// invalidate a cached result, so a one-time phantom rejection would otherwise wedge every
+		// subsequent push until some unrelated network change.
+		if (route != null) cache[key] = route
 		return route
 	}
 
@@ -117,22 +148,21 @@ object PipeRouter {
 			val neighborPos = current.relative(direction)
 			if (!visited.add(neighborPos)) continue
 			if (neighborPos == to) return path + neighborPos
-			// A boundary edge (see SubnetBoundary) is only ever a valid *destination* (the check
-			// above already covers that), never a through-route to somewhere further on the far
-			// side - without this, a delivery leg that happens to pass near a boundary can find a
-			// shorter-looking path straight through the far network instead of staying within its
-			// own, silently misdelivering (extracted stock landing right back where it came from).
 			if (isPipe(level, neighborPos) && !SubnetBoundary.isBoundaryEdge(level, current, direction)) queue += neighborPos to (path + neighborPos)
 		}
 		return stepTo(level, to, queue, visited)
 	}
 
-	private fun search(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor?, exclude: BlockPos?): List<BlockPos>? {
-		val visited = hashSetOf(from)
-		if (exclude != null) visited += exclude
+	private fun search(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor?, exclude: Set<BlockPos>?, trace: RouteSearchTrace? = null): List<BlockPos>? {
+		val traversed = hashSetOf<BlockPos>()
+		val probed = hashSetOf<ProbeKey>()
+		for (pos in listOf(from) + (exclude ?: emptySet())) {
+			traversed += pos
+			for (face in Direction.entries) probed += ProbeKey(pos, face)
+		}
 		val queue = ArrayDeque<Pair<BlockPos, List<BlockPos>>>()
 		queue += from to emptyList()
-		return step(level, resource, color, queue, visited, best = null)
+		return step(level, resource, color, queue, traversed, probed, best = null, trace = trace)
 	}
 
 	private tailrec fun step(
@@ -140,8 +170,10 @@ object PipeRouter {
 		resource: ItemResource,
 		color: DyeColor?,
 		queue: ArrayDeque<Pair<BlockPos, List<BlockPos>>>,
-		visited: HashSet<BlockPos>,
+		traversed: HashSet<BlockPos>,
+		probed: HashSet<ProbeKey>,
 		best: Candidate?,
+		trace: RouteSearchTrace?,
 	): List<BlockPos>? {
 		val (current, path) = queue.removeFirstOrNull() ?: return best?.path
 		val tile = level.getBlockEntity(current) as? MultipartBlockEntity
@@ -149,31 +181,55 @@ object PipeRouter {
 		var nextBest = best
 		for (direction in Direction.entries) {
 			val neighborPos = current.relative(direction)
-			if (!visited.add(neighborPos)) continue
-
 			val boundary = SubnetBoundary.isBoundaryEdge(level, current, direction)
+
 			if (isPipe(level, neighborPos) && !boundary) {
-				queue += neighborPos to (path + neighborPos)
+				trace?.record(TraceEdge(current, neighborPos, EdgeKind.TRANSIT))
+				if (traversed.add(neighborPos)) queue += neighborPos to (path + neighborPos)
 				continue
 			}
 
-			val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite) ?: continue
-			if (storage.insert(resource, 1, true) <= 0) continue
+			// A boundary edge is walked only by the interface's own pass-through, never this BFS -
+			// but the far side (an interface hook's exposed storage) is still a legitimate candidate
+			// destination right *at* the seam, gated by whichever crossing hook this side carries.
+			if (boundary) trace?.record(TraceEdge(current, neighborPos, EdgeKind.BOUNDARY))
+			if (!probed.add(ProbeKey(neighborPos, direction.opposite))) continue
 
-			val hookState = tile?.hooks?.get(direction.name) as? HookHolderState
+			val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite)
+			if (storage == null || storage.insert(resource, 1, true) <= 0) {
+				trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
+				continue
+			}
+
+			val hookState = tile?.hooks?.get(direction.name)
 			val hookType = hookState?.type?.let(HookTypeRegistry::byId)
-			if (hookState == null && tile != null && hasTerminal(tile)) continue
-			if (hookType != null && !hookType.validRoute) continue
+			if (hookState == null && tile != null && hasTerminal(tile)) {
+				trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
+				continue
+			}
+			if (hookType != null && !hookType.validRoute) {
+				trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
+				continue
+			}
 
 			val priority = if (tile != null && hookState is SortingHookState) {
 				val module = hookState.routing
-				if (module.color != null && module.color != color) continue
-				if (!hookState.accepts(resource, color)) continue
+				if (color != null && module.color != null && module.color != color) {
+					trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
+					continue
+				}
+				if (!hookState.accepts(resource, color)) {
+					trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
+					continue
+				}
 				module.priority
+			} else if (hookState == null) {
+				(level.getBlockEntity(neighborPos) as? WarehouseControllerBlockEntity)?.routing?.priority ?: 0
 			} else {
 				0
 			}
 
+			trace?.record(TraceEdge(current, neighborPos, EdgeKind.CANDIDATE))
 			val candidate = Candidate(path + neighborPos, priority)
 			if (nextBest == null || candidate.priority > nextBest.priority ||
 				(candidate.priority == nextBest.priority && candidate.path.size < nextBest.path.size)
@@ -181,12 +237,12 @@ object PipeRouter {
 				nextBest = candidate
 			}
 		}
-		return step(level, resource, color, queue, visited, nextBest)
+		return step(level, resource, color, queue, traversed, probed, nextBest, trace)
 	}
 
 	/** Whether [tile] carries a [TerminalHookType] hook on any of its faces - see [step]'s hookless-face exclusion. */
 	private fun hasTerminal(tile: MultipartBlockEntity): Boolean {
-		for ((_, entry) in tile.hooks) if ((entry as HookHolderState).type == TerminalHookType.ID) return true
+		for ((_, entry) in tile.hooks) if (entry.type == TerminalHookType.ID) return true
 		return false
 	}
 

@@ -28,6 +28,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.RegistryAccess
@@ -719,6 +720,137 @@ class PipeExtractionGameTest {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
 			assertTrue(dest.getItem(0).`is`(Items.DIAMOND_PICKAXE) && dest.getItem(0).get(DataComponents.CUSTOM_NAME) == Component.literal("Special")) {
 				"Expected the exactly-named pickaxe to have arrived, got ${dest.getItem(0)}"
+			}
+		}
+	}
+
+	/** A warehouse controller reached through a bare (hookless) pipe face now ranks by its own routing priority - so it beats a plain chest's baseline `0` without needing the sorting hook the pipe skeleton used to demand. */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testWarehousePriorityBeatsOrdinaryDestinationViaBareFace() {
+		val sourcePos = BlockPos(0, 2, 0)
+		val extractorPos = BlockPos(0, 2, 1)
+		val midPos = BlockPos(0, 2, 2)
+		val warehousePos = BlockPos(0, 2, 3)
+		val ordinaryPos = BlockPos(1, 2, 2)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Multipart.defaultBlockState())
+		setBlock(midPos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(warehousePos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(ordinaryPos, Blocks.CHEST.defaultBlockState())
+
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
+		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
+
+		val controller = getBlockEntity(warehousePos) as WarehouseControllerBlockEntity
+		controller.routing = RoutingModule(mode = FilterMode.BLACKLIST, priority = 5)
+
+		succeedWhen {
+			assertTrue(controller.inboundBuffer.getAmount(0) == 8L) {
+				"Expected 8 diamonds to have been routed to the priority-5 warehouse over the plain chest, got buffer ${controller.inboundBuffer.getAmount(0)}"
+			}
+			val ordinary = getBlockEntity(ordinaryPos) as ChestBlockEntity
+			assertTrue(ordinary.getItem(0).isEmpty) { "Expected nothing to have gone to the ordinary chest, got ${ordinary.getItem(0)}" }
+		}
+	}
+
+	/** The controller's default-route sentinel (`-1`) ranks below an ordinary chest exactly like a sorting hook's did - the bare face keeps every M2 default-route guarantee. */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testWarehouseDefaultPriorityLosesToOrdinaryDestinationViaBareFace() {
+		val sourcePos = BlockPos(0, 2, 0)
+		val extractorPos = BlockPos(0, 2, 1)
+		val midPos = BlockPos(0, 2, 2)
+		val warehousePos = BlockPos(0, 2, 3)
+		val ordinaryPos = BlockPos(1, 2, 2)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Multipart.defaultBlockState())
+		setBlock(midPos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(warehousePos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(ordinaryPos, Blocks.CHEST.defaultBlockState())
+
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
+		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
+
+		val controller = getBlockEntity(warehousePos) as WarehouseControllerBlockEntity
+		controller.routing = RoutingModule(mode = FilterMode.BLACKLIST, priority = RoutingModule.DEFAULT_ROUTE_PRIORITY)
+
+		succeedWhen {
+			val ordinary = getBlockEntity(ordinaryPos) as ChestBlockEntity
+			assertTrue(ordinary.getItem(0).`is`(Items.DIAMOND) && ordinary.getItem(0).count == 8) {
+				"Expected 8 diamonds to have gone to the ordinary chest over the default-route warehouse, got ${ordinary.getItem(0)}"
+			}
+			assertTrue(controller.inboundBuffer.getAmount(0) == 0L) {
+				"Expected nothing to have landed in the default-route warehouse while an ordinary destination existed, got ${controller.inboundBuffer.getAmount(0)}"
+			}
+		}
+	}
+
+	/** With no ordinary destination in reach, a default-priority warehouse is still the network's catch-all through a bare face. */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testWarehouseDefaultRouteClaimsCatchAllViaBareFace() {
+		val sourcePos = BlockPos(0, 2, 0)
+		val extractorPos = BlockPos(0, 2, 1)
+		val midPos = BlockPos(0, 2, 2)
+		val warehousePos = BlockPos(0, 2, 3)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Multipart.defaultBlockState())
+		setBlock(midPos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(warehousePos, BlockRegistry.WarehouseController.defaultBlockState())
+
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 8))
+		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
+
+		val controller = getBlockEntity(warehousePos) as WarehouseControllerBlockEntity
+		controller.routing = RoutingModule(mode = FilterMode.BLACKLIST, priority = RoutingModule.DEFAULT_ROUTE_PRIORITY)
+
+		succeedWhen {
+			assertTrue(controller.inboundBuffer.getAmount(0) == 8L) {
+				"Expected 8 diamonds with nowhere else to go to have landed in the default-route warehouse via a bare face, got buffer ${controller.inboundBuffer.getAmount(0)}"
+			}
+		}
+	}
+
+	/** The controller's own [WarehouseControllerBlockEntity.filter]/[WarehouseControllerBlockEntity.routing] gate what a bare-face warehouse accepts - a whitelist card lets matching items in and rejects the rest to an ordinary destination. */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testWarehouseFilterGatesBareFaceRouting() {
+		val sourcePos = BlockPos(0, 2, 0)
+		val extractorPos = BlockPos(0, 2, 1)
+		val midPos = BlockPos(0, 2, 2)
+		val warehousePos = BlockPos(0, 2, 3)
+		val ordinaryPos = BlockPos(1, 2, 2)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(extractorPos, BlockRegistry.Multipart.defaultBlockState())
+		setBlock(midPos, BlockRegistry.Pipe.defaultBlockState())
+		setBlock(warehousePos, BlockRegistry.WarehouseController.defaultBlockState())
+		setBlock(ordinaryPos, Blocks.CHEST.defaultBlockState())
+
+		val source = getBlockEntity(sourcePos) as ChestBlockEntity
+		source.setItem(0, ItemStack(Items.DIAMOND, 4))
+		source.setItem(1, ItemStack(Items.REDSTONE, 4))
+		val extractor = getBlockEntity(extractorPos) as MultipartBlockEntity
+		extractor.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
+
+		val controller = getBlockEntity(warehousePos) as WarehouseControllerBlockEntity
+		controller.routing = RoutingModule(mode = FilterMode.WHITELIST, priority = 1)
+		controller.filter.insert(ItemResource.of(buildItemCard(ItemStack(Items.DIAMOND))), 1, false)
+
+		succeedWhen {
+			val ordinary = getBlockEntity(ordinaryPos) as ChestBlockEntity
+			assertTrue(ordinary.getItem(0).`is`(Items.REDSTONE) && ordinary.getItem(0).count == 4) {
+				"Expected 4 redstone to have been routed to the ordinary chest past the warehouse's whitelist, got ${ordinary.getItem(0)}"
+			}
+			assertTrue(controller.inboundBuffer.getResource(0) == ItemResource.of(ItemStack(Items.DIAMOND)) && controller.inboundBuffer.getAmount(0) == 4L) {
+				"Expected 4 diamonds to have been routed to the whitelisted warehouse, got ${controller.inboundBuffer.getResource(0)} x${controller.inboundBuffer.getAmount(0)}"
 			}
 		}
 	}

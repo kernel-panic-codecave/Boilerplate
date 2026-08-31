@@ -2,7 +2,6 @@ package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
@@ -36,7 +35,7 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - Its own periodic request is real per-tick work, but a single simple request - a middling draw. */
 	override val basePressureCost: Long = 2L
@@ -64,7 +63,7 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 
 		val interfaceState = SubnetBoundary.interfaceAt(level, neighborPos, direction.opposite)
 		if (interfaceState != null) {
-			trySupplyInterface(level, pos, neighborPos, direction.opposite, interfaceState.stock)
+			trySupplyInterface(level, pos, neighborPos, direction.opposite, interfaceState)
 			return
 		}
 
@@ -81,20 +80,24 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 	}
 
 	/**
-	 * One [RequestFulfillment.request] call per non-blank, under-target slot in [stock] - see this
-	 * type's own KDoc. [interfaceFace] is [direction]'s own opposite - the specific face of
-	 * [interfacePos] this [stock] actually belongs to, disambiguating a block that carries more than
-	 * one [InterfaceHookType] hook (see [net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.targetFace]'s
+	 * One [RequestFulfillment.request] call per [InterfaceHookState.ghosts] column the intended
+	 * [InterfaceHookState.stock] side is short of - see this type's own KDoc. Targets the ghost's
+	 * own count, never a full-stack guess, so an external supplier doesn't overshoot a stocking
+	 * target that [InterfaceHookType]'s own [InterfaceHookType.requisitionStock] is also keeping in
+	 * step with ([InterfaceHookType.drainExcess] would push the difference right back out again, an
+	 * oscillation). [interfaceFace] is [direction]'s own opposite - the specific face of
+	 * [interfacePos] this interface actually belongs to, disambiguating a block that carries more
+	 * than one [InterfaceHookType] hook (see [net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.targetFace]'s
 	 * own KDoc).
 	 */
-	private fun trySupplyInterface(level: ServerLevel, pos: BlockPos, interfacePos: BlockPos, interfaceFace: Direction, stock: ArchieItemStorage) {
-		for (i in 0 until stock.size()) {
-			val slot = stock.get(i)
-			val resource = slot.resource
-			if (resource.isBlank) continue
-			val shortfall = slot.getLimit(resource) - slot.amount
+	private fun trySupplyInterface(level: ServerLevel, pos: BlockPos, interfacePos: BlockPos, interfaceFace: Direction, interfaceState: InterfaceHookState) {
+		for (i in 0 until interfaceState.stock.size()) {
+			val ghost = interfaceState.ghosts[i]
+			if (ghost.resource.isBlank) continue
+			val current = interfaceState.stock[i].takeIf { it.resource == ghost.resource }?.amount ?: 0L
+			val shortfall = ghost.amount - current
 			if (shortfall <= 0) continue
-			RequestFulfillment.request(level, pos, ResourceStack(resource, shortfall), interfacePos, interfaceFace)
+			RequestFulfillment.request(level, pos, ResourceStack(ghost.resource, shortfall), interfacePos, interfaceFace)
 		}
 	}
 

@@ -6,6 +6,7 @@ import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.boilerplate.network.PipeContentsSyncPacket
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache
+import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
@@ -136,7 +137,16 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				continue
 			}
 
-			val storage = ItemApi.BLOCK.find(serverLevel, nextPos, item.targetFace ?: direction?.opposite)
+			val deliverFace = item.targetFace ?: direction?.opposite
+			// A delivery explicitly targeting a face's own hook (deliverTo + deliverFace = the
+			// interface's own requisition, or a RequesterHookType supplier topping it up) lands
+			// straight in that hook's stock, bypassing its pass-through surface. A generic routed
+			// push (targetFace == null) resolves the ordinary find() way instead, which for an
+			// interface hook hands back its InterfacePassThroughStorage.
+			val interfaceStock = if (item.targetFace != null) {
+				(serverLevel.getBlockEntity(nextPos) as? MultipartBlockEntity)?.hooks?.get(item.targetFace.name) as? InterfaceHookState
+			} else null
+			val storage = interfaceStock?.stock ?: ItemApi.BLOCK.find(serverLevel, nextPos, deliverFace)
 			if (storage == null) {
 				jamAndRelease(serverLevel, pos, item)
 				items.removeAt(index)
@@ -311,14 +321,14 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 * not merely mis-ordered - see [tick]'s own KDoc for the same one-snapshot rule.
 	 */
 	private fun redirectedDelivery(level: ServerLevel, pos: BlockPos, cancelledDestination: BlockPos, item: TravelingItem): TravelingItem? {
-		val route = PipeRouter.findRoute(level, pos, item.stack.resource, item.color, exclude = cancelledDestination) ?: return null
+		val route = PipeRouter.findRoute(level, pos, item.stack.resource, item.color, exclude = setOf(cancelledDestination)) ?: return null
 		return TravelingItem(item.stack, item.fromDirection, 0f, route, item.color, null, null)
 	}
 
 	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos, items: List<TravelingItem>) {
 		BoilerplateNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, SYNC_RADIUS,
-			PipeContentsSyncPacket(pos, items.toList(), speedMultiplier),
+			PipeContentsSyncPacket(pos, items.toList(), speedMultiplier, level.gameTime),
 		)
 	}
 

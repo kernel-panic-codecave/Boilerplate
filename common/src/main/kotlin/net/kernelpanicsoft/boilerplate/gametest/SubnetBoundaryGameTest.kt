@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
+import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
@@ -15,15 +16,20 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.SyncHookType
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
+import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.item.DyeColor
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.block.Blocks
@@ -101,8 +107,8 @@ class SubnetBoundaryGameTest {
 		}
 	}
 
-	/** [InterfaceHookType.tick] proactively pushes whatever lands in [InterfaceHookState.stock] into the network, unprompted - a hopper (or a player) dropping items in behaves like an [ExtractionHookType] sitting on a chest, not a dead end. */
-	@GameTest(template = SMALL, timeoutTicks = 40)
+	/** [InterfaceHookType.drainExcess] pushes whatever sits in [InterfaceHookState.stock] above its target outward, unprompted - an un-ghosted column is pure excess, so a hopper (or a player) dropping items into an un-ghosted interface behaves like an [ExtractionHookType] sitting on a chest, not a dead end. */
+	@GameTest(template = SMALL, timeoutTicks = 80)
 	fun GameTestHelper.testInterfaceSelfPushesStockIntoTheNetwork() {
 		val interfacePos = BlockPos(0, 2, 0)
 		val destPos = BlockPos(0, 2, 1)
@@ -116,13 +122,13 @@ class SubnetBoundaryGameTest {
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
 			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 4 && interfaceState.stock.getAmount(0) == 0L) {
-				"Expected the interface to have self-pushed all 4 diamonds out on its own, got dest=${dest.getItem(0)} interfaceStock=${interfaceState.stock.getAmount(0)}"
+				"Expected the interface to have drained all 4 diamonds (excess over a blank ghost target) out on its own, got dest=${dest.getItem(0)} interfaceStock=${interfaceState.stock.getAmount(0)}"
 			}
 		}
 	}
 
 	/** The whole point of [InterfaceHookType.providesItems] - an interface's own stock, reachable across the very boundary it anchors, shows up as a pullable source the same way an ordinary [ProviderHookType]-tagged chest would. */
-	@GameTest(template = SMALL, timeoutTicks = 20)
+	@GameTest(template = SMALL, timeoutTicks = 60)
 	fun GameTestHelper.testInterfaceStockIsAValidProviderSourceAcrossTheBoundary() {
 		val providerPos = BlockPos(0, 2, 0)
 		val interfacePos = BlockPos(0, 2, 1)
@@ -134,14 +140,13 @@ class SubnetBoundaryGameTest {
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 7, false)
 
-		runAfterDelay(2) {
+		succeedWhen {
 			val sources = RequestFulfillment.reachableProviders(level as ServerLevel, absolutePos(providerPos))
 			val interfaceSource = sources.firstOrNull { it.hookState === interfaceState }
 			assertTrue(interfaceSource != null) { "Expected the interface's own hook to register as a reachable provider source, got $sources" }
 			assertTrue(interfaceSource!!.storage(level as ServerLevel)?.getAmount(0) == 7L) {
 				"Expected the interface source's own storage() to read its stock directly, got ${interfaceSource.storage(level as ServerLevel)}"
 			}
-			succeed()
 		}
 	}
 
@@ -193,14 +198,24 @@ class SubnetBoundaryGameTest {
 	fun GameTestHelper.testFilterFacingInterfaceCreatesInsertOnlyBoundary() {
 		val sourcePos = BlockPos(0, 2, 1)
 		val extractorPos = BlockPos(0, 2, 0)
-		val filterPos = BlockPos(1, 2, 0)
-		val interfacePos = BlockPos(1, 2, 1)
+		val midPos = BlockPos(1, 2, 0)
+		val filterPos = BlockPos(2, 2, 0)
+		val interfacePos = BlockPos(2, 2, 1)
+		// The interface's pass-through pushes towards *any* accepting inventory on its own subnet
+		// side - so the destination sits out of reach of the source chest, or what came across the
+		// boundary would happily route right back to where the extractor pulled it from (a 1-hop
+		// cycle). Source is west, subnet destination east: the seam they meet at is the interface.
+		val subnetPipePos = BlockPos(3, 2, 1)
+		val subnetDestPos = BlockPos(4, 2, 1)
 		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(subnetDestPos, Blocks.CHEST.defaultBlockState())
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
 
 		val extractor = hookAt(extractorPos)
 		extractor.hooks.getOrPut(Direction.SOUTH.name) { ExtractionHookType.createState() }
 		placeCreativePressureSource(extractorPos.above())
+
+		hookAt(midPos)
 
 		val filter = hookAt(filterPos)
 		val filterState = filter.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
@@ -208,21 +223,28 @@ class SubnetBoundaryGameTest {
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(subnetPipePos)
 		// A separate source: the interface hook now anchors a pressure-network boundary too (see
 		// PressureNetworkBoundary), same as the item-network subnet split it already anchors - its
 		// own side needs its own reachable pressure, not a share of the extractor's.
 		placeCreativePressureSource(interfacePos.above())
 
 		succeedWhen {
-			assertTrue(interfaceState.stock.getAmount(0) == 5L && interfaceState.stock.getResource(0) == ItemResource.of(ItemStack(Items.DIAMOND))) {
-				"Expected 5 diamonds pushed through the filter hook to have landed in the interface's stock, got amount ${interfaceState.stock.getAmount(0)} resource ${interfaceState.stock.getResource(0)}"
+			val dest = getBlockEntity(subnetDestPos) as ChestBlockEntity
+			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 5) {
+				"Expected 5 diamonds pushed through the filter hook to have passed straight through the interface into the subnet, got ${dest.getItem(0)}"
+			}
+			assertTrue(
+				(0 until interfaceState.stock.size()).none { !interfaceState.stock.getResource(it).isBlank }
+			) {
+				"Expected the interface's stock to have stayed empty (pass-through, not staging), got resource0=${interfaceState.stock.getResource(0)}"
 			}
 		}
 	}
 
 	@GameTest(template = SMALL, timeoutTicks = 400)
 	fun GameTestHelper.testSyncFacingInterfaceCreatesFilteredTwoWayBoundary() {
-		val sourcePos = BlockPos(0, 2, 1)
+		val sourcePos = BlockPos(0, 2, -1)
 		val extractorPos = BlockPos(0, 2, 0)
 		val syncPos = BlockPos(1, 2, 0)
 		val requesterPos = BlockPos(2, 2, 0)
@@ -233,7 +255,10 @@ class SubnetBoundaryGameTest {
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 5))
 
 		val extractor = hookAt(extractorPos)
-		extractor.hooks.getOrPut(Direction.SOUTH.name) { ExtractionHookType.createState() }
+		// Source moved north so it's never a pass-through candidate from the interface (an adjacent
+		// accepting inventory is one - routing back to it would cycle); the interface's only
+		// non-boundary accepting neighbor is the dest chest to the east.
+		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
 		placeCreativePressureSource(extractorPos.above())
 
 		val sync = hookAt(syncPos)
@@ -247,27 +272,37 @@ class SubnetBoundaryGameTest {
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3, false)
+		// Ghost the gold so the interface neither drains it as excess nor refills it past the order.
+		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3, false)
 		// A separate source, same reasoning as testFilterFacingInterfaceCreatesInsertOnlyBoundary's own.
 		placeCreativePressureSource(interfacePos.above())
 
 		succeedWhen {
-			// Insert half: the extractor's diamonds should have crossed into the interface's stock.
-			val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
-			val gold = ItemResource.of(ItemStack(Items.GOLD_INGOT))
-			val diamondsInInterface = (0 until interfaceState.stock.size())
-				.firstOrNull { interfaceState.stock.getResource(it) == diamond }
-				?.let { interfaceState.stock.getAmount(it) } ?: 0L
-			assertTrue(diamondsInInterface == 5L) {
-				"Expected 5 diamonds pushed through the sync hook to have landed in the interface's stock, got $diamondsInInterface"
+			// Insert half: the extractor's diamonds should have crossed the seam straight through
+			// the interface into the subnet's own destination chest (pass-through, not staging).
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			val diamondCount = (0 until dest.containerSize).sumOf { i ->
+				if (dest.getItem(i).`is`(Items.DIAMOND)) dest.getItem(i).count else 0
+			}
+			assertTrue(diamondCount == 5) {
+				"Expected 5 diamonds pushed through the sync hook to have passed straight through the interface into the subnet, got $diamondCount"
+			}
+			assertTrue(
+				(0 until interfaceState.stock.size()).none { interfaceState.stock.getResource(it) == ItemResource.of(ItemStack(Items.DIAMOND)) }
+			) {
+				"Expected the interface's stock to hold no diamonds (pass-through, not staging)"
 			}
 
-			// Extract half: the requester's gold order should have been pulled from the interface.
-			val dest = getBlockEntity(destPos) as ChestBlockEntity
-			assertTrue(dest.getItem(0).`is`(Items.GOLD_INGOT) && dest.getItem(0).count == 3) {
-				"Expected 3 gold pulled from the interface (via the sync hook) to have arrived, got ${dest.getItem(0)}"
+			// Extract half: the requester's gold order should have been pulled from the interface,
+			// through the sync hook's own boundary face.
+			val goldCount = (0 until dest.containerSize).sumOf { i ->
+				if (dest.getItem(i).`is`(Items.GOLD_INGOT)) dest.getItem(i).count else 0
+			}
+			assertTrue(goldCount == 3) {
+				"Expected 3 gold pulled from the interface (via the sync hook) to have arrived, got $goldCount"
 			}
 			val goldRemaining = (0 until interfaceState.stock.size())
-				.firstOrNull { interfaceState.stock.getResource(it) == gold }
+				.firstOrNull { interfaceState.stock.getResource(it) == ItemResource.of(ItemStack(Items.GOLD_INGOT)) }
 				?.let { interfaceState.stock.getAmount(it) } ?: 0L
 			assertTrue(goldRemaining == 0L) { "Expected the interface's gold to have been fully drained, got $goldRemaining" }
 		}
@@ -283,6 +318,10 @@ class SubnetBoundaryGameTest {
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.EMERALD)), 8, false)
+		// Ghost the emeralds: the interface's own excess-drain would otherwise push them to the same
+		// destination, competing with the extraction hook and making "exactly 8 arrived" a race. A
+		// correct-before-ghost target makes drain a no-op and leaves extraction as the sole mover.
+		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.EMERALD)), 8, false)
 
 		val extractor = hookAt(extractorPos)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
@@ -303,13 +342,14 @@ class SubnetBoundaryGameTest {
 		val requesterPos = BlockPos(0, 2, 1)
 		val sourcePos = BlockPos(1, 2, 1)
 		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
-		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.NETHERITE_INGOT, 63))
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.NETHERITE_INGOT, 64))
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
-		// Seed one netherite ingot so the slot has an established target (a full stack) to top up -
-		// see InterfaceHookState's own KDoc for why an empty interface has nothing to restock.
-		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.NETHERITE_INGOT)), 1, false)
+		// A ghost target of 64 sets the stocking bar - see InterfaceHookState's own KDoc; an empty
+		// ghost row asks for nothing, so without this the interface (and its external suppliers)
+		// have no target to top up to.
+		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.NETHERITE_INGOT)), 64, false)
 
 		val requester = hookAt(requesterPos)
 		requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() }
@@ -322,12 +362,344 @@ class SubnetBoundaryGameTest {
 
 		succeedWhen {
 			val source = getBlockEntity(sourcePos) as ChestBlockEntity
-			assertTrue(source.getItem(0).isEmpty || source.getItem(0).count < 63) {
+			assertTrue(source.getItem(0).isEmpty || source.getItem(0).count < 64) {
 				"Expected the requester to have started pulling netherite ingots from its own source to supply the interface, got ${source.getItem(0)}"
 			}
 			assertTrue(interfaceState.stock.getAmount(0) == 64L) {
-				"Expected the interface's netherite slot to have been topped up to a full stack (64), got ${interfaceState.stock.getAmount(0)}"
+				"Expected the interface's netherite slot to have been topped up to its ghost target (64), got ${interfaceState.stock.getAmount(0)}"
 			}
 		}
+	}
+
+	/** A machine (or hopper, or another mod's pipe) inserting into the interface's exposed face is routed straight into the network - the [InterfaceHookState.exposedItemStorage] pass-through surface - rather than staged in [InterfaceHookState.stock]. Exercises both write routes: the whole-storage resource insert and the per-slot write that CSL's NeoForge `IItemHandler` bridge (what cross-mod machines like Create/Pipez actually drive items through) uses. */
+	@GameTest(template = SMALL, timeoutTicks = 120)
+	fun GameTestHelper.testMachinePushPassesStraightThroughInterface() {
+		val interfacePos = BlockPos(0, 2, 0)
+		val pipePos = BlockPos(0, 2, 1)
+		val destPos = BlockPos(0, 2, 2)
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(pipePos)
+
+		var accepted = 0L
+		var slotAccepted = 0L
+		succeedWhen {
+			// The network manager only registers freshly placed pipes at their first server tick, and
+			// under concurrent gametest load that can land late; draining one insert attempt per poll
+			// until it is actually accepted makes the test robust to registration timing instead of
+			// freezing a single runAfterDelay insert at a rejected 0.
+			if (accepted == 0L) {
+				accepted = interfaceState.exposedItemStorage(interfaceTile)
+					.insert(ItemResource.of(ItemStack(Items.EMERALD)), 5, false)
+			}
+			if (slotAccepted == 0L) {
+				slotAccepted = interfaceState.exposedItemStorage(interfaceTile)
+					.get(0).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 7, false)
+			}
+			assertTrue(accepted == 5L) { "Expected the machine's storage insert to have been fully accepted, got $accepted" }
+			assertTrue(slotAccepted == 7L) { "Expected the machine's slot insert to have been fully accepted, got $slotAccepted" }
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			var emeralds = 0
+			var diamonds = 0
+			for (i in 0 until dest.containerSize) {
+				val stack = dest.getItem(i)
+				if (stack.`is`(Items.EMERALD)) emeralds += stack.count
+				if (stack.`is`(Items.DIAMOND)) diamonds += stack.count
+			}
+			assertTrue(emeralds == 5) { "Expected the 5 emeralds to have passed straight through into the network destination, got $emeralds" }
+			assertTrue(diamonds == 7) { "Expected the 7 diamonds (slot-written) to have passed straight through into the network destination, got $diamonds" }
+			assertTrue(
+				(0 until interfaceState.stock.size()).none { !interfaceState.stock.getResource(it).isBlank }
+			) {
+				"Expected the interface's stock to have stayed empty (pass-through, not staging), got resource0=${interfaceState.stock.getResource(0)}"
+			}
+		}
+	}
+
+	/** The other half of the pass-through contract: an insert with nowhere accepting to route to is rejected (returns `0`), not staged. */
+	@GameTest(template = SMALL, timeoutTicks = 60)
+	fun GameTestHelper.testMachinePushRejectedWhenNoNetworkRoute() {
+		val interfacePos = BlockPos(0, 2, 0)
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+
+		val storage = interfaceState.exposedItemStorage(interfaceTile)
+		val accepted = storage.insert(ItemResource.of(ItemStack(Items.EMERALD)), 5, false)
+		val slotAccepted = storage.get(0).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 7, false)
+
+		runAfterDelay(40) {
+			assertTrue(accepted == 0L) { "Expected the machine's insert to have been rejected (no accepting destination), got $accepted" }
+			assertTrue(slotAccepted == 0L) { "Expected the machine's slot insert to have been rejected (no accepting destination), got $slotAccepted" }
+			assertTrue(
+				(0 until interfaceState.stock.size()).none { !interfaceState.stock.getResource(it).isBlank }
+			) {
+				"Expected the interface's stock to have stayed empty after a rejected insert, got resource0=${interfaceState.stock.getResource(0)}"
+			}
+			succeed()
+		}
+	}
+
+	/** The pass-through route must never hand items back to the accepting inventory physically feeding the face - the exact setup that has a machine as both the pusher and a best-route one-hop destination. */
+	@GameTest(template = SMALL, timeoutTicks = 80)
+	fun GameTestHelper.testInterfacePassThroughDoesNotRouteBackIntoItsFeeder() {
+		val interfacePos = BlockPos(0, 2, 0)
+		val feederPos = BlockPos(0, 2, 1)
+		val pipePos = BlockPos(1, 2, 0)
+		val destPos = BlockPos(2, 2, 0)
+		setBlock(feederPos, Blocks.CHEST.defaultBlockState())
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(pipePos)
+
+		var accepted = 0L
+		succeedWhen {
+			if (accepted == 0L) {
+				accepted = ItemApi.BLOCK.find(level, absolutePos(interfacePos), Direction.SOUTH)!!
+					.insert(ItemResource.of(ItemStack(Items.EMERALD)), 5, false)
+			}
+			assertTrue(accepted == 5L) { "Expected the machine's insert to have been fully accepted, got $accepted" }
+			val feeder = getBlockEntity(feederPos) as ChestBlockEntity
+			var feederContent = 0
+			for (i in 0 until feeder.containerSize) feederContent += feeder.getItem(i).count
+			assertTrue(feederContent == 0) { "Expected the 5 emeralds NOT to have been routed back into the feeding chest, got $feederContent in it" }
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			var emeralds = 0
+			for (i in 0 until dest.containerSize) {
+				val stack = dest.getItem(i)
+				if (stack.`is`(Items.EMERALD)) emeralds += stack.count
+			}
+			assertTrue(emeralds == 5) { "Expected the 5 emeralds to have reached the network destination beyond the interface, got $emeralds" }
+		}
+	}
+
+	/** A pass-through insert must still respect filter routing: an item inserted through the interface is routed to an inventory gated by a whitelist [FilterHookType] face exactly like one the extractor itself pulled. A colorless insert is color-agnostic, so it even reaches a colored filter (`module.color` only splits colored streams off each other, per `docs/design/m2-sorting-routing.md`). */
+	@GameTest(template = SMALL, timeoutTicks = 80)
+	fun GameTestHelper.testInterfacePassThroughReachesFilteredDestination() {
+		val interfacePos = BlockPos(0, 2, 0)
+		val feederPos = BlockPos(0, 2, 1)
+		val pipePos = BlockPos(1, 2, 0)
+		val filterPipePos = BlockPos(2, 2, 0)
+		val destPos = BlockPos(2, 2, 1)
+		setBlock(feederPos, Blocks.CHEST.defaultBlockState())
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(pipePos)
+		val filterPipe = hookAt(filterPipePos)
+		val filterState = filterPipe.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
+		filterState.routing = RoutingModule(mode = FilterMode.WHITELIST, color = DyeColor.RED)
+		filterState.filter.insert(ItemResource.of(buildItemCard(ItemStack(Items.EMERALD))), 1, false)
+
+		var accepted = 0L
+		succeedWhen {
+			if (accepted == 0L) {
+				accepted = ItemApi.BLOCK.find(level, absolutePos(interfacePos), Direction.SOUTH)!!
+					.insert(ItemResource.of(ItemStack(Items.EMERALD)), 5, false)
+			}
+			assertTrue(accepted == 5L) { "Expected the machine's insert to have been fully accepted (routed to the whitelisted destination), got $accepted" }
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			var emeralds = 0
+			for (i in 0 until dest.containerSize) {
+				val stack = dest.getItem(i)
+				if (stack.`is`(Items.EMERALD)) emeralds += stack.count
+			}
+			assertTrue(emeralds == 5) { "Expected the 5 emeralds to have reached the inventory past the whitelist filter, got $emeralds" }
+			assertTrue(
+				(0 until interfaceState.stock.size()).none { !interfaceState.stock.getResource(it).isBlank }
+			) {
+				"Expected the interface's stock to have stayed empty (pass-through, not staging), got resource0=${interfaceState.stock.getResource(0)}"
+			}
+		}
+	}
+
+	/** A machine auto-ejecting to an interface above it and a tag-filtered machine input further along the same output line: the pass-through must route the intermediate straight into the next machine, through the tag whitelist card. */
+	@GameTest(template = SMALL, timeoutTicks = 80)
+	fun GameTestHelper.testMachineOutputRoutesThroughTagFilteredRowToNextMachine() {
+		val machineAPos = BlockPos(0, 2, 0)
+		val interfaceAPos = BlockPos(0, 3, 0)
+		val pipePos = BlockPos(1, 3, 0)
+		val filterPipePos = BlockPos(2, 3, 0)
+		val machineBPos = BlockPos(2, 2, 0)
+		setBlock(machineAPos, Blocks.CHEST.defaultBlockState())
+		setBlock(machineBPos, Blocks.CHEST.defaultBlockState())
+
+		val interfaceATile = hookAt(interfaceAPos)
+		val interfaceAState = interfaceATile.hooks.getOrPut(Direction.DOWN.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(pipePos)
+		val filterPipe = hookAt(filterPipePos)
+		val filterState = filterPipe.hooks.getOrPut(Direction.DOWN.name) { FilterHookType.createState() } as SortingHookState
+		filterState.routing = RoutingModule(mode = FilterMode.WHITELIST)
+		filterState.filter.insert(ItemResource.of(rawMaterialsCard("c:raw_materials")), 1, false)
+
+		var accepted = 0L
+		succeedWhen {
+			if (accepted == 0L) {
+				accepted = ItemApi.BLOCK.find(level, absolutePos(interfaceAPos), Direction.DOWN)!!
+					.insert(ItemResource.of(ItemStack(Items.RAW_IRON)), 5, false)
+			}
+			assertTrue(accepted == 5L) { "Expected the machine's auto-output to have been fully accepted (routed to the next machine's input), got $accepted" }
+			val dest = getBlockEntity(machineBPos) as ChestBlockEntity
+			var rawIron = 0
+			for (i in 0 until dest.containerSize) {
+				val stack = dest.getItem(i)
+				if (stack.`is`(Items.RAW_IRON)) rawIron += stack.count
+			}
+			assertTrue(rawIron == 5) { "Expected the 5 raw iron to have reached the next machine's input past the tag whitelist filter, got $rawIron" }
+			assertTrue(
+				(0 until interfaceAState.stock.size()).none { !interfaceAState.stock.getResource(it).isBlank }
+			) {
+				"Expected machine A's interface stock to have stayed empty (pass-through, not staging), got resource0=${interfaceAState.stock.getResource(0)}"
+			}
+		}
+	}
+
+	/** A smelting chain (cobble -> stone -> smooth stone): each stage's machine auto-outputs into the interface above it, and the next stage's input is gated by a filter hook on the machine's side, all on one pipe line (interfaces wired together by plain pipe, no subnet seams). An intermediate must go straight into the next stage's input gate, not wander into the next stage's output interface or stall. */
+	@GameTest(template = SMALL, timeoutTicks = 120)
+	fun GameTestHelper.testSmeltingChainStageOutputRoutesDirectlyIntoNextStageInput() {
+		val machine1Pos = BlockPos(0, 2, 0)
+		val interface1Pos = BlockPos(0, 3, 0)
+		val stage2InputFilterPos = BlockPos(1, 2, 0)
+		val machine2Pos = BlockPos(2, 2, 0)
+		val interface2Pos = BlockPos(2, 3, 0)
+		val pipePos = BlockPos(1, 3, 0)
+		setBlock(machine1Pos, Blocks.CHEST.defaultBlockState())
+		setBlock(machine2Pos, Blocks.CHEST.defaultBlockState())
+
+		val interface1Tile = hookAt(interface1Pos)
+		val interface1State = interface1Tile.hooks.getOrPut(Direction.DOWN.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(pipePos)
+		hookAt(interface2Pos).hooks.getOrPut(Direction.DOWN.name) { InterfaceHookType.createState() }
+		val stage2Filter = hookAt(stage2InputFilterPos)
+		val stage2FilterState = stage2Filter.hooks.getOrPut(Direction.EAST.name) { FilterHookType.createState() } as SortingHookState
+		stage2FilterState.routing = RoutingModule(mode = FilterMode.WHITELIST)
+		stage2FilterState.filter.insert(ItemResource.of(buildItemCard(ItemStack(Items.STONE))), 1, false)
+
+		var accepted = 0L
+		succeedWhen {
+			if (accepted == 0L) {
+				accepted = ItemApi.BLOCK.find(level, absolutePos(interface1Pos), Direction.DOWN)!!
+					.insert(ItemResource.of(ItemStack(Items.STONE)), 5, false)
+			}
+			assertTrue(accepted == 5L) { "Expected stage 1's auto-output to have been fully accepted (routed into stage 2's stone input gate), got $accepted" }
+			val dest = getBlockEntity(machine2Pos) as ChestBlockEntity
+			var stones = 0
+			for (i in 0 until dest.containerSize) {
+				val stack = dest.getItem(i)
+				if (stack.`is`(Items.STONE)) stones += stack.count
+			}
+			assertTrue(stones == 5) { "Expected the 5 stone to have reached stage 2's machine chest through its side filter, got $stones" }
+			assertTrue(
+				(0 until interface1State.stock.size()).none { !interface1State.stock.getResource(it).isBlank }
+			) {
+				"Expected stage 1's interface stock to have stayed empty (pass-through, not staging), got resource0=${interface1State.stock.getResource(0)}"
+			}
+		}
+	}
+
+	private fun buildItemCard(stack: ItemStack): ItemStack {
+		val itemCard = ItemStack(ItemRegistry.ItemFilterCard)
+		FilterCardState(itemCard).apply {
+			(currentState() as ItemConditionState).itemMatches[0] = ItemResource.of(stack)
+			touchCurrentState()
+		}
+		return itemCard
+	}
+
+	/** [InterfaceHookType.requisitionStock] actively tops [InterfaceHookState.stock] up to its own [InterfaceHookState.ghosts] targets from the network, no external [RequesterHookType] needed. */
+	@GameTest(template = SMALL, timeoutTicks = 160)
+	fun GameTestHelper.testInterfaceSelfRequisitionsGhostShortfall() {
+		val interfacePos = BlockPos(0, 2, 0)
+		val providerPipePos = BlockPos(0, 2, 1)
+		val sourcePos = BlockPos(0, 2, 2)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.RAW_IRON, 32))
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.RAW_IRON)), 16, false)
+		placeCreativePressureSource(interfacePos.above())
+
+		val providerPipe = hookAt(providerPipePos)
+		val providerState = providerPipe.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(providerPipePos.above())
+
+		succeedWhen {
+			val rawIron = ItemResource.of(ItemStack(Items.RAW_IRON))
+			val stocked = (0 until interfaceState.stock.size())
+				.firstOrNull { interfaceState.stock.getResource(it) == rawIron }
+				?.let { interfaceState.stock.getAmount(it) } ?: 0L
+			assertTrue(stocked == 16L) {
+				"Expected the interface to have self-requisitioned 16 raw iron into its stock, got $stocked"
+			}
+			assertTrue(interfaceState.ghosts.getAmount(0) == 16L) {
+				"Expected the ghost target to have stayed at 16, got ${interfaceState.ghosts.getAmount(0)}"
+			}
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testWhitelistTagCardPassesRawIronThroughInterfaceIntoSubnet() = rawIronThroughWhitelistCard("c:raw_materials")
+
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testWhitelistWildcardTagCardPassesRawIronThroughInterfaceIntoSubnet() = rawIronThroughWhitelistCard("c:raw_materials/*")
+
+	private fun GameTestHelper.rawIronThroughWhitelistCard(tagId: String): Boolean {
+		val sourcePos = BlockPos(0, 2, 1)
+		val extractorPos = BlockPos(0, 2, 0)
+		val midPos = BlockPos(1, 2, 0)
+		val filterPos = BlockPos(2, 2, 0)
+		val interfacePos = BlockPos(2, 2, 1)
+		// Same west-source/east-subnet seam as testFilterFacingInterfaceCreatesInsertOnlyBoundary:
+		// the destination must not be reachable from the interface, or the pass-through would dump
+		// the raw iron right back where the extractor pulled it from.
+		val subnetPipePos = BlockPos(3, 2, 1)
+		val subnetDestPos = BlockPos(4, 2, 1)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		setBlock(subnetDestPos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.RAW_IRON, 5))
+
+		val extractor = hookAt(extractorPos)
+		extractor.hooks.getOrPut(Direction.SOUTH.name) { ExtractionHookType.createState() }
+		placeCreativePressureSource(extractorPos.above())
+
+		hookAt(midPos)
+
+		val filter = hookAt(filterPos)
+		val filterState = filter.hooks.getOrPut(Direction.SOUTH.name) { FilterHookType.createState() } as SortingHookState
+		filterState.routing = RoutingModule(mode = FilterMode.WHITELIST)
+		filterState.filter.insert(ItemResource.of(rawMaterialsCard(tagId)), 1, false)
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(subnetPipePos)
+		placeCreativePressureSource(interfacePos.above())
+
+		succeedWhen {
+			val dest = getBlockEntity(subnetDestPos) as ChestBlockEntity
+			assertTrue(dest.getItem(0).`is`(Items.RAW_IRON) && dest.getItem(0).count == 5) {
+				"Expected 5 raw iron pushed through the whitelist tag card to have passed straight through the interface, got ${dest.getItem(0)}"
+			}
+			assertTrue(
+				(0 until interfaceState.stock.size()).none { !interfaceState.stock.getResource(it).isBlank }
+			) {
+				"Expected the interface's stock to have stayed empty (pass-through, not staging), got resource0=${interfaceState.stock.getResource(0)}"
+			}
+		}
+		return true
+	}
+
+	private fun rawMaterialsCard(tagId: String): ItemStack {
+		val card = ItemStack(ItemRegistry.TagFilterCard)
+		FilterCardState(card).apply {
+			(currentState() as TagConditionState).tagId = tagId
+			touchCurrentState()
+		}
+		return card
 	}
 }

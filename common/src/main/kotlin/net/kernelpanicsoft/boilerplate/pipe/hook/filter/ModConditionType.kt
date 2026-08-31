@@ -13,7 +13,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.MiddleClickHandler
+import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
@@ -28,7 +28,7 @@ object ModConditionType : FilterConditionType<ModConditionState>() {
 		state.modId.isNotBlank() && (BuiltInRegistries.ITEM.getKey(context.resource.item) as ResourceLocation?)?.namespace == state.modId
 
 	@Composable
-	override fun Content(menu: FilterCardMenu, state: ModConditionState, middleClickHandler: MiddleClickHandler) {
+	override fun content(menu: FilterCardMenu, state: ModConditionState, clickHandler: ClickHandler) {
 		var modId by remember { mutableStateOf(state.modId) }
 
 		Text(Component.literal("Mod ID"), dropShadow = false)

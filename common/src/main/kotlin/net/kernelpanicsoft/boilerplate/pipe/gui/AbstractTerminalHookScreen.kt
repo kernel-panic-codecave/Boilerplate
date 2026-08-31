@@ -13,7 +13,7 @@ import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.gui.layout.*
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.size
-import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.*
 import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.kernelpanicsoft.boilerplate.util.resourceStack
@@ -27,7 +27,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 {
 
 	protected val contentWidth = 18 * COLUMNS
-	protected val middleClickHandler = MiddleClickHandler()
+	protected val clickHandler = ClickHandler(2)
 
 	/** The [StoreResultsGrid] row currently under the mouse, if any - not a real vanilla [net.minecraft.world.inventory.Slot], so a recipe viewer (JEI/REI/EMI) can't discover it the normal hovered-slot way; exposed publicly for exactly that lookup (see `compat/rei/BoilerplateREIPlugin`'s own `registerScreens`). */
 	var hoveredStack: SResourceStack<SItemResource>? = null
@@ -47,7 +47,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 
 	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean
 	{
-		return middleClickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
+		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
 	}
 
 	abstract val mainTabId: String
@@ -56,7 +56,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 	@Composable
 	fun content()
 	{
-		Theme {
+		BoilerplateTheme {
 			Box(contentAlignment = Alignment.Center) {
 				Row(
 					horizontalArrangement = Arrangement.spacedBy(2),
@@ -125,7 +125,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 						resource
 					) { amount -> menu.requestCraft(ResourceStack(resource, amount)) }
 				},
-				middleClickHandler = middleClickHandler,
+				clickHandler = clickHandler,
 				onHoveredStackChanged = { hoveredStack = it },
 				enabled = menu.hasPressure,
 			)

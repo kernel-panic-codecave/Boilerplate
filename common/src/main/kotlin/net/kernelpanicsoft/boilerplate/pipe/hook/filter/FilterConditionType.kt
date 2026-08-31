@@ -6,8 +6,8 @@ import net.kernelpanicsoft.archie.config.toSnakeCase
 import net.kernelpanicsoft.archie.gui.blockentity.toSerializedValue
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.UpdateFilterCardFieldPacket
+import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.MiddleClickHandler
 import kotlin.reflect.KProperty0
 
 /**
@@ -38,7 +38,7 @@ abstract class FilterConditionType<S : FilterConditionState> {
 	 * dispatches generically by field name.
 	 */
 	@Composable
-	abstract fun Content(menu: FilterCardMenu, state: S, middleClickHandler: MiddleClickHandler)
+	abstract fun content(menu: FilterCardMenu, state: S, clickHandler: ClickHandler)
 }
 
 /**
@@ -52,5 +52,5 @@ fun <T> pushFieldUpdate(property: KProperty0<T>, value: T, serializer: KSerializ
 	BoilerplateNetworkChannel.toServer(UpdateFilterCardFieldPacket(property.name.toSnakeCase(), value.toSerializedValue(serializer)))
 }
 
-/** [net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardScreen]'s own content width, shared with every [FilterConditionType.Content] override so a text field/ghost grid lines up with the rest of the screen. */
+/** [net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardScreen]'s own content width, shared with every [FilterConditionType.content] override so a text field/ghost grid lines up with the rest of the screen. */
 const val FILTER_CARD_CONTENT_WIDTH = 18 * 9

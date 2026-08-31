@@ -17,7 +17,7 @@ import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlotGrid
-import net.kernelpanicsoft.boilerplate.pipe.gui.MiddleClickHandler
+import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -45,7 +45,7 @@ object ItemConditionType : FilterConditionType<ItemConditionState>() {
 	}
 
 	@Composable
-	override fun Content(menu: FilterCardMenu, state: ItemConditionState, middleClickHandler: MiddleClickHandler) {
+	override fun content(menu: FilterCardMenu, state: ItemConditionState, clickHandler: ClickHandler) {
 		var itemMatches by remember { mutableStateOf(state.itemMatches.toList()) }
 		var matchComponents by remember { mutableStateOf(state.matchComponents) }
 
@@ -76,8 +76,8 @@ object ItemConditionType : FilterConditionType<ItemConditionState>() {
 				state.itemMatches[index] = ItemResource.BLANK
 				pushFieldUpdate(state::itemMatches, itemMatches, ListSerializer(ItemResourceSerializer))
 			},
-			middleClickHandler = middleClickHandler,
-			onMiddleClick = { null },
+			clickHandler = clickHandler,
+			handleClick = { null },
 		)
 	}
 }

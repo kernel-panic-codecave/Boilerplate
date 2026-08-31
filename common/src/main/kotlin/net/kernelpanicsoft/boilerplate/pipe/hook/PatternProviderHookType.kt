@@ -58,7 +58,7 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - Can convert a whole batch of patterns in one tick - the heaviest per-tick work among the hooks. */
 	override val basePressureCost: Long = 4L

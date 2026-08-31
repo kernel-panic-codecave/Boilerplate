@@ -8,19 +8,13 @@ import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.input.Button
 import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
 import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
-import net.kernelpanicsoft.archie.gui.layout.Alignment
-import net.kernelpanicsoft.archie.gui.layout.Arrangement
-import net.kernelpanicsoft.archie.gui.layout.Box
-import net.kernelpanicsoft.archie.gui.layout.Column
-import net.kernelpanicsoft.archie.gui.layout.Row
+import net.kernelpanicsoft.archie.gui.layout.*
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
-import net.kernelpanicsoft.archie.gui.modifiers.height
 import net.kernelpanicsoft.archie.gui.modifiers.size
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
-import net.kernelpanicsoft.boilerplate.network.RequestCraftGridPreviewPacket
-import net.kernelpanicsoft.boilerplate.network.RequestPatternGridPreviewPacket
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import net.kernelpanicsoft.boilerplate.network.RequestPatternGridPreviewPacket
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 import kotlin.time.Duration.Companion.milliseconds
@@ -88,8 +82,8 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 							carried = { menu.carried },
 							onPlace = { index, resource -> setInput(index, resource) },
 							onClear = { index -> setInput(index, ItemResource.BLANK) },
-							middleClickHandler = middleClickHandler,
-							onMiddleClick = { null },
+							clickHandler = clickHandler,
+							handleClick = { null },
 						)
 					}
 					Column {
@@ -119,8 +113,8 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 										)
 									},
 									onClear = { index -> setOutput(index, ItemResource.BLANK, 1) },
-									middleClickHandler = middleClickHandler,
-									onMiddleClick = { null },
+									clickHandler = clickHandler,
+									handleClick = { null },
 									amounts = outputs.map { it.second },
 									onAmountScroll = { index, delta ->
 										val (resource, amount) = outputs.getOrNull(index) ?: return@GhostSlotGrid

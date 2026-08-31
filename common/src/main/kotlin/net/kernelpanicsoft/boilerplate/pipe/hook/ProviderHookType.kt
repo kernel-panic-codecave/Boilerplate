@@ -28,7 +28,7 @@ object ProviderHookType : PipeHookType<ProviderHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - Passive stock exposure only, no active per-tick work - the lightest idle draw. */
 	override val basePressureCost: Long = 1L

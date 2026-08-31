@@ -5,6 +5,7 @@ import dev.architectury.event.EventResult
 import dev.architectury.event.events.common.InteractionEvent
 import dev.architectury.registry.menu.MenuRegistry
 import net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType
+import net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock.Companion.removeBarePipe
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.item.EncasementItem
@@ -309,11 +310,11 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 		val hookState = tile.hooks[direction.name] ?: return InteractionResult.PASS
 		val hookType = HookTypeRegistry.byId(hookState.type) ?: return InteractionResult.PASS
 
-		if (!level.isClientSide && hookType.hasMenu) {
+		if (!level.isClientSide && hookType.hasMenu && player is ServerPlayer) {
 			tile.pendingMenuFace = direction
-			MenuRegistry.openExtendedMenu(player as ServerPlayer, tile)
+			MenuRegistry.openExtendedMenu(player, tile)
 		}
-		return InteractionResult.sidedSuccess(level.isClientSide)
+		return InteractionResult.PASS
 	}
 
 	/** [useWithoutItem]'s casing-hit branch: opens the casing's own menu. */
@@ -321,9 +322,9 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 		val encasementState = tile.encasement.value ?: return InteractionResult.PASS
 		val encasementType = EncasementTypeRegistry.byId(encasementState.type) ?: return InteractionResult.PASS
 
-		if (!level.isClientSide && encasementType.hasMenu) {
+		if (!level.isClientSide && encasementType.hasMenu && player is ServerPlayer) {
 			tile.pendingMenuFace = null
-			MenuRegistry.openExtendedMenu(player as ServerPlayer, tile)
+			MenuRegistry.openExtendedMenu(player, tile)
 		}
 		return InteractionResult.sidedSuccess(level.isClientSide)
 	}

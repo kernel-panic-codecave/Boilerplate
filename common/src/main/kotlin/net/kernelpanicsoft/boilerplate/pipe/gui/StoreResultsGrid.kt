@@ -1,11 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
@@ -73,7 +68,7 @@ fun combineStoreEntries(results: List<SResourceStack<SItemResource>>, craftable:
  * - Craftable but out of stock: the count badge reads "Craft" instead of a number, and a normal
  *   click opens [onRequestCraft]'s dialog directly - there's nothing to withdraw.
  * - In stock *and* craftable: a normal click still withdraws; middle-click additionally opens
- *   [onRequestCraft]'s dialog (see [MiddleClickHandler]/[TerminalSlot]'s own `onMiddleClick`).
+ *   [onRequestCraft]'s dialog (see [ClickHandler]/[TerminalSlot]'s own `onMiddleClick`).
  *
  * A non-empty [carried] cursor overrides all of the above - any click deposits it via
  * [onDepositCarried] instead, matching every other terminal grid in this mod.
@@ -97,7 +92,7 @@ fun StoreResultsGrid(
 	onDepositCarried: () -> Unit,
 	onRequestWithdraw: (ResourceStack<ItemResource>) -> Unit,
 	onRequestCraft: (ItemResource) -> Unit,
-	middleClickHandler: MiddleClickHandler,
+	clickHandler: ClickHandler,
 	onHoveredStackChanged: (SResourceStack<SItemResource>?) -> Unit,
 	enabled: Boolean = true,
 ) {
@@ -136,8 +131,8 @@ fun StoreResultsGrid(
 									}
 								},
 								onHovered = { hovered -> hoveredStack = if (hovered) stack else if (hoveredStack === stack) null else hoveredStack },
-								middleClickHandler = middleClickHandler,
-								onMiddleClick = if (craftableInStock) ({ onRequestCraft(entry!!.resource) }) else null,
+								clickHandler = clickHandler,
+								handleClick = if (craftableInStock) ({ onRequestCraft(entry!!.resource) }) else null,
 								enabled = enabled,
 							)
 						}

@@ -33,7 +33,7 @@ object AdapterHookType : PipeHookType<AdapterHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - No active per-tick work of its own either - just the network-bridging role - so the same lightest idle draw as the other passive/config-only hooks. */
 	override val basePressureCost: Long = 1L

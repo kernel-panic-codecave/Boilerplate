@@ -34,9 +34,9 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
  * @param countText Overrides the vanilla count-label decoration (e.g. `""` to hide it entirely) -
  *   for a cell whose [stack]'s own `amount` is a display placeholder rather than a real count, like
  *   an autocraftable-but-out-of-stock entry showing "Craft" instead of `0`.
- * @param onMiddleClick Offered a [middleClickHandler]-registered action only when [stack] is
+ * @param handleClick Offered a [clickHandler]-registered action only when [stack] is
  *   non-`null` and the caller passes one (e.g. [StoreResultsGrid]'s own "open the autocraft dialog
- *   for an in-stock, also-craftable entry" interaction) - see [MiddleClickHandler]'s own KDoc for
+ *   for an in-stock, also-craftable entry" interaction) - see [ClickHandler]'s own KDoc for
  *   why detecting the actual click happens one level up, at the screen.
  * @param enabled When `false`, draws [TextureStates.DISABLED]'s own slot texture instead of
  *   [TextureStates.DEFAULT] and ignores clicks entirely - the whole-terminal pressure gate (see
@@ -49,14 +49,14 @@ fun TerminalSlot(
 	onHovered: (Boolean) -> Unit = {},
 	modifier: Modifier = Modifier,
 	countText: String? = null,
-	middleClickHandler: MiddleClickHandler? = null,
-	onMiddleClick: (() -> Unit)? = null,
+	clickHandler: ClickHandler? = null,
+	handleClick: (() -> Unit)? = null,
 	enabled: Boolean = true,
 ) {
 	Clickable(showHandCursor = stack != null && enabled, enabled = enabled, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
-		LaunchedEffect(isHovered, onMiddleClick) {
+		LaunchedEffect(isHovered, handleClick) {
 			onHovered(isHovered)
-			middleClickHandler?.setHovered(if (isHovered && enabled) onMiddleClick else null)
+			clickHandler?.setHovered(if (isHovered && enabled) handleClick else null)
 		}
 		FakeSlot(stack, isHovered, countText, enabled)
 	}

@@ -27,7 +27,7 @@ object PressureTankEncasementType : PipeEncasementType<PressureTankEncasementSta
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on a dedicated pressure-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Pressure)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Pressure) }
 
 	override fun createState(): PressureTankEncasementState = PressureTankEncasementState()
 

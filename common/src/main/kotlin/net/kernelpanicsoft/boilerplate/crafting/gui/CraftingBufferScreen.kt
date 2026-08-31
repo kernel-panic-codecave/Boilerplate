@@ -20,7 +20,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.height
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
-import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.CraftingBufferActiveJobView
 import net.kernelpanicsoft.boilerplate.network.CraftingBufferBacklogEntryView
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTreeView
@@ -51,7 +51,7 @@ class CraftingBufferScreen(private val menu: CraftingBufferMenu, playerInventory
 				delay(STATUS_POLL_MILLIS.milliseconds)
 			}
 		}
-		Theme {
+		BoilerplateTheme {
 			ContainerPanel(contentWidth = CONTENT_WIDTH) {
 				Row(horizontalArrangement = Arrangement.spacedBy(6), verticalAlignment = Alignment.Top) {
 					Column(verticalArrangement = Arrangement.spacedBy(4)) {

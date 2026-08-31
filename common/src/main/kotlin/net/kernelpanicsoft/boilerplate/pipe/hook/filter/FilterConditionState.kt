@@ -23,7 +23,7 @@ import kotlin.properties.ReadWriteProperty
  * read it through).
  *
  * [editableField]/[editableListField] (used instead of plain [field]/[listField] for anything a
- * [FilterConditionType.Content] composable lets the player edit) additionally register themselves
+ * [FilterConditionType.content] composable lets the player edit) additionally register themselves
  * into [editableFields], so [applyFieldUpdate] can apply a remote edit to *any* registered field by
  * name, generically - the point being
  * [net.kernelpanicsoft.boilerplate.network.UpdateFilterCardFieldPacket] never needs to know the

@@ -17,7 +17,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.height
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.SimpleThemeState
-import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.UpdateSortingRoutingPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
@@ -66,7 +66,7 @@ class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inve
 			BoilerplateNetworkChannel.toServer(UpdateSortingRoutingPacket(menu.pos, menu.direction, next))
 		}
 
-		Theme {
+		BoilerplateTheme {
 			ContainerPanel(contentWidth = contentWidth) {
 				Column(verticalArrangement = Arrangement.spacedBy(6)) {
 					Text(Component.literal("Filter"), dropShadow = false)

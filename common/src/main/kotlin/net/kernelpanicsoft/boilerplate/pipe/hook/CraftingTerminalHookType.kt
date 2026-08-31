@@ -27,7 +27,7 @@ object CraftingTerminalHookType : PipeHookType<CraftingTerminalHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - Drives a Crafting CPU job's own submission/tracking - the heaviest per-tick work among the hooks. */
 	override val basePressureCost: Long = 4L

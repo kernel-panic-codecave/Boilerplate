@@ -1,10 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.builtins.ListSerializer
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
@@ -12,12 +8,12 @@ import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
 import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
+import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
 import net.kernelpanicsoft.boilerplate.network.OpenFilterCardEditorPacket
-import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlotGrid
-import net.kernelpanicsoft.boilerplate.pipe.gui.MiddleClickHandler
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -44,7 +40,7 @@ object CombinedConditionType : FilterConditionType<CombinedConditionState>() {
 	}
 
 	@Composable
-	override fun Content(menu: FilterCardMenu, state: CombinedConditionState, middleClickHandler: MiddleClickHandler) {
+	override fun content(menu: FilterCardMenu, state: CombinedConditionState, clickHandler: ClickHandler) {
 		var operator by remember { mutableStateOf(state.operator) }
 		var children by remember { mutableStateOf(state.children.toList()) }
 
@@ -73,8 +69,8 @@ object CombinedConditionType : FilterConditionType<CombinedConditionState>() {
 				state.children[index] = ItemResource.BLANK
 				pushFieldUpdate(state::children, children, ListSerializer(ItemResourceSerializer))
 			},
-			middleClickHandler = middleClickHandler,
-			onMiddleClick = { index ->
+			clickHandler = clickHandler,
+			handleClick = { index ->
 				if (children[index].item !is FilterCardItem) null
 				else ({
 					BoilerplateNetworkChannel.toServer(

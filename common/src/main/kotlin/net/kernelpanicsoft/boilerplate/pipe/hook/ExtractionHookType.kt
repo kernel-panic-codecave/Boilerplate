@@ -33,7 +33,7 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - Its own periodic pull is real per-tick work, but a single simple extraction - a middling draw. */
 	override val basePressureCost: Long = 2L
@@ -71,7 +71,7 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 			val available = storage.extract(resource, EXTRACTION_AMOUNT, true)
 			if (available <= 0) continue
 
-			val route = PipeRouter.findRoute(level, pos, resource, color, exclude = neighborPos) ?: continue
+			val route = PipeRouter.findRoute(level, pos, resource, color, exclude = setOf(neighborPos)) ?: continue
 
 			val extracted = storage.extract(resource, available, false)
 			if (extracted <= 0) continue

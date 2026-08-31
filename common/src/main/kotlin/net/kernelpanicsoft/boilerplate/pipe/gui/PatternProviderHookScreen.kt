@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
-import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 
@@ -18,7 +18,7 @@ class PatternProviderHookScreen(private val menu: PatternProviderHookMenu, playe
 
 	@Composable
 	fun content() {
-		Theme {
+		BoilerplateTheme {
 			ContainerPanel {
 				Slots("patterns", 3, 3)
 			}

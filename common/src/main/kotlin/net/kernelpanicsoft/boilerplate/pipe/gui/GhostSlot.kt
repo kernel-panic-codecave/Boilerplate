@@ -23,7 +23,7 @@ import kotlin.math.sign
  * middle-click has to be intercepted at the raw `Screen.mouseClicked(button)` level instead, and
  * this is how that level learns which slot the cursor is actually over.
  */
-class MiddleClickHandler {
+class ClickHandler(val button: Int) {
 	private var hoveredAction: (() -> Unit)? = null
 
 	/** Called by whichever [GhostSlot] is currently hovered (or unhovered) - the last call wins, since at most one slot is ever hovered at once. */
@@ -33,7 +33,7 @@ class MiddleClickHandler {
 
 	/** Call from the owning screen's `mouseClicked` override, before delegating further - runs and consumes (returns `true`) only for an actual middle-click ([button] `== 2`) over a slot that offered an action. */
 	fun tryHandle(button: Int): Boolean {
-		if (button != 2) return false
+		if (button != this.button) return false
 		val action = hoveredAction ?: return false
 		action()
 		return true
@@ -51,9 +51,9 @@ class MiddleClickHandler {
  * can gain or lose. [filter] silently rejects a placement that fails it (e.g.
  * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType]'s own children only
  * ever accepting another filter card) rather than placing something the slot can't meaningfully
- * evaluate. [onMiddleClick] (only offered when [resource] is a
+ * evaluate. [handleClick] (only offered when [resource] is a
  * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem], by the caller's own
- * choice) opens that card's own editor - see [MiddleClickHandler]'s KDoc for why detecting the
+ * choice) opens that card's own editor - see [ClickHandler]'s KDoc for why detecting the
  * actual click happens one level up, at the screen.
  *
  * @param amount Purely a display quantity (the [FakeSlot] count badge) - ghost slots have no real
@@ -69,8 +69,8 @@ fun GhostSlot(
 	carried: () -> ItemStack,
 	onPlace: (ItemResource) -> Unit,
 	onClear: () -> Unit,
-	middleClickHandler: MiddleClickHandler,
-	onMiddleClick: (() -> Unit)? = null,
+	clickHandler: ClickHandler,
+	handleClick: (() -> Unit)? = null,
 	filter: (ItemResource) -> Boolean = { true },
 	amount: Long = 1,
 	onAmountScroll: ((Int) -> Unit)? = null,
@@ -92,8 +92,8 @@ fun GhostSlot(
 		},
 		modifier = effectiveModifier,
 	) { isHovered, _, _ ->
-		LaunchedEffect(isHovered, resource, onMiddleClick) {
-			middleClickHandler.setHovered(if (isHovered) onMiddleClick else null)
+		LaunchedEffect(isHovered, resource, handleClick) {
+			clickHandler.setHovered(if (isHovered) handleClick else null)
 		}
 		FakeSlot(display, isHovered)
 	}
@@ -111,8 +111,8 @@ fun GhostSlotGrid(
 	carried: () -> ItemStack,
 	onPlace: (Int, ItemResource) -> Unit,
 	onClear: (Int) -> Unit,
-	middleClickHandler: MiddleClickHandler,
-	onMiddleClick: (Int) -> (() -> Unit)?,
+	clickHandler: ClickHandler,
+	handleClick: (Int) -> (() -> Unit)?,
 	filter: (ItemResource) -> Boolean = { true },
 	amounts: List<Long>? = null,
 	onAmountScroll: ((Int, Int) -> Unit)? = null,
@@ -127,8 +127,8 @@ fun GhostSlotGrid(
 						carried = carried,
 						onPlace = { onPlace(index, it) },
 						onClear = { onClear(index) },
-						middleClickHandler = middleClickHandler,
-						onMiddleClick = onMiddleClick(index),
+						clickHandler = clickHandler,
+						handleClick = handleClick(index),
 						filter = filter,
 						amount = amounts?.getOrNull(index) ?: 1,
 						onAmountScroll = onAmountScroll?.let { callback -> { delta: Int -> callback(index, delta) } },

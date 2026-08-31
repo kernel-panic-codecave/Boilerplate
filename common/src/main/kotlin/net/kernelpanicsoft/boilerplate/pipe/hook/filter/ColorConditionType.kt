@@ -19,7 +19,7 @@ import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.entity.DyeColorSerializer
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.MiddleClickHandler
+import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.item.DyeColor
@@ -41,7 +41,7 @@ object ColorConditionType : FilterConditionType<ColorConditionState>() {
 		state.color != null && context.color == state.color
 
 	@Composable
-	override fun Content(menu: FilterCardMenu, state: ColorConditionState, middleClickHandler: MiddleClickHandler) {
+	override fun content(menu: FilterCardMenu, state: ColorConditionState, clickHandler: ClickHandler) {
 		var color by remember { mutableStateOf(state.color) }
 
 		Text(Component.literal("Color"), dropShadow = false)

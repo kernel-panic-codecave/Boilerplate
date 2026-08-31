@@ -27,7 +27,7 @@ object PatternTerminalHookType : PipeHookType<PatternTerminalHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - Drives pattern encoding - heavier than a middling hook, lighter than the two below. */
 	override val basePressureCost: Long = 3L

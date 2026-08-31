@@ -35,7 +35,7 @@ object TerminalHookType : PipeHookType<TerminalHookState>() {
 	override val id: ResourceLocation get() = ID
 
 	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes = setOf(NetworkTypeRegistry.Item)
+	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
 
 	/** [PipeHookType.basePressureCost] - Mostly player-driven (withdraw/menu), with a light background tick - a middling draw. */
 	override val basePressureCost: Long = 2L

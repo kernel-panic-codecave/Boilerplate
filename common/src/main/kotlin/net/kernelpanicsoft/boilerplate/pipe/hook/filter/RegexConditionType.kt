@@ -13,7 +13,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.MiddleClickHandler
+import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
@@ -31,7 +31,7 @@ object RegexConditionType : FilterConditionType<RegexConditionState>() {
 	}
 
 	@Composable
-	override fun Content(menu: FilterCardMenu, state: RegexConditionState, middleClickHandler: MiddleClickHandler) {
+	override fun content(menu: FilterCardMenu, state: RegexConditionState, clickHandler: ClickHandler) {
 		var regex by remember { mutableStateOf(state.regex) }
 
 		Text(Component.literal("Regex"), dropShadow = false)

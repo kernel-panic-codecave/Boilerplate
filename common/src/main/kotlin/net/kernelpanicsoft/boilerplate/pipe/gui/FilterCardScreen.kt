@@ -1,10 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
@@ -12,7 +8,7 @@ import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
 import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
-import net.kernelpanicsoft.archie.gui.theme.Theme
+import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.UpdateFilterCardModePacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
@@ -24,7 +20,7 @@ import net.minecraft.world.entity.player.Inventory
  * Editor for one [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem] stack: its
  * whitelist/blacklist mode, plus whichever fields the selected
  * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType] itself renders via its
- * own [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType.Content] - this
+ * own [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType.content] - this
  * screen dispatches to it generically via [FilterCardMenu.type], the same reasoning
  * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState.matches] already dispatches
  * through the registry instead of a hardcoded `when`, and doesn't otherwise know or care what
@@ -39,22 +35,21 @@ class FilterCardScreen(private val menu: FilterCardMenu, playerInventory: Invent
 	ComposeContainerScreen<FilterCardMenu>(menu, playerInventory, title) {
 
 	private val contentWidth = 18 * 9
-	private val middleClickHandler = MiddleClickHandler()
+	private val clickHandler = ClickHandler(1)
 
 	init {
 		start { content() }
 	}
 
 	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		if (middleClickHandler.tryHandle(button)) return true
-		return super.mouseClicked(mouseX, mouseY, button)
+		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
 	}
 
 	@Composable
 	fun content() {
 		var mode by remember { mutableStateOf(menu.mode) }
 
-		Theme {
+		BoilerplateTheme {
 			ContainerPanel(contentWidth = contentWidth) {
 				Column(verticalArrangement = Arrangement.spacedBy(6)) {
 					Text(Component.literal("Mode"), dropShadow = false)
@@ -73,7 +68,7 @@ class FilterCardScreen(private val menu: FilterCardMenu, playerInventory: Invent
 					val conditionType = FilterConditionTypeRegistry.byId(menu.type)
 					val state = menu.currentConditionState()
 					if (conditionType != null && state != null) {
-						conditionType.Content(menu, state, middleClickHandler)
+						conditionType.content(menu, state, clickHandler)
 					}
 				}
 			}

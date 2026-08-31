@@ -1,85 +1,24 @@
 {
-  "texture_size": [
-    16,
-    16
-  ],
-  "parent": "minecraft:block/block",
-  "textures": {
-    "0": "boilerplate:block/pressure_tank_encasement_corner",
-    "particle": "#0"
-  },
-  "elements": [
-    {
-      "name": "corner",
-      "from": [
-        14,
-        14,
-        0
-      ],
-      "to": [
-        16,
-        16,
-        2
-      ],
-      "faces": {
-        "down": {
-          "uv": [
-            0.0,
-            0.0,
-            2.0,
-            2.0
-          ],
-          "texture": "#0"
-        },
-        "up": {
-          "uv": [
-            0.0,
-            2.0,
-            2.0,
-            4.0
-          ],
-          "texture": "#0",
-          "cullface": "up"
-        },
-        "north": {
-          "uv": [
-            2.0,
-            0.0,
-            4.0,
-            2.0
-          ],
-          "texture": "#0",
-          "cullface": "north"
-        },
-        "south": {
-          "uv": [
-            2.0,
-            2.0,
-            4.0,
-            4.0
-          ],
-          "texture": "#0"
-        },
-        "west": {
-          "uv": [
-            0.0,
-            4.0,
-            2.0,
-            6.0
-          ],
-          "texture": "#0"
-        },
-        "east": {
-          "uv": [
-            4.0,
-            0.0,
-            6.0,
-            2.0
-          ],
-          "texture": "#0",
-          "cullface": "east"
-        }
-      }
-    }
-  ]
+	"format_version": "1.21.11",
+	"credit": "Made with Blockbench",
+	"parent": "minecraft:block/block",
+	"textures": {
+		"0": "boilerplate:block/pressure_tank_encasement_corner",
+		"particle": "boilerplate:block/pressure_tank_encasement_corner"
+	},
+	"elements": [
+		{
+			"name": "corner",
+			"from": [14, 14, 0],
+			"to": [16, 16, 2],
+			"faces": {
+				"north": {"uv": [2, 0, 4, 2], "texture": "#0"},
+				"east": {"uv": [4, 0, 6, 2], "texture": "#0"},
+				"south": {"uv": [2, 2, 4, 4], "texture": "#0"},
+				"west": {"uv": [0, 4, 2, 6], "texture": "#0"},
+				"up": {"uv": [0, 2, 2, 4], "texture": "#0"},
+				"down": {"uv": [0, 0, 2, 2], "texture": "#0"}
+			}
+		}
+	]
 }

@@ -1,288 +1,64 @@
 {
-  "texture_size": [
-    64,
-    64
-  ],
-  "textures": {
-    "0": "boilerplate:block/bulk_rack",
-    "particle": "#0"
-  },
-  "elements": [
-    {
-      "name": "base",
-      "from": [
-        2,
-        0,
-        2
-      ],
-      "to": [
-        14,
-        2,
-        14
-      ],
-      "faces": {
-        "down": {
-          "uv": [
-            0.0,
-            0.0,
-            3.0,
-            3.0
-          ],
-          "texture": "#0"
-        },
-        "up": {
-          "uv": [
-            0.0,
-            3.0,
-            3.0,
-            6.0
-          ],
-          "texture": "#0"
-        },
-        "north": {
-          "uv": [
-            8.0,
-            0.0,
-            11.0,
-            0.5
-          ],
-          "texture": "#0"
-        },
-        "south": {
-          "uv": [
-            8.0,
-            0.5,
-            11.0,
-            1.0
-          ],
-          "texture": "#0"
-        },
-        "west": {
-          "uv": [
-            8.0,
-            1.0,
-            11.0,
-            1.5
-          ],
-          "texture": "#0"
-        },
-        "east": {
-          "uv": [
-            8.0,
-            1.5,
-            11.0,
-            2.0
-          ],
-          "texture": "#0"
-        }
-      }
-    },
-    {
-      "name": "tank_body",
-      "from": [
-        3,
-        2,
-        3
-      ],
-      "to": [
-        13,
-        13,
-        13
-      ],
-      "faces": {
-        "down": {
-          "uv": [
-            3.0,
-            5.5,
-            5.5,
-            8.0
-          ],
-          "texture": "#0"
-        },
-        "up": {
-          "uv": [
-            5.5,
-            5.5,
-            8.0,
-            8.0
-          ],
-          "texture": "#0"
-        },
-        "north": {
-          "uv": [
-            3.0,
-            0.0,
-            5.5,
-            2.75
-          ],
-          "texture": "#0"
-        },
-        "south": {
-          "uv": [
-            3.0,
-            2.75,
-            5.5,
-            5.5
-          ],
-          "texture": "#0"
-        },
-        "west": {
-          "uv": [
-            5.5,
-            0.0,
-            8.0,
-            2.75
-          ],
-          "texture": "#0"
-        },
-        "east": {
-          "uv": [
-            5.5,
-            2.75,
-            8.0,
-            5.5
-          ],
-          "texture": "#0"
-        }
-      }
-    },
-    {
-      "name": "tank_cap",
-      "from": [
-        4,
-        13,
-        4
-      ],
-      "to": [
-        12,
-        15,
-        12
-      ],
-      "faces": {
-        "down": {
-          "uv": [
-            0.0,
-            6.0,
-            2.0,
-            8.0
-          ],
-          "texture": "#0"
-        },
-        "up": {
-          "uv": [
-            0.0,
-            8.0,
-            2.0,
-            10.0
-          ],
-          "texture": "#0"
-        },
-        "north": {
-          "uv": [
-            2.0,
-            8.0,
-            4.0,
-            8.5
-          ],
-          "texture": "#0"
-        },
-        "south": {
-          "uv": [
-            8.0,
-            2.0,
-            10.0,
-            2.5
-          ],
-          "texture": "#0"
-        },
-        "west": {
-          "uv": [
-            8.0,
-            2.5,
-            10.0,
-            3.0
-          ],
-          "texture": "#0"
-        },
-        "east": {
-          "uv": [
-            8.0,
-            3.0,
-            10.0,
-            3.5
-          ],
-          "texture": "#0"
-        }
-      }
-    },
-    {
-      "name": "valve",
-      "from": [
-        7,
-        15,
-        7
-      ],
-      "to": [
-        9,
-        16,
-        9
-      ],
-      "faces": {
-        "down": {
-          "uv": [
-            2.0,
-            6.0,
-            2.5,
-            6.5
-          ],
-          "texture": "#0"
-        },
-        "up": {
-          "uv": [
-            2.5,
-            6.0,
-            3.0,
-            6.5
-          ],
-          "texture": "#0"
-        },
-        "north": {
-          "uv": [
-            2.0,
-            6.5,
-            2.5,
-            6.75
-          ],
-          "texture": "#0"
-        },
-        "south": {
-          "uv": [
-            2.5,
-            6.5,
-            3.0,
-            6.75
-          ],
-          "texture": "#0"
-        },
-        "west": {
-          "uv": [
-            2.0,
-            6.75,
-            2.5,
-            7.0
-          ],
-          "texture": "#0"
-        },
-        "east": {
-          "uv": [
-            2.5,
-            6.75,
-            3.0,
-            7.0
-          ],
-          "texture": "#0"
-        }
-      }
-    }
-  ]
+	"format_version": "1.21.11",
+	"credit": "Made with Blockbench",
+	"parent": "minecraft:block/block",
+	"texture_size": [64, 64],
+	"textures": {
+		"0": "boilerplate:block/bulk_rack",
+		"particle": "boilerplate:block/bulk_rack"
+	},
+	"elements": [
+		{
+			"name": "base",
+			"from": [2, 0, 2],
+			"to": [14, 2, 14],
+			"faces": {
+				"north": {"uv": [8, 0, 11, 0.5], "texture": "#0"},
+				"east": {"uv": [8, 1.5, 11, 2], "texture": "#0"},
+				"south": {"uv": [8, 0.5, 11, 1], "texture": "#0"},
+				"west": {"uv": [8, 1, 11, 1.5], "texture": "#0"},
+				"up": {"uv": [0, 3, 3, 6], "texture": "#0"},
+				"down": {"uv": [0, 0, 3, 3], "texture": "#0"}
+			}
+		},
+		{
+			"name": "tank_body",
+			"from": [3, 2, 3],
+			"to": [13, 13, 13],
+			"faces": {
+				"north": {"uv": [3, 0, 5.5, 2.75], "texture": "#0"},
+				"east": {"uv": [5.5, 2.75, 8, 5.5], "texture": "#0"},
+				"south": {"uv": [3, 2.75, 5.5, 5.5], "texture": "#0"},
+				"west": {"uv": [5.5, 0, 8, 2.75], "texture": "#0"},
+				"up": {"uv": [5.5, 5.5, 8, 8], "texture": "#0"},
+				"down": {"uv": [3, 5.5, 5.5, 8], "texture": "#0"}
+			}
+		},
+		{
+			"name": "tank_cap",
+			"from": [4, 13, 4],
+			"to": [12, 15, 12],
+			"faces": {
+				"north": {"uv": [2, 8, 4, 8.5], "texture": "#0"},
+				"east": {"uv": [8, 3, 10, 3.5], "texture": "#0"},
+				"south": {"uv": [8, 2, 10, 2.5], "texture": "#0"},
+				"west": {"uv": [8, 2.5, 10, 3], "texture": "#0"},
+				"up": {"uv": [0, 8, 2, 10], "texture": "#0"},
+				"down": {"uv": [0, 6, 2, 8], "texture": "#0"}
+			}
+		},
+		{
+			"name": "valve",
+			"from": [7, 15, 7],
+			"to": [9, 16, 9],
+			"faces": {
+				"north": {"uv": [2, 6.5, 2.5, 6.75], "texture": "#0"},
+				"east": {"uv": [2.5, 6.75, 3, 7], "texture": "#0"},
+				"south": {"uv": [2.5, 6.5, 3, 6.75], "texture": "#0"},
+				"west": {"uv": [2, 6.75, 2.5, 7], "texture": "#0"},
+				"up": {"uv": [2.5, 6, 3, 6.5], "texture": "#0"},
+				"down": {"uv": [2, 6, 2.5, 6.5], "texture": "#0"}
+			}
+		}
+	]
 }

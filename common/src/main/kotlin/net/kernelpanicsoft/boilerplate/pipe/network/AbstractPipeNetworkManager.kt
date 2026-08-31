@@ -40,8 +40,8 @@ abstract class AbstractPipeNetworkManager<N : AbstractPipeNetwork> {
 	fun networkIdAt(pos: BlockPos): UUID? = networkOf[pos]
 	fun network(id: UUID): N? = networks[id]
 
-	/** Every network currently tracked - for a subclass that needs to do its own per-network per-tick work (see [net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager.tick]'s equalization pass), not something a plain item-pipe network needs. */
-	protected fun allNetworks(): Collection<N> = networks.values
+	/** Every network currently tracked - for a subclass that needs to do its own per-network per-tick work (see [net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager.tick]'s equalization pass) and for the network debug overlay's snapshot builder (see [net.kernelpanicsoft.boilerplate.network.DebugNetworkSync]). */
+	fun allNetworks(): Collection<N> = networks.values
 
 	/** Registers [pos] (assumed to already be a placed/loaded member) into the network graph, merging with any connected neighbors. Idempotent. */
 	fun ensureRegistered(level: ServerLevel, pos: BlockPos) {

@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate
 
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.api.ModInitializer
+import net.kernelpanicsoft.boilerplate.client.FabricDebugRendering
 import net.kernelpanicsoft.boilerplate.power.FabricPressureLookup
 import net.kernelpanicsoft.boilerplate.power.PressureApi
 
@@ -20,5 +21,6 @@ object BoilerplateFabric : ModInitializer, ClientModInitializer {
 
 	override fun onInitializeClient() {
 		Boilerplate.initClient()
+		FabricDebugRendering.register()
 	}
 }

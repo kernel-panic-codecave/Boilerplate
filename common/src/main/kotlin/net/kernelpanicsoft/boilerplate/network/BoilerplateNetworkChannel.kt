@@ -1,23 +1,17 @@
 package net.kernelpanicsoft.boilerplate.network
 
 import com.mojang.serialization.Codec
-import earth.terrarium.common_storage_lib.resources.Resource
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import kotlinx.serialization.Contextual
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Serializer
-import kotlinx.serialization.UseSerializers
 import net.kernelpanicsoft.archie.networking.NetworkChannel
 import net.kernelpanicsoft.archie.serialization.CodecSerializer
-import net.kernelpanicsoft.archie.serialization.kSerializer
 import net.kernelpanicsoft.archie.util.onClient
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import kotlin.collections.first
 
 typealias SItemResource = @Serializable(with = ItemResourceSerializer::class) ItemResource
 typealias SFluidResource = @Serializable(with = FluidResourceSerializer::class) FluidResource
@@ -47,6 +41,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 			clientbound(PatternGridPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftingBufferStatusPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(PendingDeliveriesPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(DebugNetworkSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestTerminalSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }
@@ -61,7 +56,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(CraftingRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftableListPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CraftGridRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
-			serverbound(RequestIngredientSupplyPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(RequestIngredientSupplyPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetPatternGhostInputPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetPatternGhostOutputPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(EncodePatternRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
@@ -72,7 +67,10 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(RequestCraftingBufferStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CancelCraftingBufferJobPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestPendingDeliveriesPacket::class) { packet, context -> packet.handleOnServer(context) }
-		serverbound(CancelPendingDeliveryPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound<CancelPendingDeliveryPacket> { packet, context -> packet.handleOnServer(context) }
+		serverbound<UpdateRackRoutingPacket> { packet, context -> packet.handleOnServer(context) }
+		serverbound<UpdateWarehouseRoutingPacket> { packet, context -> packet.handleOnServer(context) }
+		serverbound(DebugOverlayTogglePacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

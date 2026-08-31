@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate
 
 import dev.nyon.klf.MOD_BUS
+import net.kernelpanicsoft.boilerplate.client.NeoForgeDebugRendering
 import net.kernelpanicsoft.boilerplate.power.NeoForgePressureLookup
 import net.kernelpanicsoft.boilerplate.power.PressureApi
 import net.neoforged.fml.common.Mod
@@ -25,6 +26,7 @@ object BoilerplateNeoForge {
 		}
 		MOD_BUS.addListener<FMLClientSetupEvent> {
 			Boilerplate.initClient()
+			NeoForgeDebugRendering.register()
 		}
 		MOD_BUS.addListener<FMLCommonSetupEvent> {
 			Boilerplate.initCommon()

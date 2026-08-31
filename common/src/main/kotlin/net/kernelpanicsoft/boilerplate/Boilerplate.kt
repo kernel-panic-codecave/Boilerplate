@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate
 
 import com.mojang.logging.LogUtils
+import dev.architectury.event.events.common.PlayerEvent
 import dev.architectury.event.events.common.TickEvent
 import dev.architectury.platform.Mod
 import dev.architectury.platform.Platform
@@ -12,6 +13,8 @@ import net.kernelpanicsoft.archie.registries.CustomModelRegistry
 import net.kernelpanicsoft.boilerplate.datagen.BoilerplateDatagen
 import net.kernelpanicsoft.boilerplate.gametest.BoilerplateGameTest
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import net.kernelpanicsoft.boilerplate.network.DebugNetworkSync
+import net.kernelpanicsoft.boilerplate.pipe.network.DebugRouteTrace
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager
 import net.kernelpanicsoft.boilerplate.registry.*
@@ -70,6 +73,8 @@ object Boilerplate {
 
 		TickEvent.SERVER_LEVEL_POST.register { level -> PipeNetworkManager.get(level).tick(level) }
 		TickEvent.SERVER_LEVEL_POST.register { level -> PressurePipeNetworkManager.get(level).tick(level) }
+		TickEvent.SERVER_LEVEL_POST.register { level -> DebugNetworkSync.tickLevel(level) }
+		PlayerEvent.PLAYER_QUIT.register { player -> DebugRouteTrace.setViewer(player.uuid, on = false) }
 
 		if (AGameTestPlatform.isGameTest) {
 			AGametestEvents += MOD

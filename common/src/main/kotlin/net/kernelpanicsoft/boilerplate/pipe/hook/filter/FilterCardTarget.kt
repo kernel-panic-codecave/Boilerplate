@@ -10,9 +10,9 @@ import net.minecraft.world.level.Level
 /**
  * Describes where one [FilterCardItem] stack lives - a held stack ([PlayerSlot]) or another filter
  * card's own ghost children ([ChildSlot]), which nests arbitrarily deep since its own [parent] is
- * itself a [FilterCardTarget]. A sorting hook's own filter card no longer needs a case here: it
- * lives in a real vanilla slot now (see [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState.filter]),
- * so it's configured as a held card before being placed, exactly like a rack's. Used both to
+ * itself a [FilterCardTarget]. A sorting hook's own filter card needs no case here: it lives in a
+ * real vanilla slot (see [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState.filter]), so
+ * it's configured as a held card before being placed, exactly like a rack's. Used both to
  * open [FilterCardMenu] against a slot ([resolve]) and to overwrite a ghost slot directly without
  * opening anything ([write] - see [net.kernelpanicsoft.boilerplate.network.SetGhostSlotPacket]).
  * Travels over the network only (this mod's `@Sync`/NBT persistence never touches this type

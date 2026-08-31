@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import kotlinx.serialization.builtins.nullable
-import net.kernelpanicsoft.boilerplate.pipe.entity.DyeColorSerializer
+import net.kernelpanicsoft.boilerplate.util.DyeColorSerializer
 import net.minecraft.world.item.DyeColor
 
 /** [ColorConditionType]'s own state: the consignment color it matches. */

@@ -109,7 +109,7 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 				 * available. That re-check is exactly the same [EmiPlayerInventory.canCraft] quantity-
 				 * aware, all-or-nothing computation [super.craft]'s own [EmiRecipeFiller.getStacks] relies
 				 * on internally, so trusting it here doesn't risk the mismatch [getInputSources]'s own
-				 * KDoc describes - safe now that [getCraftingSlots] is excluded from [getInputSources].
+				 * KDoc describes - safe because [getCraftingSlots] is excluded from [getInputSources].
 				 * Still genuinely short (only [canCraft]'s own optimistic reachability check passed,
 				 * not this stricter one) instead only asks the terminal to supply what's missing
 				 * ([CraftingTerminalHookMenu.requestIngredientSupply], passing [EmiCraftContext.amount]

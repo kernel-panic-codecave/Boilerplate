@@ -41,9 +41,8 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
  * item purely so it bakes, not because it's player-obtainable - the gantry head is always a
  * dynamic render, never a placed block), the three plain-cube rack block types
  * ([net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlockEntity]/[net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlockEntity]/
- * [net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlockEntity]). Replaces what was
- * previously hand-written JSON; running `./gradlew runDatagen` regenerates it in place under
- * `common/src/main/resources`.
+ * [net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlockEntity]). Running
+ * `./gradlew runDatagen` regenerates the JSON in place under `common/src/main/resources`.
  */
 internal fun ABlockStateProvider.boilerplateBlockStates() {
 	val pipeCore = blockModels().getExistingFile(modLoc("pipe_core"))

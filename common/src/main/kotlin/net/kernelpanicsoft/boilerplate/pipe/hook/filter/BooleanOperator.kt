@@ -9,7 +9,7 @@ import kotlinx.serialization.encoding.Encoder
 
 /**
  * How a [CombinedConditionType] card aggregates its own non-blank
- * [FilterCardState.children][net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState.children] -
+ * [CombinedConditionState.children] -
  * unlike [FilterConditionType] itself, this is a closed, genuinely fixed set (De Morgan's laws
  * plus each child's own [net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode] already cover
  * NOT), so a plain enum - same choice [net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode]

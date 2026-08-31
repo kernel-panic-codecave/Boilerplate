@@ -5,16 +5,17 @@ import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 
 interface ScanTask {
-	/** Called every tick by WarehouseIndex to drive or poll the scan process. */
+	/**
+	 * One tick's slice of work, called every tick by [WarehouseIndex]. Returns `true` once the scan
+	 * is fully finished (whether completed or cancelled), `false` to be driven again next tick.
+	 */
 	fun tick(): Boolean
 
 	/** Cancels any background operations if a new scan is scheduled before completion. */
 	fun cancel()
 }
 
-// ============================================================================
-// COMPACT: Immediate single-tick scan
-// ============================================================================
+/** Immediate single-tick scan: the whole bounds walked in one call, synchronous - used when there's no reason to spread the scan out. */
 class ImmediateScanTask(
 	private val level: ServerLevel,
 	private val bounds: Bounds,
@@ -57,9 +58,7 @@ class ImmediateScanTask(
 	override fun cancel() {}
 }
 
-// ============================================================================
-// REGIONAL: Main-Thread Chunk-Wise Batching
-// ============================================================================
+/** Main-thread chunk-wise batching: walks the bounds one chunk at a time, processing up to 4 loaded chunks per tick so even a huge warehouse only ever costs a bounded slice of a single tick. */
 class ChunkParallelScanTask(
 	private val level: ServerLevel,
 	private val bounds: Bounds,
@@ -80,7 +79,6 @@ class ChunkParallelScanTask(
 	override fun tick(): Boolean {
 		if (cancelled) return true
 
-		// Process up to 4 loaded chunks per tick on the main thread safely
 		var chunksProcessedThisTick = 0
 		val maxChunksPerTick = 4
 
@@ -89,7 +87,7 @@ class ChunkParallelScanTask(
 		while (currentChunkX <= maxChunkX) {
 			while (currentChunkZ <= maxChunkZ) {
 				if (chunksProcessedThisTick >= maxChunksPerTick) {
-					return false // Yield to next tick
+					return false
 				}
 
 				if (level.hasChunk(currentChunkX, currentChunkZ)) {
@@ -130,9 +128,7 @@ class ChunkParallelScanTask(
 	}
 }
 
-// ============================================================================
-// MEGA: Time-budgeted incremental main-thread tick scan
-// ============================================================================
+/** Time-budgeted incremental main-thread tick scan: resumes where the previous tick left off, bounded by [tickBudgetMs], so a massive bounds costs several ticks of small slices rather than one long stall. */
 class IncrementalTickScanTask(
 	private val level: ServerLevel,
 	private val bounds: Bounds,
@@ -179,7 +175,7 @@ class IncrementalTickScanTask(
 					if (sinceLastBudgetCheck >= BUDGET_CHECK_INTERVAL) {
 						sinceLastBudgetCheck = 0
 						if (System.nanoTime() - startTime >= budgetNanos) {
-							return false // Budget exhausted, yield to next tick
+							return false
 						}
 					}
 

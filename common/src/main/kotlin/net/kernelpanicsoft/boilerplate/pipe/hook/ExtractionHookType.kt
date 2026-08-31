@@ -41,9 +41,9 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 	override fun createState(): ExtractionHookState = ExtractionHookState()
 
 	/**
-	 * Gated entirely on [basePressureCost] now - see [MultipartBlockEntity.tick]'s own draw/gate,
-	 * which already skips this call altogether without it - so this just ticks at the flat
-	 * [EXTRACTION_INTERVAL_TICKS], no separate speed-bonus draw of its own on top.
+	 * Gated by [basePressureCost] in [MultipartBlockEntity.tick]'s own draw/gate, which skips this
+	 * call outright without it (the segment is simply unpowered) - otherwise this ticks at the flat
+	 * [EXTRACTION_INTERVAL_TICKS], with no separate speed-bonus draw of its own.
 	 */
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: ExtractionHookState) {
 		state.ticksSinceExtraction++

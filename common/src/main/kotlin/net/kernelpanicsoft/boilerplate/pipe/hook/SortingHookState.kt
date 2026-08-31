@@ -21,23 +21,21 @@ abstract class SortingHookState(defaultType: ResourceLocation) : HookHolderState
 	 * [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] slot restricted to
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem], registered as an ordinary
 	 * vanilla [net.minecraft.world.inventory.Slot] by [net.kernelpanicsoft.boilerplate.pipe.gui.SortingHookMenu] -
-	 * the same shape [net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity.filter] uses,
-	 * rather than the 3x3 ghost grid this used to be. A card placed here is genuinely consumed from
-	 * the player's inventory and can be taken back out again.
+	 * the same shape [net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity.filter] uses.
+	 * A card placed here is genuinely consumed from the player's inventory and can be taken back
+	 * out again.
 	 *
-	 * Filtering on plain item identity is still perfectly possible - that's what an
+	 * Filtering on plain item identity is still possible - that's what an
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionType] card's own ghost grid is
 	 * for - and several conditions still combine through a
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType] card, so one slot
-	 * loses no expressiveness over the old nine.
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType] card.
 	 */
 	val filter: ArchieItemStorage by itemField(1, filter = { it.item is FilterCardItem })
 
 	/**
-	 * Whether [resource] passes [filter] under [routing]'s [RoutingModule.mode] - an empty slot
-	 * accepts nothing under [FilterMode.WHITELIST] and everything under [FilterMode.BLACKLIST],
-	 * deliberately unchanged from when this was a nine-entry ghost grid: a sorting hook's empty
-	 * whitelist is a meaningful "deny everything" configuration, unlike
+	 * Whether [resource] passes [filter] under [routing]'s [RoutingModule.mode] - an empty card
+	 * slot accepts nothing under [FilterMode.WHITELIST] and everything under [FilterMode.BLACKLIST]:
+	 * a sorting hook's empty whitelist is a meaningful "deny everything" configuration, unlike
 	 * [net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity.acceptsByFilter]'s own
 	 * "unconfigured rack takes anything" default.
 	 *

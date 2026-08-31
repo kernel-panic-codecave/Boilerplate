@@ -7,7 +7,7 @@ import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
  * same live recipe-derived preview + click/shift-click-to-take vanilla crafting tables use (see
  * [net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu.craftOnce]) rather than a
  * real, holdable result slot of its own - distinct from [PatternProviderHookType]'s slow,
- * pattern-driven processing. Inherits [TerminalHookState.jobs]/[TerminalHookState.output]
+ * pattern-driven processing. Inherits [TerminalHookState.submittedJobs]/[TerminalHookState.output]
  * wholesale; the Store/Craft tabs and job-tree view work identically to a plain terminal.
  */
 class CraftingTerminalHookState : TerminalHookState(CraftingTerminalHookType.ID) {

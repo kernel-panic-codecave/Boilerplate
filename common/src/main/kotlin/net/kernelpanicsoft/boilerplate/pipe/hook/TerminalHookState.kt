@@ -16,7 +16,7 @@ import net.minecraft.resources.ResourceLocation
  * and inherit [submittedJobs]/[output] wholesale rather than duplicating them.
  */
 open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : HookHolderState(type), FallbackItemStorageExposer {
-	/** Jobs submitted through this face, oldest first, wherever they actually run - a Crafting CPU cluster owns execution now, this is just a pointer to it - see [advanceTerminalJobs]. */
+	/** Jobs submitted through this face, oldest first, wherever they actually run - a Crafting CPU cluster owns execution; this is just a pointer to it - see [advanceTerminalJobs]. */
 	val submittedJobs: MutableList<SubmittedJobRef> = mutableListOf()
 
 	/**

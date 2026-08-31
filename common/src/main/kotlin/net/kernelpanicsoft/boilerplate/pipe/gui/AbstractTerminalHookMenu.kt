@@ -30,7 +30,7 @@ import net.minecraft.world.item.ItemStack
  * reachable from [tile]'s own pipe position, not just bound warehouses - a
  * [net.kernelpanicsoft.boilerplate.pipe.hook.ProviderHookType]-tagged inventory is just as
  * searchable, the same two sources [RequestFulfillment.request] already draws a standing order
- * from (and, once M4 exists, on-demand crafts would be a third) - see
+ * from - see
  * `docs/design/m3-warehouse-storage.md`. No block-owned slots of its own; the result list is a
  * virtual, non-slot-backed view (see `TerminalScreen`), not real vanilla
  * [net.minecraft.world.inventory.Slot]s, since warehouse contents can vastly exceed the usual

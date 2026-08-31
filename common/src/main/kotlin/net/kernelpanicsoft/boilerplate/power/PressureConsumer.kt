@@ -6,8 +6,7 @@ import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
  * Something whose active tick operation requires pressure to run at all - pneumatic machinery, not
  * electric: no supply reachable means no operation this tick, full stop - but more pressure than
  * the bare minimum makes it run faster, not just "on". A zero-cost consumer ([basePressureCost]
- * `<= 0`, the M1-M4 default for anything that hasn't been given a real requirement yet) draws
- * nothing and always runs at `1.0`x, unaffected either way - see [PressureLine.find] for how a real
+ * `<= 0`) draws nothing and always runs at `1.0`x, unaffected either way - see [PressureLine.find] for how a real
  * [net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetwork]-connected line is resolved.
  */
 interface PressureConsumer {

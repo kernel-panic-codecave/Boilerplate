@@ -36,7 +36,7 @@ import net.minecraft.world.level.block.Blocks
  * bound warehouse. [reachableProviders]/[reachableWarehouses] are the terminal's
  * own entry points - unlike [request], it needs *every* reachable source to search, not just the
  * first one with a match, and isn't limited to warehouses either: a terminal sees everything a
- * standing order could ever pull from, plus (once M4 exists) on-demand crafts.
+ * standing order could ever pull from.
  */
 object RequestFulfillment {
 	/**
@@ -111,7 +111,7 @@ object RequestFulfillment {
 	 * [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.claimOutstandingStock])
 	 * keeps calling until this returns `0`.
 	 *
-	 * Since M5, a source whose own [HookHolderState.active] is `false` (no reachable pressure) is
+	 * A source whose own [HookHolderState.active] is `false` (no reachable pressure) is
 	 * skipped entirely, same as [fulfillFromWarehouse]'s own [WarehouseControllerBlockEntity.hasPressure]
 	 * check - a [ProviderHookType]/[SyncHookType]/[InterfaceHookType]'s passive stock exposure is as
 	 * much "operating" as any hook's per-tick work. This only gates the actual *withdrawal*, not

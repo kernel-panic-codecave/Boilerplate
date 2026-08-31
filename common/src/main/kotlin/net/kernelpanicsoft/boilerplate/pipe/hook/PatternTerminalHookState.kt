@@ -18,7 +18,7 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
  * same "reference, not real items" grid [SortingHookState.filter] already uses. [blankPatterns] is
  * a real, persistent slot the player stocks with blank
  * [net.kernelpanicsoft.boilerplate.crafting.PatternItem]s for encoding to draw from, rather than
- * reaching into the player's own inventory. Inherits [TerminalHookState.jobs]/
+ * reaching into the player's own inventory. Inherits [TerminalHookState.submittedJobs]/
  * [TerminalHookState.output] wholesale. See `docs/design/m4-crafting-automation.md`.
  */
 class PatternTerminalHookState : TerminalHookState(PatternTerminalHookType.ID) {

@@ -1,31 +1,9 @@
 package net.kernelpanicsoft.boilerplate.network
 
-import com.mojang.serialization.Codec
-import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import kotlinx.serialization.KSerializer
-import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.networking.NetworkChannel
-import net.kernelpanicsoft.archie.serialization.CodecSerializer
 import net.kernelpanicsoft.archie.util.onClient
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-
-typealias SItemResource = @Serializable(with = ItemResourceSerializer::class) ItemResource
-typealias SFluidResource = @Serializable(with = FluidResourceSerializer::class) FluidResource
-typealias SResourceStack<T> = @Serializable(with = ResourceStackSerializer::class) ResourceStack<T>
-
-object ItemResourceSerializer : CodecSerializer<ItemResource>(ItemResource.CODEC)
-object FluidResourceSerializer : CodecSerializer<FluidResource>(FluidResource.CODEC)
-
-class ResourceStackSerializer<T : ResourceComponent>(resource: KSerializer<T>) : CodecSerializer<ResourceStack<T>>((when (resource)
-{
-	ItemResourceSerializer -> ResourceStack.ITEM_CODEC
-	FluidResourceSerializer -> ResourceStack.FLUID_CODEC
-	else -> error("Unexpected resource type: $resource")
-}) as Codec<ResourceStack<T>>)
 
 /** Boilerplate's own network channel, separate from Archie's internal one. */
 object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {

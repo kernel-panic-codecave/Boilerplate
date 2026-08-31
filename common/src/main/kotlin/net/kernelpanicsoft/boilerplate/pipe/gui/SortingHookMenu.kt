@@ -22,9 +22,9 @@ class SortingHookMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity,
 
 	/**
 	 * A real, vanilla-[net.minecraft.world.inventory.Slot]-backed filter-card slot, exactly like
-	 * [net.kernelpanicsoft.boilerplate.warehouse.rack.AbstractRackMenu]'s own - this replaced the
-	 * ghost grid the sorting hook used to render through Compose, so a card here is genuinely taken
-	 * from (and returnable to) the player's inventory rather than referenced in place.
+	 * [net.kernelpanicsoft.boilerplate.warehouse.rack.AbstractRackMenu]'s own - a card here is
+	 * genuinely taken from (and returnable to) the player's inventory rather than referenced in
+	 * place.
 	 */
 	override fun registerSlotHandlers() {
 		val state = tile.hooks[direction.name] as? SortingHookState ?: return

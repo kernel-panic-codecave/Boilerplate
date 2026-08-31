@@ -100,7 +100,7 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 		)
 	}
 
-	/** Matches [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock]'s 6x6 cross-section - see [CasingGeometry]'s own KDoc, and [net.kernelpanicsoft.boilerplate.power.pressureCasingShape]'s narrower sibling instance. */
+	/** Matches [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock]'s 6x6 cross-section - see [CasingGeometry]'s own KDoc, and [net.kernelpanicsoft.boilerplate.power.PressureEncasementType]'s own narrower 0.375 sibling instance. */
 	private val GEOMETRY = CasingGeometry(0.3125)
 
 	/**

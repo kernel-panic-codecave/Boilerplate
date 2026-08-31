@@ -34,7 +34,7 @@ import kotlin.to
  * found routes are cached - a "nothing accepts" miss is transient and carries no invalidation
  * event of its own, so caching it would wedge pushes until an unrelated topology change.
  *
- * Unlike M1, candidates aren't accepted on first hit: the whole reachable space is explored so
+ * Candidates aren't accepted on first hit: the whole reachable space is explored so
  * that a sorting hook's [net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule.priority]
  * can prefer one accepting destination over another. A candidate reached through a pipe face with
  * a [net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookType] hook attached is only valid if
@@ -86,7 +86,7 @@ object PipeRouter {
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState]'s pass-through inserts pass
 	 * both its own position and the machine physically feeding it, so a hopper on the face doesn't
 	 * get its own items bounced straight back into it. [color] is the traveling item's consignment
-	 * color (M2); sorting pipes with a color set only accept a matching (or colorless) item.
+	 * color; sorting pipes with a color set only accept a matching (or colorless) item.
 	 */
 	fun findRoute(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor? = null, exclude: Collection<BlockPos> = emptySet()): List<BlockPos>? {
 		val manager = PipeNetworkManager.get(level)

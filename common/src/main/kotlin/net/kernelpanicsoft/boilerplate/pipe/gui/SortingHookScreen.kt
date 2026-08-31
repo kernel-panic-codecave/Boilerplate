@@ -39,9 +39,8 @@ import kotlin.math.roundToInt
  * [net.kernelpanicsoft.archie.serialization.NBTHolder] field isn't wired into
  * [net.kernelpanicsoft.archie.gui.blockentity.BlockEntityStateManager] for that the way a
  * top-level `@Sync` field is. Edits update that local state immediately (optimistic UI) and push
- * an [UpdateSortingRoutingPacket] to persist them server-side. The filter itself needs none of
- * that any more - it's a real vanilla slot now (see [SortingHookMenu.registerSlotHandlers]), so
- * vanilla's own container syncing carries it.
+ * an [UpdateSortingRoutingPacket] to persist them server-side. The filter is a real vanilla slot
+ * (see [SortingHookMenu.registerSlotHandlers]), so vanilla's own container syncing carries it.
  */
 class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<SortingHookMenu>(menu, playerInventory, title) {

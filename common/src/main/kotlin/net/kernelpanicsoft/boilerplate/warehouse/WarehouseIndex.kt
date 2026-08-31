@@ -5,7 +5,7 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.boilerplate.network.SItemResource
-import net.kernelpanicsoft.boilerplate.pipe.entity.SDirection
+import net.kernelpanicsoft.boilerplate.util.SDirection
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel

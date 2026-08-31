@@ -7,6 +7,7 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import net.kernelpanicsoft.boilerplate.util.SDyeColor
 
 enum class FilterMode { WHITELIST, BLACKLIST }
 
@@ -18,7 +19,7 @@ enum class FilterMode { WHITELIST, BLACKLIST }
  * class kotlin.Int...`). This bit for real: [RoutingModule.mode] silently worked for
  * [FilterMode.WHITELIST] only because it's the field's declared default, which
  * kotlinx.serialization skips encoding entirely - [FilterMode.BLACKLIST] crashed the moment
- * anything actually tried to persist it. Same fix [DirectionSerializer]/[DyeColorSerializer] use
+ * anything actually tried to persist it. Same fix [net.kernelpanicsoft.boilerplate.util.DirectionSerializer]/[net.kernelpanicsoft.boilerplate.util.DyeColorSerializer] use
  * for the same underlying knbt gap.
  */
 object FilterModeSerializer : KSerializer<FilterMode> {

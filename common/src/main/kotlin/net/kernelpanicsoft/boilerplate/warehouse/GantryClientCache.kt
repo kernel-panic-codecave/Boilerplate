@@ -21,14 +21,10 @@ import net.minecraft.world.phys.Vec3
  * dedicated server, it's simply never written to there.
  *
  * [carriedItems] needs no dead-reckoning of its own - it only changes on a real pickup/drop-off, so
- * it's never mid-interpolation the way position is. It does need something position doesn't,
- * though, and this KDoc used to draw exactly the wrong conclusion from the same observation: those
- * pickups and drop-offs happen *while the gantry is stopped*
- * ([WarehouseControllerBlockEntity.tickJobs] only runs then), which was precisely the window the
- * sync was skipping entirely. The delivery that empties the queue was therefore guaranteed never to
- * be transmitted, and a client went on rendering an item orbiting an idle head indefinitely. See
- * [WarehouseControllerBlockEntity.tickGantrySync], which now also sends whenever the carried set
- * changes, moving or not.
+ * it's never mid-interpolation the way position is. Those pickups and drop-offs also happen *while
+ * the gantry is stopped* ([WarehouseControllerBlockEntity.tickJobs] only runs then), so
+ * [WarehouseControllerBlockEntity.tickGantrySync] transmits the carried set whenever it changes,
+ * moving or not, and this cache stays current either way.
  */
 object GantryClientCache {
 	private data class Entry(

@@ -31,7 +31,7 @@ import kotlin.math.roundToInt
  *
  * Reads [WarehouseControllerMenu.routing] once into local Compose state. Edits update that local
  * state immediately (optimistic UI) and push an [UpdateWarehouseRoutingPacket] to persist them
- * server-side. The filter itself needs none of that - it's a real vanilla slot now (see
+ * server-side. The filter is a real vanilla slot (see
  * [WarehouseControllerMenu.registerSlotHandlers]), so vanilla's own container syncing carries it.
  */
 class WarehouseControllerScreen(private val menu: WarehouseControllerMenu, playerInventory: Inventory, title: Component) :

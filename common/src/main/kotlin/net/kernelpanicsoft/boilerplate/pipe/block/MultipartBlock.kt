@@ -5,7 +5,6 @@ import dev.architectury.event.EventResult
 import dev.architectury.event.events.common.InteractionEvent
 import dev.architectury.registry.menu.MenuRegistry
 import net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType
-import net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock.Companion.removeBarePipe
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.item.EncasementItem

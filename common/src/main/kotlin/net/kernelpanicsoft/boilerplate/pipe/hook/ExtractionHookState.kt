@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.field
-import net.kernelpanicsoft.boilerplate.pipe.entity.SDyeColor
+import net.kernelpanicsoft.boilerplate.util.SDyeColor
 import net.minecraft.world.item.DyeColor
 
 /** Self-contained state for one [ExtractionHookType] attachment. */

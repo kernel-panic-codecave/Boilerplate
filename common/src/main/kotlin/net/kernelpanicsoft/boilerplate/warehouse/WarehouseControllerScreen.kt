@@ -1,4 +1,4 @@
-package net.kernelpanicsoft.boilerplate.warehouse.rack
+package net.kernelpanicsoft.boilerplate.warehouse
 
 import androidx.compose.runtime.*
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
@@ -14,16 +14,28 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
-import net.kernelpanicsoft.boilerplate.network.UpdateRackRoutingPacket
+import net.kernelpanicsoft.boilerplate.network.UpdateWarehouseRoutingPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
-import net.minecraft.world.level.block.entity.BlockEntity
 import kotlin.math.roundToInt
 
-abstract class AbstractRackScreen<T, M : AbstractRackMenu<T, M>>(private val menu: M, playerInventory: Inventory, title: Component) :
-	ComposeContainerScreen<M>(menu, playerInventory, title) where T : BlockEntity, T : RackBlockEntity {
+/**
+ * Inbound acceptance configuration for a [WarehouseControllerBlockEntity] - a filter-card slot,
+ * whitelist/blacklist mode, and pipe-routing priority (down to [RoutingModule.DEFAULT_ROUTE_PRIORITY],
+ * where the warehouse acts as the network's catch-all sink - a natural fit for bulk storage, per
+ * `docs/design/m2-sorting-routing.md`). Mirrors the racks' filter + priority shape; unlike a
+ * sorting hook there's no color, since the warehouse's own acceptance ([inboundBuffer]'s predicate)
+ * and routing rank are destination-side, not consignment-side.
+ *
+ * Reads [WarehouseControllerMenu.routing] once into local Compose state. Edits update that local
+ * state immediately (optimistic UI) and push an [UpdateWarehouseRoutingPacket] to persist them
+ * server-side. The filter itself needs none of that - it's a real vanilla slot now (see
+ * [WarehouseControllerMenu.registerSlotHandlers]), so vanilla's own container syncing carries it.
+ */
+class WarehouseControllerScreen(private val menu: WarehouseControllerMenu, playerInventory: Inventory, title: Component) :
+	ComposeContainerScreen<WarehouseControllerMenu>(menu, playerInventory, title) {
 
 	private val contentWidth = 18 * 9
 
@@ -37,7 +49,7 @@ abstract class AbstractRackScreen<T, M : AbstractRackMenu<T, M>>(private val men
 
 		fun update(next: RoutingModule) {
 			module = next
-			BoilerplateNetworkChannel.toServer(UpdateRackRoutingPacket(menu.pos, next))
+			BoilerplateNetworkChannel.toServer(UpdateWarehouseRoutingPacket(menu.pos, next))
 		}
 
 		BoilerplateTheme {
@@ -70,7 +82,7 @@ abstract class AbstractRackScreen<T, M : AbstractRackMenu<T, M>>(private val men
 	}
 
 	companion object {
-		private const val PRIORITY_MIN = 0
+		private const val PRIORITY_MIN = RoutingModule.DEFAULT_ROUTE_PRIORITY
 		private const val PRIORITY_MAX = 10
 		private const val PRIORITY_RANGE = PRIORITY_MAX - PRIORITY_MIN
 	}

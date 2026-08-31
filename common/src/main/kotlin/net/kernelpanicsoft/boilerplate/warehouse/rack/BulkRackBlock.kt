@@ -7,7 +7,7 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 
 /** See [BulkRackBlockEntity]. */
-class BulkRackBlock(properties: Properties) : RackBlock(properties) {
+class BulkRackBlock(properties: Properties) : RackBlock<BulkRackBlockEntity>(properties) {
 	override fun codec(): MapCodec<out BaseEntityBlock> = CODEC
 
 	override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity = BulkRackBlockEntity(pos, state)

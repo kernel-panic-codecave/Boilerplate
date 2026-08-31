@@ -23,7 +23,6 @@ import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisua
 import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.rack.exposeCommonItemStorage
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
 
@@ -69,7 +68,7 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 			add(BlockRegistry.Multipart)
 		}
 	}.apply {
-		exposeCommonItemStorage { tile, direction ->
+		exposeItemStorage { tile, direction ->
 			val hookAtFace = direction?.let { tile.hooks[it.name] }
 			(hookAtFace as? ItemStorageExposer)?.exposedItemStorage(tile)
 				?: (tile.encasement.value as? ItemStorageExposer)?.exposedItemStorage(tile)
@@ -120,14 +119,14 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 		blockEntityType(::BulkRackBlockEntity) {
 			add(BlockRegistry.BulkRack)
 		}
-	}.apply { exposeCommonItemStorage(BulkRackBlockEntity::storage) }
+	}.apply { exposeItemStorage(BulkRackBlockEntity::storage) }
 
 	/** See [BulkRack]'s identical [exposeCommonItemStorage] note. */
 	val UnstackableRack: BlockEntityType<UnstackableRackBlockEntity> by register("unstackable_rack") {
 		blockEntityType(::UnstackableRackBlockEntity) {
 			add(BlockRegistry.UnstackableRack)
 		}
-	}.apply { exposeCommonItemStorage(UnstackableRackBlockEntity::storage) }
+	}.apply { exposeItemStorage(UnstackableRackBlockEntity::storage) }
 
 	/**
 	 * Its own [BlockEntityType] registration (rather than reusing [Pipe]'s), even though both

@@ -100,15 +100,24 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 	}
 
 	val GeneralRack: GeneralRackBlock by register("general_rack") {
-		GeneralRackBlock(blockProperties(Blocks.BARREL) { requiresCorrectToolForDrops() })
+		GeneralRackBlock(blockProperties(Blocks.BARREL) {
+			noOcclusion()
+			requiresCorrectToolForDrops()
+		})
 	}
 
 	val BulkRack: BulkRackBlock by register("bulk_rack") {
-		BulkRackBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
+		BulkRackBlock(blockProperties(Blocks.IRON_BLOCK) {
+			noOcclusion()
+			requiresCorrectToolForDrops()
+		})
 	}
 
 	val UnstackableRack: UnstackableRackBlock by register("unstackable_rack") {
-		UnstackableRackBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
+		UnstackableRackBlock(blockProperties(Blocks.IRON_BLOCK) {
+			noOcclusion()
+			requiresCorrectToolForDrops()
+		})
 	}
 
 	val PressurePipe: PressurePipeBlock by register("pressure_pipe") {

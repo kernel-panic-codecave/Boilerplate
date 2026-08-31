@@ -8,24 +8,12 @@ import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.crafting.gui.CraftingBufferMenu
 import net.kernelpanicsoft.boilerplate.crafting.gui.CraftingBufferScreen
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardScreen
-import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookScreen
-import net.kernelpanicsoft.boilerplate.pipe.gui.InterfaceHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.InterfaceHookScreen
-import net.kernelpanicsoft.boilerplate.pipe.gui.PatternProviderHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.PatternProviderHookScreen
-import net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookScreen
-import net.kernelpanicsoft.boilerplate.pipe.gui.RequesterHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.RequesterHookScreen
-import net.kernelpanicsoft.boilerplate.pipe.gui.SortingHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.SortingHookScreen
-import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.TerminalHookMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.TerminalHookScreen
+import net.kernelpanicsoft.boilerplate.pipe.gui.*
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardTarget
+import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerMenu
+import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerScreen
+import net.kernelpanicsoft.boilerplate.warehouse.rack.*
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.inventory.MenuType
@@ -103,6 +91,34 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(Boilerplate.MOD, Regis
 		}
 	}
 
+	val BulkRack: MenuType<BulkRackMenu> by register("bulk_rack") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as BulkRackBlockEntity
+			BulkRackMenu(id, inventory, tile)
+		}
+	}
+
+	val GeneralRack: MenuType<GeneralRackMenu> by register("general_rack") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as GeneralRackBlockEntity
+			GeneralRackMenu(id, inventory, tile)
+		}
+	}
+
+	val UnstackableRack: MenuType<UnstackableRackMenu> by register("unstackable_rack") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as UnstackableRackBlockEntity
+			UnstackableRackMenu(id, inventory, tile)
+		}
+	}
+
+	val WarehouseController: MenuType<WarehouseControllerMenu> by register("warehouse_controller") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level().getBlockEntity(buf.readBlockPos()) as WarehouseControllerBlockEntity
+			WarehouseControllerMenu(id, inventory, tile)
+		}
+	}
+
 	override fun initClient() {
 		MenuRegistry.registerScreenFactory(SortingHook, ::SortingHookScreen)
 		MenuRegistry.registerScreenFactory(RequesterHook, ::RequesterHookScreen)
@@ -113,5 +129,9 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(Boilerplate.MOD, Regis
 		MenuRegistry.registerScreenFactory(CraftingTerminalHook, ::CraftingTerminalHookScreen)
 		MenuRegistry.registerScreenFactory(PatternTerminalHook, ::PatternTerminalHookScreen)
 		MenuRegistry.registerScreenFactory(CraftingBuffer, ::CraftingBufferScreen)
+		MenuRegistry.registerScreenFactory(BulkRack, ::BulkRackScreen)
+		MenuRegistry.registerScreenFactory(GeneralRack, ::GeneralRackScreen)
+		MenuRegistry.registerScreenFactory(UnstackableRack, ::UnstackableRackScreen)
+		MenuRegistry.registerScreenFactory(WarehouseController, ::WarehouseControllerScreen)
 	}
 }

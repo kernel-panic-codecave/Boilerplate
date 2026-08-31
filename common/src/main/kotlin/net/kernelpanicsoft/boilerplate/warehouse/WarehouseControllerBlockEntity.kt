@@ -1,22 +1,29 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
+import dev.architectury.registry.menu.ExtendedMenuProvider
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.archie.serialization.Sync
+import net.kernelpanicsoft.archie.serialization.field
 import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.GantrySyncPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.acceptsByFilter
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.TileRegistry
+import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.Companion.GANTRY_SYNC_INTERVAL_TICKS
+import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.Companion.HEAD_CLEARANCE
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.Companion.NO_PRESSURE_LINE
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.Companion.RACK_SEARCH_LIMIT
 import net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity
@@ -24,8 +31,13 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.TicketType
+import net.minecraft.world.entity.player.Inventory
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block.UPDATE_ALL
@@ -34,7 +46,7 @@ import net.minecraft.world.level.chunk.status.ChunkStatus
 import net.minecraft.world.phys.Vec3
 
 class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
-	NBTBlockEntity(TileRegistry.WarehouseController, pos, state), PressureConsumer {
+	NBTBlockEntity(TileRegistry.WarehouseController, pos, state), PressureConsumer, ExtendedMenuProvider {
 
 	@Sync
 	private var boundsSlot: BoundsSlot by field(BoundsSlot.serializer()) { BoundsSlot() }
@@ -263,9 +275,16 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
+	/** The controller's own routing module: inbound acceptance mode plus pipe-routing priority, edited via [WarehouseControllerScreen] - see `docs/design/m3-warehouse-storage.md` for what a warehouse-facing filter/priority does to pipe routing. */
+	@Sync
+	var routing: RoutingModule by field { RoutingModule() }
+
+	/** A single filter-card slot, matching [RackBlockEntity]'s own - what [inboundBuffer]'s acceptance predicate evaluates against. */
+	val filter: ArchieItemStorage by itemField(1, filter = { it.item is FilterCardItem })
+
 	val index: WarehouseIndex = WarehouseIndex()
 	val gantry: GantryState = GantryState(Vec3.atCenterOf(pos))
-	val inboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
+	val inboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE, filter = { acceptsByFilter(filter, routing, it) })
 	val outboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
 
 	/**
@@ -481,6 +500,15 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		super.setRemoved()
 	}
 
+	override fun saveExtraData(buf: FriendlyByteBuf) {
+		buf.writeBlockPos(blockPos)
+	}
+
+	override fun getDisplayName(): Component = blockState.block.name
+
+	override fun createMenu(id: Int, inventory: Inventory, player: Player): AbstractContainerMenu =
+		WarehouseControllerMenu(id, inventory, this)
+
 	fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
 		val serverLevel = level as ServerLevel
@@ -558,7 +586,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		lastSyncedCarried = carried
 		BoilerplateNetworkChannel.toNearPlayers(
 			level, null, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, GANTRY_SYNC_RADIUS,
-			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath, carried),
+			GantrySyncPacket(pos, gantry.pos, gantry.remainingPath, carried, effectiveGantrySpeed(), level.gameTime),
 		)
 	}
 

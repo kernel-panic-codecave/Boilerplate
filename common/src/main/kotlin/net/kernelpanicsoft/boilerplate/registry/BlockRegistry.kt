@@ -11,6 +11,7 @@ import net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlock
 import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlock
 import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlock
+import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlock
 import net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlock
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.registries.Registries
@@ -133,6 +134,10 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 
 	val PressureTankPart: ConnectingEncasementModelBlock by register("pressure_tank_part") {
 		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
+	}
+
+	val FluidTank: FluidTankBlock by register("fluid_tank") {
+		FluidTankBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
 	}
 
 	val CreativePressureSource: CreativePressureSourceBlock by register("creative_pressure_source") {

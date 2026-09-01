@@ -1,11 +1,11 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
-import earth.terrarium.common_storage_lib.item.ItemApi
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.lookup.BlockLookup
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookType
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter.step
 import net.kernelpanicsoft.boilerplate.registry.HookTypeRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
@@ -27,10 +27,14 @@ import kotlin.takeIf
 import kotlin.to
 
 /**
- * Resolves a route from a pipe position to the best network-reachable inventory that will accept
- * a resource, via unweighted BFS. Routes are cached per
+ * Resolves a route from a pipe position to the best network-reachable storage that will accept
+ * a resource of type [T], via unweighted BFS. One instance per
+ * [net.kernelpanicsoft.boilerplate.pipe.network.NetworkType] (an item router, a fluid router),
+ * differing only in which [api] it probes and how it evaluates a
+ * [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState]'s filter for its own kind of
+ * resource ([acceptsByFilter]). Routes are cached per
  * `(networkId, network.version, resource, color, exclude)` and invalidated automatically whenever
- * the network's topology or routing modules change (both bump [ItemPipeNetwork.version]). Only
+ * the network's topology or routing modules change (both bump the owning network's version). Only
  * found routes are cached - a "nothing accepts" miss is transient and carries no invalidation
  * event of its own, so caching it would wedge pushes until an unrelated topology change.
  *
@@ -38,7 +42,7 @@ import kotlin.to
  * that a sorting hook's [net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule.priority]
  * can prefer one accepting destination over another. A candidate reached through a pipe face with
  * a [net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookType] hook attached is only valid if
- * the item's [color] and that hook's filter/mode accept it; a candidate reached through a
+ * the resource's [color] and that hook's filter/mode accept it; a candidate reached through a
  * hookless face always accepts, at the baseline priority (0) - except on a
  * [net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity] that also carries a
  * [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookType] hook on one of its other
@@ -57,39 +61,74 @@ import kotlin.to
  * stock) - the far network's own topology beyond that one hook stays invisible to this search,
  * which is the isolation the boundary exists for.
  */
-object PipeRouter {
-	private data class CacheKey(
+abstract class PipeRouter<T : ResourceComponent> {
+	/** How this router finds a neighbor's storage of its own kind - items via `ItemApi`, fluids via `FluidApi`. */
+	protected abstract val api: BlockLookup<CommonStorage<T>, Direction?>
+
+	/** Whether a [SortingHookState]'s own filter accepts this router's [resource] - item filters evaluate item cards, fluid filters (a later pass) evaluate fluid cards. */
+	protected abstract fun acceptsByFilter(hook: SortingHookState, resource: T, color: DyeColor?): Boolean
+
+	/**
+	 * Whether [pos] is a pipe segment that is nonetheless *specifically waiting* for [resource]
+	 * right now - a Crafting CPU mid-job, and nothing else today.
+	 *
+	 * A pipe segment is ordinarily pure transit ([step] walks through it and never weighs it as a
+	 * destination), which is exactly why a CPU's own crafting pool cannot normally be pushed into.
+	 * A segment that answers `true` here is weighed as a candidate *as well as* being walked
+	 * through, at [AWAITED_DELIVERY_PRIORITY].
+	 *
+	 * Default `false`: only [ItemPipeRouter] has anything that can be awaited.
+	 */
+	protected open fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: T): Boolean = false
+
+	private data class CacheKey<T : ResourceComponent>(
 		val networkId: UUID,
 		val version: Int,
-		val resource: ItemResource,
+		val resource: T,
 		val color: DyeColor?,
 		val exclude: Set<BlockPos>?,
 	)
 
 	private data class Candidate(val path: List<BlockPos>, val priority: Int)
 
+	private companion object {
+		/**
+		 * The priority an [awaitsDelivery] destination routes at - deliberately unbeatable, above
+		 * the `0..10` a sorting hook's own slider offers and far above
+		 * [net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule.DEFAULT_ROUTE_PRIORITY].
+		 *
+		 * Safe *only* because [awaitsDelivery] is so narrowly scoped: it is true just for the exact
+		 * resource an in-flight job is still short of, and stops being true the moment it is not.
+		 * Within that window there is no destination that should win instead - filing a craft's own
+		 * output into a chest, however high its configured priority, stalls the craft. Widen
+		 * [awaitsDelivery] and this stops being safe.
+		 */
+		const val AWAITED_DELIVERY_PRIORITY = Int.MAX_VALUE
+	}
+
 	/** One destination-face probe - [face] is the probed face of [pos] (the side of the neighbor block the current pipe looks at), so the same block's different faces are each evaluated independently rather than collapsed onto whichever face the search happens to reach first. */
 	private data class ProbeKey(val pos: BlockPos, val face: Direction)
 
-	private val cache = HashMap<CacheKey, List<BlockPos>?>()
+	private val cache = HashMap<CacheKey<T>, List<BlockPos>?>()
 
 	/**
-	 * Returns the hop path (pipes, ending with the accepting inventory position) from [from], or
+	 * Returns the hop path (pipes, ending with the accepting storage position) from [from], or
 	 * null if nothing on the network accepts [resource]. Destination blocks are probed *per face*:
-	 * each side of a candidate inventory is evaluated independently (that side's own storage, and
+	 * each side of a candidate storage is evaluated independently (that side's own storage, and
 	 * whichever [net.kernelpanicsoft.boilerplate.pipe.hook.PipeAttachmentType] hook sits on the
 	 * crossing face of the current pipe), so a block adjacent to several pipes isn't collapsed onto
 	 * whichever face the search happens to reach first. Positions in [exclude] are never
 	 * considered candidate destinations and can't be walked through - an extractor pulling from an
-	 * adjacent inventory passes that inventory's position here so a route can't just hand the item
-	 * straight back to where it came from, and an
+	 * adjacent inventory passes that inventory's position here so a route can't just hand the
+	 * resource straight back to where it came from, and an
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState]'s pass-through inserts pass
 	 * both its own position and the machine physically feeding it, so a hopper on the face doesn't
-	 * get its own items bounced straight back into it. [color] is the traveling item's consignment
-	 * color; sorting pipes with a color set only accept a matching (or colorless) item.
+	 * get its own resources bounced straight back into it. [color] is the traveling envelope's
+	 * consignment color; sorting pipes with a color set only accept a matching (or colorless)
+	 * envelope.
 	 */
-	fun findRoute(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor? = null, exclude: Collection<BlockPos> = emptySet()): List<BlockPos>? {
-		val manager = PipeNetworkManager.get(level)
+	fun findRoute(level: ServerLevel, from: BlockPos, resource: T, color: DyeColor? = null, exclude: Collection<BlockPos> = emptySet()): List<BlockPos>? {
+		val manager = managerFor(level)
 		val networkId = manager.networkIdAt(from) ?: return null
 		val network = manager.network(networkId) ?: return null
 
@@ -105,12 +144,17 @@ object PipeRouter {
 		// transient state that - unlike a topology or routing change - bumps no version to
 		// invalidate a cached result, so a one-time phantom rejection would otherwise wedge every
 		// subsequent push until some unrelated network change.
-		if (route != null) cache[key] = route
+		// A route chosen because its destination was *awaiting* this resource is not cacheable: the
+		// cache key is (network, version, resource, colour, exclude) and knows nothing about job
+		// state, so once the job finishes the entry would go on funnelling the resource into a CPU
+		// that no longer wants it until some unrelated topology change bumped the version. Same
+		// reasoning as the uncached miss above - transient state, no invalidation event of its own.
+		if (route != null && !awaitsDelivery(level, route.last(), resource)) cache[key] = route
 		return route
 	}
 
-	/** Whether [pos] carries [ItemNetworkType] - a real block-state check, not registry bookkeeping, so it stays correct through a bare [net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock]'s promotion/demotion without any extra invalidation call. */
-	fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = ItemNetworkType in networkTypesAt(level, pos)
+	/** The network manager this router searches within - the resource-kind-specific topology (items vs fluids). */
+	protected abstract fun managerFor(level: ServerLevel): AbstractPipeNetworkManager<*>
 
 	/**
 	 * Returns the hop path (pipes, ending with [to]) from [from] to one *specific* destination,
@@ -153,7 +197,10 @@ object PipeRouter {
 		return stepTo(level, to, queue, visited)
 	}
 
-	private fun search(level: ServerLevel, from: BlockPos, resource: ItemResource, color: DyeColor?, exclude: Set<BlockPos>?, trace: RouteSearchTrace? = null): List<BlockPos>? {
+	/** Whether [pos] carries this router's own network type - a real block-state check, not registry bookkeeping, so it stays correct through a bare [net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock]'s promotion/demotion without any extra invalidation call. */
+	abstract fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean
+
+	private fun search(level: ServerLevel, from: BlockPos, resource: T, color: DyeColor?, exclude: Set<BlockPos>?, trace: RouteSearchTrace? = null): List<BlockPos>? {
 		val traversed = hashSetOf<BlockPos>()
 		val probed = hashSetOf<ProbeKey>()
 		for (pos in listOf(from) + (exclude ?: emptySet())) {
@@ -167,7 +214,7 @@ object PipeRouter {
 
 	private tailrec fun step(
 		level: ServerLevel,
-		resource: ItemResource,
+		resource: T,
 		color: DyeColor?,
 		queue: ArrayDeque<Pair<BlockPos, List<BlockPos>>>,
 		traversed: HashSet<BlockPos>,
@@ -186,6 +233,18 @@ object PipeRouter {
 			if (isPipe(level, neighborPos) && !boundary) {
 				trace?.record(TraceEdge(current, neighborPos, EdgeKind.TRANSIT))
 				if (traversed.add(neighborPos)) queue += neighborPos to (path + neighborPos)
+				// Still transit - but a segment actively waiting on this resource (a Crafting CPU
+				// mid-job) is *also* a destination, and outranks every ordinary one. Anything else
+				// accepting it means a craft stalls while its own output is filed away somewhere.
+				if (awaitsDelivery(level, neighborPos, resource)) {
+					trace?.record(TraceEdge(current, neighborPos, EdgeKind.CANDIDATE))
+					val awaiting = Candidate(path + neighborPos, AWAITED_DELIVERY_PRIORITY)
+					if (nextBest == null || awaiting.priority > nextBest.priority ||
+						(awaiting.priority == nextBest.priority && awaiting.path.size < nextBest.path.size)
+					) {
+						nextBest = awaiting
+					}
+				}
 				continue
 			}
 
@@ -195,7 +254,7 @@ object PipeRouter {
 			if (boundary) trace?.record(TraceEdge(current, neighborPos, EdgeKind.BOUNDARY))
 			if (!probed.add(ProbeKey(neighborPos, direction.opposite))) continue
 
-			val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite)
+			val storage = api.find(level, neighborPos, direction.opposite)
 			if (storage == null || storage.insert(resource, 1, true) <= 0) {
 				trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
 				continue
@@ -218,7 +277,7 @@ object PipeRouter {
 					trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
 					continue
 				}
-				if (!hookState.accepts(resource, color)) {
+				if (!acceptsByFilter(hookState, resource, color)) {
 					trace?.record(TraceEdge(current, neighborPos, EdgeKind.REJECTED))
 					continue
 				}
@@ -245,5 +304,41 @@ object PipeRouter {
 		for ((_, entry) in tile.hooks) if (entry.type == TerminalHookType.ID) return true
 		return false
 	}
+}
 
+/** The item-pipe router - [SortingHookState.accepts] is the item filter; members are item-pipe positions. */
+object ItemPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources.item.ItemResource>() {
+	override val api: BlockLookup<CommonStorage<earth.terrarium.common_storage_lib.resources.item.ItemResource>, Direction?>
+		get() = earth.terrarium.common_storage_lib.item.ItemApi.BLOCK
+
+	override fun acceptsByFilter(hook: SortingHookState, resource: earth.terrarium.common_storage_lib.resources.item.ItemResource, color: DyeColor?): Boolean =
+		hook.accepts(resource, color)
+
+	override fun managerFor(level: ServerLevel): AbstractPipeNetworkManager<*> = PipeNetworkManager.get(level)
+
+	override fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = ItemNetworkType in networkTypesAt(level, pos)
+
+	/** A Crafting CPU cluster mid-job - see [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.awaitsDelivery]. */
+	override fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: earth.terrarium.common_storage_lib.resources.item.ItemResource): Boolean =
+		net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.awaitsDelivery(level, pos, resource)
+}
+
+/** The fluid-pipe router - members are positions carrying the fluid network type; filters through the same cards items do (see [acceptsByFilter]). */
+object FluidPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources.fluid.FluidResource>() {
+	override val api: BlockLookup<CommonStorage<earth.terrarium.common_storage_lib.resources.fluid.FluidResource>, Direction?>
+		get() = earth.terrarium.common_storage_lib.fluid.FluidApi.BLOCK
+
+	/**
+	 * The same [SortingHookState.accepts] the item router uses. A fluid is a perfectly ordinary
+	 * input to a filter card now that [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterContext]
+	 * carries any resource kind: a mod, tag or regex card judges it directly, while an item ghost
+	 * grid simply never matches one, which the card's own mode then turns into the right answer
+	 * (a whitelist denies it, a blacklist passes it) exactly as it does for a non-matching item.
+	 */
+	override fun acceptsByFilter(hook: SortingHookState, resource: earth.terrarium.common_storage_lib.resources.fluid.FluidResource, color: DyeColor?): Boolean =
+		hook.accepts(resource, color)
+
+	override fun managerFor(level: ServerLevel): AbstractPipeNetworkManager<*> = FluidNetworkManager.get(level)
+
+	override fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = FluidNetworkType in networkTypesAt(level, pos)
 }

@@ -107,11 +107,26 @@ class SubnetBoundaryGameTest {
 		}
 	}
 
-	/** [InterfaceHookType.drainExcess] pushes whatever sits in [InterfaceHookState.stock] above its target outward, unprompted - an un-ghosted column is pure excess, so a hopper (or a player) dropping items into an un-ghosted interface behaves like an [ExtractionHookType] sitting on a chest, not a dead end. */
+	/**
+	 * [InterfaceHookType.drainExcess] pushes whatever sits in [InterfaceHookState.stock] above its
+	 * target outward, unprompted - an un-ghosted column is pure excess, so a hopper (or a player)
+	 * dropping items into an un-ghosted interface behaves like an [ExtractionHookType] sitting on a
+	 * chest, not a dead end.
+	 *
+	 * The geometry is load-bearing: the destination sits on a face the hook is **not** on. An
+	 * interface drains *into its own network*, never out through its own face - across the boundary
+	 * it is a passive seam that other hooks read from and write to, not something that pushes
+	 * (`m2-sorting-routing.md`, "Hook taxonomy"). Routing enforces that on its own: a candidate
+	 * reached through a face carrying a `validRoute = false` hook is rejected, and
+	 * [InterfaceHookType] is one. Putting the chest behind the hooked face instead tests the
+	 * opposite of the design and can only pass by weakening boundary isolation for every hook that
+	 * defaults to `validRoute = false`.
+	 */
 	@GameTest(template = SMALL, timeoutTicks = 80)
 	fun GameTestHelper.testInterfaceSelfPushesStockIntoTheNetwork() {
 		val interfacePos = BlockPos(0, 2, 0)
-		val destPos = BlockPos(0, 2, 1)
+		// East of the interface - its own side. The hook faces south, into the seam.
+		val destPos = BlockPos(1, 2, 0)
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		val interfaceTile = hookAt(interfacePos)

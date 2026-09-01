@@ -7,7 +7,9 @@ import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementState
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
+import net.kernelpanicsoft.boilerplate.pipe.hook.ExtractionHookType
 import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.level.block.Block
@@ -80,6 +82,25 @@ internal fun GameTestHelper.placeAdjacentPressureSource(pos: BlockPos) {
 }
 
 /**
+ * Places a pipe segment at [pos] carrying an [ExtractionHookType] hook on its [direction] face -
+ * the setup a **processing** machine needs so its output reaches the network.
+ *
+ * A processing pattern's own target is expected to get its output out itself: either the machine
+ * auto-ejects, or the player puts one of these on it. Nothing in the crafting layer fetches it (a
+ * vanilla crafting table is the exception - it has no inventory at all, so its results live in the
+ * pattern hook's virtual buffers and *are* fetched). A test standing a plain chest in for a machine
+ * has to supply the ejector the same way a player would, or its outputs simply never move.
+ */
+internal fun GameTestHelper.placeExtractionHook(pos: BlockPos, direction: Direction): MultipartBlockEntity {
+	setBlock(pos, BlockRegistry.Multipart.defaultBlockState())
+	val tile = getBlockEntity(pos) as MultipartBlockEntity
+	tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+	tile.hooks.getOrPut(direction.name) { ExtractionHookType.createState() }
+	level.setBlock(tile.blockPos, Block.updateFromNeighbourShapes(level.getBlockState(tile.blockPos), level, tile.blockPos), Block.UPDATE_ALL)
+	return tile
+}
+
+/**
  * Registers Boilerplate's GameTest suite. Only ever touched from behind
  * [net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform.isGameTest] - see
  * [Boilerplate.initCommon] - so `archie-gametest-common`, a dev-only dependency absent from
@@ -94,6 +115,9 @@ internal object BoilerplateGameTest : AGameTestEventObject(Boilerplate.MOD) {
 internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 	server {
 		register<PipeNetworkGameTest>()
+		register<FluidPipeNetworkGameTest>()
+		register<PipeContentsHandoffGameTest>()
+		register<SpectatorMenuGameTest>()
 		register<PressurePipeNetworkGameTest>()
 		register<PressureEqualizationGameTest>()
 		register<CompressorGameTest>()
@@ -129,6 +153,7 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<PatternProviderHookGameTest>()
 		register<PatternTerminalHookGameTest>()
 		register<CraftingBufferJobGameTest>()
+		register<CraftingCpuPushTargetGameTest>()
 		register<ItemIconGameTest>()
 	}
 }

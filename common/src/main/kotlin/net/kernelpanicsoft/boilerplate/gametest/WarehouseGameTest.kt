@@ -105,11 +105,11 @@ class WarehouseGameTest {
 		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(insideChestPos))
 
 		succeedWhen {
-			val diamondEntries = controller.index.locations[ItemResource.of(ItemStack(Items.DIAMOND))]
-			assertTrue(diamondEntries != null && diamondEntries.size == 1 && diamondEntries[0].amount == 5L) {
+			val diamondEntries = controller.index.slotsFor(ItemResource.of(ItemStack(Items.DIAMOND)))
+			assertTrue(diamondEntries.size == 1 && diamondEntries[0].amount == 5L) {
 				"Expected one indexed diamond entry with amount 5, got $diamondEntries"
 			}
-			assertTrue(controller.index.locations[ItemResource.of(ItemStack(Items.GOLD_INGOT))] == null) {
+			assertTrue(controller.index.slotsFor(ItemResource.of(ItemStack(Items.GOLD_INGOT))).isEmpty()) {
 				"Expected the gold ingot outside the bound volume to not be indexed"
 			}
 		}
@@ -306,7 +306,7 @@ class WarehouseGameTest {
 		// second request against the now-stale entry shouldn't have to wait for it, or it'll keep
 		// re-discovering the same dead slot and sending the gantry back and forth forever.
 		runAfterDelay(10) {
-			val indexed = controller.index.locations[resource]?.firstOrNull()
+			val indexed = controller.index.slotsFor(resource).firstOrNull()
 			assertTrue(indexed != null && indexed.amount == 5L) {
 				"Expected the initial rescan to have indexed 5 diamonds, got $indexed"
 			}
@@ -317,8 +317,8 @@ class WarehouseGameTest {
 				assertTrue(controller.outboundBuffer.getAmount(0) == 0L) {
 					"Expected nothing to have been retrieved from the now-empty rack, got amount ${controller.outboundBuffer.getAmount(0)}"
 				}
-				assertTrue(controller.index.locations[resource].isNullOrEmpty()) {
-					"Expected the stale index entry to have been dropped after the failed retrieval, got ${controller.index.locations[resource]}"
+				assertTrue(controller.index.slotsFor(resource).isEmpty()) {
+					"Expected the stale index entry to have been dropped after the failed retrieval, got ${controller.index.slotsFor(resource)}"
 				}
 				assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished its trip home by now" }
 				succeed()
@@ -783,8 +783,8 @@ class WarehouseGameTest {
 
 		succeedWhen {
 			if (!defragQueued) {
-				val entries = controller.index.locations[resource]
-				if (entries != null && entries.size == 2) {
+				val entries = controller.index.slotsFor(resource)
+				if (entries.size == 2) {
 					controller.enqueueDefrag(level)
 					defragQueued = true
 				}
@@ -799,8 +799,8 @@ class WarehouseGameTest {
 			assertTrue(biggerRack.getItem(0).`is`(Items.DIAMOND) && biggerRack.getItem(0).count == 8) {
 				"Expected the bigger rack to hold all 8 diamonds after defrag, got ${biggerRack.getItem(0)}"
 			}
-			val entries = controller.index.locations[resource]
-			assertTrue(entries != null && entries.size == 1 && entries[0].amount == 8L) {
+			val entries = controller.index.slotsFor(resource)
+			assertTrue(entries.size == 1 && entries[0].amount == 8L) {
 				"Expected the index to reflect one consolidated entry of 8 after defrag, got $entries"
 			}
 			assertTrue(!controller.gantry.isMoving) { "Expected the gantry to have finished and returned home by now" }

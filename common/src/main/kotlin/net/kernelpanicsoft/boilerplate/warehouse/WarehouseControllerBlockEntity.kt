@@ -17,7 +17,7 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.acceptsByFilter
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
@@ -329,6 +329,21 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	/** What [tickGantrySync] last told clients the gantry was carrying, so it can notice the set changing while the gantry is parked - see its own KDoc for why that case would otherwise never be sent at all. */
 	private var lastSyncedCarried: List<ResourceStack<ItemResource>> = emptyList()
 
+	/** The tier [bounds]' own size put this controller in - what sets its gantry speed, pressure draw and scan strategy. */
+	val scale: WarehouseScale get() = scaleClass
+
+	/**
+	 * This controller's crane work, split by how far along it is - [jobs] not yet started,
+	 * [pickupQueue] currently being fetched, [deliveryQueue] in hand awaiting drop-off, and
+	 * [defragQueue]'s housekeeping backlog behind all of it. Defensive copies of the live queues,
+	 * for [net.kernelpanicsoft.boilerplate.network.WarehouseDebugSync] and anything else that wants
+	 * to look without being able to disturb them.
+	 */
+	val pendingJobs: List<GantryJob> get() = jobs.toList()
+	val fetchingJobs: List<GantryJob> get() = pickupQueue.toList()
+	val carriedJobs: List<GantryJob> get() = deliveryQueue.map { it.job }
+	val defragBacklog: List<GantryJob> get() = defragQueue.toList()
+
 	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, stack: ResourceStack<ItemResource>, deliverTo: DeliveryTarget? = null) {
 		jobs += GantryJob.Retrieve(slot, stack, deliverTo)
 	}
@@ -371,7 +386,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		return Direction.entries.firstNotNullOfOrNull { direction ->
 			val neighborPos = blockPos.relative(direction)
 			if (!serverLevel.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) return@firstNotNullOfOrNull null
-			PipeRouter.findRouteTo(serverLevel, neighborPos, deliverTo)?.size
+			ItemPipeRouter.findRouteTo(serverLevel, neighborPos, deliverTo)?.size
 		} ?: 0
 	}
 
@@ -388,7 +403,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		var skip = claimed[resource] ?: 0L
 		var remaining = amount
 		var claimedNow = 0L
-		for (slot in index.locations[resource].orEmpty()) {
+		for (slot in index.slotsFor(resource)) {
 			if (remaining <= 0) break
 			if (skip >= slot.amount) {
 				skip -= slot.amount
@@ -657,13 +672,15 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 	}
 
-	private fun sourcePos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
+	/** Where the crane has to be to *pick up* [job] - the rack it comes out of, or this controller itself for a stow out of the staging buffer. */
+	fun sourcePos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
 		is GantryJob.Retrieve -> job.slot.pos
 		is GantryJob.Stow -> controllerPos
 		is GantryJob.Move -> job.slot.pos
 	}
 
-	private fun destinationPos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
+	/** Where the crane has to be to *drop off* [job] - the rack it lands in, or this controller itself for a retrieve into the outbound buffer. */
+	fun destinationPos(job: GantryJob, controllerPos: BlockPos): BlockPos = when (job) {
 		is GantryJob.Retrieve -> controllerPos
 		is GantryJob.Stow -> job.targetPos
 		is GantryJob.Move -> job.targetPos
@@ -743,7 +760,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			val neighborPos = pos.relative(direction)
 			if (!level.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) continue
 			val pipeTile = level.getBlockEntity(neighborPos) as? PipeBlockEntity ?: continue
-			val route = PipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
+			val route = ItemPipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
 			val extracted = outboundBuffer.extract(resource, amount, false)
 			if (extracted <= 0) continue
 			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null, deliverFace, reservationId)
@@ -815,7 +832,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		}
 
 		// 1. Try racks that already contain matching items
-		val stocked = index.locations[resource].orEmpty()
+		val stocked = index.slotsFor(resource)
 			.map { Triple(it.pos, it.direction, priorityOf(it.pos)) }
 			.sortedByDescending { it.third }
 			.map { it.first to it.second }

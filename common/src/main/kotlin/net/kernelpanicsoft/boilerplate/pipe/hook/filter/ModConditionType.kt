@@ -14,18 +14,18 @@ import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
-import net.minecraft.core.registries.BuiltInRegistries
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
-/** Matches every item registered under [ModConditionState.modId]'s namespace, e.g. `"minecraft"` or `"create"`. */
+/** Matches every resource registered under [ModConditionState.modId]'s namespace, e.g. `"minecraft"` or `"create"` - items and fluids alike, through [ResourceKindRegistry]. */
 object ModConditionType : FilterConditionType<ModConditionState>() {
 	val ID: ResourceLocation = Boilerplate.MOD % "mod"
 
 	override fun createState(): ModConditionState = ModConditionState()
 
 	override fun matches(state: ModConditionState, context: FilterContext): Boolean =
-		state.modId.isNotBlank() && (BuiltInRegistries.ITEM.getKey(context.resource.item) as ResourceLocation?)?.namespace == state.modId
+		state.modId.isNotBlank() && ResourceKindRegistry.forResource(context.resource)?.registryId(context.resource)?.namespace == state.modId
 
 	@Composable
 	override fun content(menu: FilterCardMenu, state: ModConditionState, clickHandler: ClickHandler) {

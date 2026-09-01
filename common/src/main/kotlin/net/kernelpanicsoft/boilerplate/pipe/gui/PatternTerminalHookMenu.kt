@@ -63,7 +63,11 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
 		val grid = ArchieItemStorage(state.ghostInputs.size)
 		for ((index, resource) in state.ghostInputs.withIndex()) {
-			if (!resource.isBlank) grid[index].set(resource.toStack(1))
+			if (resource.isBlank) continue
+			// A CRAFTING pattern is matched against a real vanilla recipe, which is one-item-per-cell -
+			// see PatternTerminalHookState.ghostInputAmounts for why a count there would be wrong.
+			val perRun = if (state.patternKind == PatternKind.PROCESSING) state.ghostInputAmounts[index].toInt().coerceAtLeast(1) else 1
+			grid[index].set(resource.toStack(perRun))
 		}
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PatternGridPreviewPacket(InstantCrafting.match(level, grid)))
 	}
@@ -72,7 +76,10 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	fun currentPatternKind(): PatternKind = (tile.hooks[direction.name] as? PatternTerminalHookState)?.patternKind ?: PatternKind.CRAFTING
 
 	/** [direction]'s current ghost input grid, read once when the screen opens - same "not wired into live sync" reasoning as [net.kernelpanicsoft.boilerplate.pipe.gui.SortingHookMenu.currentFilter]. */
-	fun currentGhostInputs(): List<ItemResource> = (tile.hooks[direction.name] as? PatternTerminalHookState)?.ghostInputs?.toList() ?: List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK }
+	fun currentGhostInputs(): List<Pair<ItemResource, Long>> {
+		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK to 1L }
+		return state.ghostInputs.zip(state.ghostInputAmounts)
+	}
 
 	/** [direction]'s current (up to 9) ghost outputs, read once when the screen opens - same caveat as [currentGhostInputs]. Only meaningful in [PatternKind.PROCESSING]. */
 	fun currentGhostOutputs(): List<Pair<ItemResource, Long>> {
@@ -92,15 +99,16 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	}
 
 	/** Client-side: overwrites ghost input [index] with [resource] (or clears it, for [ItemResource.BLANK]) - see [net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlot]. */
-	fun setGhostInput(index: Int, resource: ItemResource) {
-		BoilerplateNetworkChannel.toServer(SetPatternGhostInputPacket(index, resource))
+	fun setGhostInput(index: Int, resource: ItemResource, amount: Long = 1L) {
+		BoilerplateNetworkChannel.toServer(SetPatternGhostInputPacket(index, resource, amount))
 	}
 
 	/** Server-side: applies [setGhostInput]'s request. */
-	fun applyGhostInput(index: Int, resource: ItemResource) {
+	fun applyGhostInput(index: Int, resource: ItemResource, amount: Long = 1L) {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
 		if (index !in state.ghostInputs.indices) return
 		state.ghostInputs[index] = resource
+		state.ghostInputAmounts[index] = amount.coerceAtLeast(1)
 	}
 
 	/** Client-side: overwrites ghost output [index] with [resource] at [amount] (or clears it, for [ItemResource.BLANK]). */
@@ -137,7 +145,11 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 
 		val grid = ArchieItemStorage(state.ghostInputs.size)
 		for ((index, resource) in state.ghostInputs.withIndex()) {
-			if (!resource.isBlank) grid[index].set(resource.toStack(1))
+			if (resource.isBlank) continue
+			// A CRAFTING pattern is matched against a real vanilla recipe, which is one-item-per-cell -
+			// see PatternTerminalHookState.ghostInputAmounts for why a count there would be wrong.
+			val perRun = if (state.patternKind == PatternKind.PROCESSING) state.ghostInputAmounts[index].toInt().coerceAtLeast(1) else 1
+			grid[index].set(resource.toStack(perRun))
 		}
 		val patternOutputs = ArchieItemStorage(state.ghostOutputs.size)
 		for (index in state.ghostOutputs.indices) {

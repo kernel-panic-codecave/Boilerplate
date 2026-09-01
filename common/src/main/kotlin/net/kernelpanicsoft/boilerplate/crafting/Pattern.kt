@@ -46,19 +46,12 @@ object PatternKindSerializer : KSerializer<PatternKind> {
  */
 @Serializable
 data class Pattern(
-	val inputs: List<SItemResource>,
+	val inputs: List<SResourceStack<SItemResource>>,
 	val outputs: List<SResourceStack<SItemResource>>,
 	val kind: PatternKind,
 ) {
 	/** [inputs] collapsed into one count per distinct, non-blank resource - what a step's own execution actually needs to check "do I have enough to run this" against. */
-	fun requiredInputs(): Map<ItemResource, Long> {
-		val required = LinkedHashMap<ItemResource, Long>()
-		for (resource in inputs) {
-			if (resource.isBlank) continue
-			required[resource] = (required[resource] ?: 0L) + 1L
-		}
-		return required
-	}
+	fun requiredInputs(): Map<ItemResource, Long> = inputs.groupBy { it.resource }.mapValues { (_, value) -> value.sumOf { it.amount } }
 
 	companion object {
 		val EMPTY = Pattern(emptyList(), emptyList(), PatternKind.CRAFTING)

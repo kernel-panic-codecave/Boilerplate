@@ -34,8 +34,8 @@ class WarehouseReservationGameTest {
 		// WarehouseGameTest.testStaleIndexEntryDroppedAfterRackDepletedByHand's identical note) before
 		// claiming against it.
 		runAfterDelay(10) {
-			val indexed = controller.index.locations[diamond]
-			assertTrue(indexed != null && indexed.size == 1 && indexed[0].amount == 10L) {
+			val indexed = controller.index.slotsFor(diamond)
+			assertTrue(indexed.size == 1 && indexed[0].amount == 10L) {
 				"Expected the rack's 10 diamonds to be indexed before claiming, got $indexed"
 			}
 

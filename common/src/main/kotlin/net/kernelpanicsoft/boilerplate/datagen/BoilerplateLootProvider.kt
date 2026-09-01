@@ -124,6 +124,7 @@ private val SELF_DROPS: List<Block> = listOf(
 	BlockRegistry.GeneralRack,
 	BlockRegistry.BulkRack,
 	BlockRegistry.UnstackableRack,
+	BlockRegistry.FluidTank,
 	BlockRegistry.CreativePressureSource,
 )
 

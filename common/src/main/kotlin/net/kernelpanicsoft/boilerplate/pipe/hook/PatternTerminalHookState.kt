@@ -26,6 +26,20 @@ class PatternTerminalHookState : TerminalHookState(PatternTerminalHookType.ID) {
 
 	val ghostInputs: MutableList<SItemResource> by listField(ItemResourceSerializer) { List(GRID_SIZE) { ItemResource.BLANK } }
 
+	/**
+	 * How many of each [ghostInputs] entry one run of the pattern consumes - the input mirror of
+	 * [ghostOutputAmounts], so `64 sand -> 64 glass` is one pattern that batches at 64 rather than
+	 * 64 patterns of one.
+	 *
+	 * Only meaningful in [net.kernelpanicsoft.boilerplate.crafting.PatternKind.PROCESSING]. A
+	 * `CRAFTING` pattern's grid is matched against a real vanilla recipe, which is positional and
+	 * one-item-per-cell; encoding a count there would leave
+	 * [net.kernelpanicsoft.boilerplate.crafting.Pattern.requiredInputs] demanding that many per run
+	 * for a recipe that only ever consumes one, so [net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu.encode]
+	 * ignores this outside `PROCESSING`.
+	 */
+	val ghostInputAmounts: MutableList<Long> by listField(Long.serializer()) { List(GRID_SIZE) { 1L } }
+
 	val ghostOutputs: MutableList<SItemResource> by listField(ItemResourceSerializer) { List(GRID_SIZE) { ItemResource.BLANK } }
 	val ghostOutputAmounts: MutableList<Long> by listField(Long.serializer()) { List(GRID_SIZE) { 1L } }
 

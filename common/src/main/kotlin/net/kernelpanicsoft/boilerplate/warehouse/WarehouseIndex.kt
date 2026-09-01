@@ -1,10 +1,13 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
+import earth.terrarium.common_storage_lib.fluid.FluidApi
 import earth.terrarium.common_storage_lib.item.ItemApi
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
-import net.kernelpanicsoft.boilerplate.network.SItemResource
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
 import net.kernelpanicsoft.boilerplate.util.SDirection
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -41,8 +44,20 @@ import net.minecraft.world.level.block.AirBlock
  * touched while the world was unloaded, or by another mod/datapack, never got picked up).
  */
 class WarehouseIndex {
-	var locations: Map<ItemResource, List<RackSlotRef>> = emptyMap()
+	/**
+	 * What this warehouse holds, keyed by [ResourceIdentity] rather than by the resource itself.
+	 *
+	 * The key wrapper is not decoration: a warehouse indexes whatever storage its volume contains,
+	 * which since the fluid tank ([net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity])
+	 * includes fluids, and `FluidResource` has no value equality of its own - a raw fluid key would
+	 * never match itself on lookup and would grow this map on every single insert. Read it through
+	 * [slotsFor] rather than indexing directly.
+	 */
+	var locations: Map<ResourceIdentity, List<RackSlotRef>> = emptyMap()
 		private set
+
+	/** Every rack slot holding [resource], or empty if the warehouse has none - the keyed read of [locations]. */
+	fun slotsFor(resource: ResourceComponent): List<RackSlotRef> = locations[ResourceIdentity.of(resource)].orEmpty()
 
 	/** Known container positions discovered during scans to optimize future audits. */
 	val knownContainers: MutableSet<BlockPos> = mutableSetOf()
@@ -68,7 +83,7 @@ class WarehouseIndex {
 
 	/** Flattens [locations] into an NBT-serializable form for [WarehouseControllerBlockEntity] to persist. */
 	fun toSnapshot(): IndexSnapshot = IndexSnapshot(
-		locations.flatMap { (resource, refs) -> refs.map { RackEntrySnapshot(it.pos, it.direction, resource, it.amount) } }
+		locations.flatMap { (key, refs) -> refs.map { RackEntrySnapshot(it.pos, it.direction, key.resource, it.amount) } }
 	)
 
 	/**
@@ -80,9 +95,9 @@ class WarehouseIndex {
 	 */
 	fun restoreFrom(snapshot: IndexSnapshot, centerPos: BlockPos) {
 		this.controllerPos = centerPos
-		val restored = mutableMapOf<ItemResource, MutableList<RackSlotRef>>()
+		val restored = mutableMapOf<ResourceIdentity, MutableList<RackSlotRef>>()
 		for ((pos, direction, resource, amount) in snapshot.entries) {
-			restored.getOrPut(resource) { mutableListOf() } += RackSlotRef(pos, direction, amount)
+			restored.getOrPut(ResourceIdentity.of(resource)) { mutableListOf() } += RackSlotRef(pos, direction, amount)
 		}
 		locations = restored
 		knownContainers.clear()
@@ -110,8 +125,10 @@ class WarehouseIndex {
 			val state = level.getBlockState(pos)
 			if (state.isAir) continue
 
+			// Any indexable storage, not just an item one - a fluid tank is as much a put-away
+			// destination as a rack is.
 			for (dir in Direction.entries) {
-				if (ItemApi.BLOCK.find(level, pos, dir) != null) {
+				if (storageAt(level, pos, dir) != null) {
 					candidates.add(pos to dir)
 					break
 				}
@@ -133,7 +150,7 @@ class WarehouseIndex {
 
 	fun replaceAll(
 		level: ServerLevel,
-		newData: Map<ItemResource, List<RackSlotRef>>,
+		newData: Map<ResourceIdentity, List<RackSlotRef>>,
 		containers: Set<BlockPos>
 	) {
 		activeScanTask = null
@@ -148,7 +165,7 @@ class WarehouseIndex {
 	fun scanPosition(
 		level: ServerLevel,
 		pos: BlockPos,
-		into: MutableMap<ItemResource, MutableList<RackSlotRef>>,
+		into: MutableMap<ResourceIdentity, MutableList<RackSlotRef>>,
 		direction: Direction? = null
 	): Boolean {
 		// Never index the controller's own tile as a rack - it exposes its own inboundBuffer via
@@ -163,22 +180,23 @@ class WarehouseIndex {
 		var foundStorage = false
 
 		for (dir in directionsToScan) {
-			val storage = ItemApi.BLOCK.find(level, pos, dir) ?: continue
+			val storage = storageAt(level, pos, dir) ?: continue
 			foundStorage = true
 			knownContainers.add(pos.immutable())
 
-			val aggregated = mutableMapOf<ItemResource, Long>()
+			val aggregated = mutableMapOf<ResourceIdentity, Long>()
 			for (i in 0 until storage.size()) {
-				val resource = storage.getResource(i)
+				val resource = storage.getResource(i) as? ResourceComponent ?: continue
 				if (resource.isBlank) continue
 				val amount = storage.getAmount(i)
 				if (amount > 0) {
-					aggregated[resource] = (aggregated[resource] ?: 0L) + amount
+					val key = ResourceIdentity.of(resource)
+					aggregated[key] = (aggregated[key] ?: 0L) + amount
 				}
 			}
 
-			for ((resource, totalAmount) in aggregated) {
-				into.getOrPut(resource) { mutableListOf() } += RackSlotRef(pos.immutable(), dir, totalAmount)
+			for ((key, totalAmount) in aggregated) {
+				into.getOrPut(key) { mutableListOf() } += RackSlotRef(pos.immutable(), dir, totalAmount)
 			}
 
 			if (direction == null && storage.size() > 0) break
@@ -187,8 +205,8 @@ class WarehouseIndex {
 		return foundStorage
 	}
 
-	fun recordExtraction(resource: ItemResource, pos: BlockPos, direction: Direction?, requested: Long, extracted: Long) {
-		val entries = locations[resource] ?: return
+	fun recordExtraction(resource: ResourceComponent, pos: BlockPos, direction: Direction?, requested: Long, extracted: Long) {
+		val entries = locations[ResourceIdentity.of(resource)] ?: return
 		val entry = entries.find { it.pos == pos && (direction == null || it.direction == direction) } ?: return
 
 		entry.amount -= extracted
@@ -197,16 +215,17 @@ class WarehouseIndex {
 		}
 	}
 
-	fun recordInsertion(resource: ItemResource, pos: BlockPos, direction: Direction?, amount: Long) {
+	fun recordInsertion(resource: ResourceComponent, pos: BlockPos, direction: Direction?, amount: Long) {
 		if (amount <= 0) return
-		val entries = locations[resource] ?: emptyList()
+		val key = ResourceIdentity.of(resource)
+		val entries = locations[key] ?: emptyList()
 		val existing = entries.find { it.pos == pos && (direction == null || it.direction == direction) }
 
 		if (existing != null) {
 			existing.amount += amount
 		} else {
 			val updatedEntries = entries + RackSlotRef(pos, direction, amount)
-			locations = locations + (resource to updatedEntries)
+			locations = locations + (key to updatedEntries)
 		}
 		knownContainers.add(pos.immutable())
 	}
@@ -221,7 +240,7 @@ class WarehouseIndex {
 	fun updateSinglePosition(level: ServerLevel, pos: BlockPos, retryCount: Int = 0) {
 		evictSinglePosition(level, pos)
 
-		val tempMap = mutableMapOf<ItemResource, MutableList<RackSlotRef>>()
+		val tempMap = mutableMapOf<ResourceIdentity, MutableList<RackSlotRef>>()
 		val foundStorage = scanPosition(level, pos, tempMap)
 
 		if (foundStorage) {
@@ -247,7 +266,7 @@ class WarehouseIndex {
 	fun evictSinglePosition(level: ServerLevel, pos: BlockPos) {
 		if (!knownContainers.remove(pos)) return
 
-		val updatedLocations = mutableMapOf<ItemResource, List<RackSlotRef>>()
+		val updatedLocations = mutableMapOf<ResourceIdentity, List<RackSlotRef>>()
 		for ((resource, slots) in locations) {
 			val filtered = slots.filterNot { it.pos == pos }
 			if (filtered.isNotEmpty()) {
@@ -258,16 +277,37 @@ class WarehouseIndex {
 		controllerPos?.let { updateIndex(level, it) }
 	}
 
-	private fun removeEntry(resource: ItemResource, entries: List<RackSlotRef>, entry: RackSlotRef) {
+	private fun removeEntry(resource: ResourceComponent, entries: List<RackSlotRef>, entry: RackSlotRef) {
+		val key = ResourceIdentity.of(resource)
 		val updated = entries - entry
-		locations = if (updated.isEmpty()) locations - resource else locations + (resource to updated)
+		locations = if (updated.isEmpty()) locations - key else locations + (key to updated)
 	}
 
+	private companion object {
+		/**
+		 * Whatever indexable storage [pos] exposes on [direction] - an item one first, then a fluid
+		 * one. A single position is only ever indexed under one kind: the two capabilities are
+		 * probed in a fixed order so a block exposing both (a machine with an input tank and an
+		 * output buffer, say) is at least deterministic about which the warehouse tracks. Widening
+		 * that to per-kind indexing is warehouse fluid-parity work in its own right.
+		 */
+		fun storageAt(level: ServerLevel, pos: BlockPos, direction: Direction?): CommonStorage<*>? =
+			ItemApi.BLOCK.find(level, pos, direction) ?: FluidApi.BLOCK.find(level, pos, direction)
+	}
 }
 
-/** One [WarehouseIndex.RackSlotRef], flattened for NBT serialization - [WarehouseIndex.toSnapshot]/[WarehouseIndex.restoreFrom]'s own record type. */
+/**
+ * One [WarehouseIndex.RackSlotRef], flattened for NBT serialization -
+ * [WarehouseIndex.toSnapshot]/[WarehouseIndex.restoreFrom]'s own record type.
+ *
+ * [resource] is a kind-tagged [SResourceComponent], not a bare item, so a warehouse holding fluids
+ * persists them too. That is a **save-format change**: an index snapshot written before fluids
+ * existed stores the bare item form and will not read back, costing that warehouse one full rescan
+ * on load rather than any real data (the racks themselves are the source of truth; the snapshot is
+ * only a cache - see [WarehouseIndex]'s own KDoc).
+ */
 @Serializable
-data class RackEntrySnapshot(val pos: SBlockPos, val direction: SDirection?, val resource: SItemResource, val amount: Long)
+data class RackEntrySnapshot(val pos: SBlockPos, val direction: SDirection?, val resource: SResourceComponent, val amount: Long)
 
 /** [WarehouseIndex.toSnapshot]'s own NBT-serializable output - just [WarehouseIndex.locations] flattened into a plain list. */
 @Serializable

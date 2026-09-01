@@ -2,12 +2,13 @@ package net.kernelpanicsoft.boilerplate.client
 
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
-import net.kernelpanicsoft.boilerplate.pipe.client.DebugNetworkRenderer
+import net.kernelpanicsoft.boilerplate.debug.client.DebugOverlay
 
 /**
- * Registers the dev route-search overlay into Fabric's world render pass, right after the
- * translucent level section - the same phase the common renderer expects, with the level's own
- * pose stack and buffer source.
+ * Registers the in-world debug overlay into Fabric's world render pass, right after the
+ * translucent level section - the same phase the common renderers expect, with the level's own
+ * pose stack and buffer source. [DebugOverlay] owns the toggle and fans the frame out to every
+ * renderer that draws into it.
  */
 object FabricDebugRendering {
 	fun register() {
@@ -17,6 +18,6 @@ object FabricDebugRendering {
 	private fun onRenderAfterTranslucent(context: WorldRenderContext) {
 		val consumers = context.consumers() ?: return
 		val poseStack = context.matrixStack() ?: return
-		DebugNetworkRenderer.renderFrame(poseStack, consumers)
+		DebugOverlay.renderFrame(poseStack, consumers)
 	}
 }

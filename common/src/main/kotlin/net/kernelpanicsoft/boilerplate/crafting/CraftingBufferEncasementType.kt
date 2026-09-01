@@ -18,7 +18,7 @@ import net.kernelpanicsoft.boilerplate.pipe.encasement.PipeEncasementType
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
@@ -61,7 +61,7 @@ import net.minecraft.world.phys.shapes.VoxelShape
  *
  * Being an encasement rather than a standalone block, the CPU *is* a pipe segment: every routing
  * call below starts from its own position, and a shipment it sends leaves through its own
- * [MultipartBlockEntity.travelingItems]. One consequence worth knowing: [PipeRouter.isPipe] treats a
+ * [MultipartBlockEntity.travelingItems]. One consequence worth knowing: [ItemPipeRouter.isPipe] treats a
  * segment whose [MultipartBlockEntity.pipeBlockId] is still [MultipartBlockEntity.NONE] as not a pipe at all,
  * so an encasement placed against air is inert until a pipe is actually placed into it - exactly as
  * a hook placed the same way is.
@@ -311,36 +311,85 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 			}
 		}
 
+		// Draining a **vanilla crafting table** step's own output, on an interval.
+		//
+		// Only that case. A real processing machine is expected to get its own output onto the
+		// network - either it auto-ejects, or the player puts an
+		// [net.kernelpanicsoft.boilerplate.pipe.hook.ExtractionHookType] hook on it - and this
+		// cluster then attracts it by advertising what it is short of ([awaitsDelivery]). A crafting
+		// table has no inventory at all: its results live in the hook's own virtual
+		// [net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState.patternOutputBuffers],
+		// which nothing can push from, so they have to be fetched.
+		//
+		// Deliberately [RequestFulfillment.fulfillFromProvider] and never
+		// [RequestFulfillment.request]: the latter falls back to a warehouse, which let a job
+		// satisfy its own final step by withdrawing the finished item from storage instead of
+		// crafting it - ask for 64 with 32 on the shelf and 32 of the "craft" was the shelf handing
+		// them back. Looped because it serves one willing source per call by contract, so a batch
+		// finishing at once would otherwise be left behind after the first stack.
 		job.ticksSincePull++
 		val effectivePullInterval = (PULL_INTERVAL_TICKS / pressureMultiplier).toInt().coerceAtLeast(1)
-		if (job.ticksSincePull < effectivePullInterval) {
-			val fedSteps = job.steps.indices.count { i -> job.steps[i].pattern.requiredInputs().keys.all { r -> job.isInputFed(i, r) } }
-			job.status = "Crafting ($fedSteps/${job.steps.size} step(s) fed)…"
-		} else {
+		if (job.ticksSincePull >= effectivePullInterval) {
 			job.ticksSincePull = 0
+			val providers = RequestFulfillment.reachableProviders(level, pos)
+			val current = state.combinedStorage(tile)
 			for ((index, step) in job.steps.withIndex()) {
-				val outputAmount = step.pattern.outputs.firstOrNull { it.resource == step.resource }?.amount ?: 1L
-				val needed = step.runs * outputAmount
-				val already = job.stepDelivered[index] ?: 0L
-				if (already >= needed) continue
-				val pulled = RequestFulfillment.request(level, pos, ResourceStack(step.resource, needed - already), pos)
-				if (pulled > 0) job.stepDelivered[index] = already + pulled
+				val tablePos = job.tableForStep[index] ?: continue
+				if (!level.getBlockState(tablePos).`is`(Blocks.CRAFTING_TABLE)) continue
+				var remaining = job.outstandingOutput(step.resource, amountIn(current, step.resource))
+				while (remaining > 0) {
+					val pulled = RequestFulfillment.fulfillFromProvider(level, providers, ResourceStack(step.resource, remaining), pos)
+					if (pulled <= 0) break
+					remaining -= pulled
+				}
 			}
-			job.status = if (job.delivered >= job.targetAmount) "Delivered ${job.targetAmount}x ${job.target.cachedStack.hoverName.string}"
-				else "Waiting on ${job.steps.size} crafting step(s)… (${job.delivered}/${job.targetAmount} delivered)"
 		}
 
-		// job.delivered only reflects what's been *dispatched* (RequestFulfillment.request's own
-		// contract - a TravelingItem still in flight counts already), not what's actually landed -
-		// done has to gate on a live read of the cluster's own storage instead, or drainEverything
-		// runs (and clears this job out) before a still-in-transit delivery ever arrives.
-		if (amountIn(state.combinedStorage(tile), job.target) >= job.targetAmount) job.done = true
+		val storage = state.combinedStorage(tile)
+		for ((index, step) in job.steps.withIndex()) {
+			val needed = step.runs * (step.pattern.outputs.firstOrNull { it.resource == step.resource }?.amount ?: 1L)
+			val outstanding = job.outstandingOutput(step.resource, amountIn(storage, step.resource))
+			job.stepDelivered[index] = (needed - outstanding).coerceIn(0L, needed)
+		}
+
+		val fedSteps = job.steps.indices.count { i -> job.steps[i].pattern.requiredInputs().keys.all { r -> job.isInputFed(i, r) } }
+		job.status = if (job.delivered >= job.targetAmount) "Delivered ${job.targetAmount}x ${job.target.cachedStack.hoverName.string}"
+			else "Crafting ($fedSteps/${job.steps.size} step(s) fed, ${job.delivered}/${job.targetAmount} delivered)…"
+
+		// Gated on a live read rather than on anything dispatch-shaped, so drainEverything can't run
+		// (and clear this job out) while a delivery is still in flight.
+		if (amountIn(storage, job.target) >= job.targetAmount) job.done = true
+	}
+
+	/**
+	 * Whether the Crafting CPU cluster owning [pos] still needs [resource] delivered to it - what
+	 * makes a CPU a push-routing destination at all.
+	 *
+	 * A CPU rides on a pipe segment, so [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter]
+	 * ordinarily walks straight through it as transit and never considers it a destination. That
+	 * exclusion is deliberate and must stay: a CPU that accepted *anything* pushed at it would have
+	 * unrelated items dumped into a crafting pool and stranded there. This is the narrow exception -
+	 * only a resource an active job's own steps are genuinely still short of, and only until they
+	 * are, which is what makes the very high priority it routes at safe.
+	 *
+	 * Answered from the cluster's **leader**, which is where jobs actually live (see [tick]).
+	 */
+	fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: ItemResource): Boolean {
+		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return false
+		if (tile.encasement.value !is CraftingBufferEncasementState) return false
+		val cluster = CraftingCpuManager.get(level).clusterOf(level, pos)
+		if (!cluster.valid) return false
+		val leader = craftingBufferAt(level, cluster.leader) ?: return false
+		val job = leader.activeJob ?: return false
+		if (job.done) return false
+		val leaderTile = level.getBlockEntity(cluster.leader) as? MultipartBlockEntity ?: return false
+		return job.outstandingOutput(resource, amountIn(leader.combinedStorage(leaderTile), resource)) > 0L
 	}
 
 	/** Pushes [amount] of [resource] out of this cluster's own [CraftingBufferEncasementState.combinedStorage] toward [deliverTo] as a real pipe delivery leaving this segment. Returns how much actually shipped. */
 	private fun pushToNetwork(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingBufferEncasementState, resource: ItemResource, amount: Long, deliverTo: BlockPos): Long {
 		if (amount <= 0) return 0
-		val route = PipeRouter.findRouteTo(level, pos, deliverTo) ?: return 0
+		val route = ItemPipeRouter.findRouteTo(level, pos, deliverTo) ?: return 0
 		val storage = state.combinedStorage(tile)
 		val extracted = storage.extract(resource, amount, false)
 		if (extracted <= 0) return 0
@@ -368,7 +417,7 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 		val hookPos = job.hookPosForStep[index] ?: return 0
 		val face = job.hookFaceForStep[index] ?: return 0
 		val patternIndex = job.patternIndexForStep[index] ?: return 0
-		if (PipeRouter.findRouteTo(level, pos, hookPos) == null) return 0
+		if (ItemPipeRouter.findRouteTo(level, pos, hookPos) == null) return 0
 		val hookTile = level.getBlockEntity(hookPos) as? MultipartBlockEntity ?: return 0
 		val hookState = hookTile.hooks[face.name] as? PatternProviderHookState ?: return 0
 
@@ -392,7 +441,7 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 			val amount = storage.get(i).amount
 			if (resource.isBlank || amount <= 0) continue
 			anythingLeft = true
-			val route = PipeRouter.findRoute(level, pos, resource, null, exclude = setOf(pos)) ?: continue
+			val route = ItemPipeRouter.findRoute(level, pos, resource, null, exclude = setOf(pos)) ?: continue
 			val extracted = storage.extract(resource, amount, false)
 			if (extracted <= 0) continue
 			tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), entryFaceFor(pos, route), 0f, route, null)
@@ -411,7 +460,7 @@ object CraftingBufferEncasementType : PipeEncasementType<CraftingBufferEncasemen
 		return Direction.fromDelta(next.x - pos.x, next.y - pos.y, next.z - pos.z)?.opposite ?: Direction.DOWN
 	}
 
-	/** Ticks between retries of a step's own output pull-back, once its inputs are fully fed - matches every other polling hook in this subsystem. Scaled by [CraftingBufferEncasementState]'s own [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick] multiplier (see [advanceSteps]) - more available pressure pulls back sooner, per `docs/design/m5-pressure-power.md`. */
+	/** Ticks between attempts to drain a step's own output out of its machine. Scaled by [CraftingBufferEncasementState]'s own [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick] multiplier (see [advanceSteps]) - more available pressure drains sooner, per `docs/design/m5-pressure-power.md`. */
 	private const val PULL_INTERVAL_TICKS = 40
 
 	/** Throwaway, always-empty stand-in for [advanceJob]'s own [PressureLine.find] call when nothing is reachable - same role as [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity]'s identical constant. */

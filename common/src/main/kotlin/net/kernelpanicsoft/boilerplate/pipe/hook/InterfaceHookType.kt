@@ -8,10 +8,12 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.gui.InterfaceHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.drainExcess
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.requisitionStock
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
-import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
+import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
+import net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType
+import net.kernelpanicsoft.boilerplate.registry.Registrars
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -66,8 +68,18 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 
 	override val id: ResourceLocation get() = ID
 
-	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
+	/**
+	 * Attachable on a segment carrying any registered resource network, derived from the live
+	 * registry - the same rule [ExtractionHookType] uses, and for the same reason: an interface is a
+	 * junction for whatever its pipe carries.
+	 *
+	 * Its two roles are not equally kind-agnostic yet. The **pass-through junction**
+	 * ([InterfaceHookState.exposedFluidStorage]) works for fluids; the **stocking reservoir**
+	 * ([requisitionStock]) runs on [RequestFulfillment], which is item-typed, so a fluid interface
+	 * routes through but does not self-stock. See [InterfaceHookState.fluidStock].
+	 */
+	override val compatibleNetworkTypes: Set<NetworkType>
+		get() = Registrars.NETWORK_TYPE.filterTo(hashSetOf()) { it is ResourceNetworkType<*> }
 
 	/** [PipeHookType.basePressureCost] - Its own periodic requisition/drain is real per-tick work alongside its passive stock exposure - a middling draw. */
 	override val basePressureCost: Long = 2L
@@ -76,8 +88,14 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 
 	override val hasMenu: Boolean = true
 
-	override val validRoute: Boolean = true
+	override val validRoute: Boolean = false
 
+	/**
+	 * `true` - see this class's own KDoc for the rationale. [InterfaceHookState.stock] is an
+	 * explicit opt-in provider surface, and [RequestFulfillment.ProviderSource.storage] already
+	 * special-cases reading it directly; with this `false` that whole path was unreachable and an
+	 * interface's stock was invisible to every request, terminal search and standing order.
+	 */
 	override val providesItems: Boolean = true
 
 	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
@@ -112,7 +130,7 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	/**
 	 * Pushes everything above each [InterfaceHookState.stock] column's [InterfaceHookState.ghosts]
 	 * target back into the network - a full column's worth when the column has no matching ghost at
-	 * all. The same [PipeRouter.findRoute] push-routing [ExtractionHookType] uses, sourced from this
+	 * all. The same [ItemPipeRouter.findRoute] push-routing [ExtractionHookType] uses, sourced from this
 	 * hook's own stock; [exclude] = [pos] so this hook's own [validRoute]-tagged stock never drains
 	 * right back into itself.
 	 */
@@ -124,7 +142,7 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 			val target = if (state.ghosts[i].resource == resource) state.ghosts[i].amount else 0L
 			val excess = slot.amount - target
 			if (excess <= 0) continue
-			val route = PipeRouter.findRoute(level, pos, resource, exclude = setOf(pos)) ?: continue
+			val route = ItemPipeRouter.findRoute(level, pos, resource, exclude = setOf(pos)) ?: continue
 			val extracted = state.stock.extract(resource, excess, false)
 			if (extracted <= 0) continue
 			tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction, 0f, route, null)

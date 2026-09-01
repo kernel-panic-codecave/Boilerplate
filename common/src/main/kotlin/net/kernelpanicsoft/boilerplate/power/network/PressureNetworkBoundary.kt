@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.power.network
 
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.pipe.network.adapterBridges
-import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypeAt
+import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypesAt
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -16,8 +16,8 @@ import net.minecraft.server.level.ServerLevel
  * [net.kernelpanicsoft.boilerplate.pipe.network.adapterBridges]):
  *
  * - where it touches a *dedicated* [net.kernelpanicsoft.boilerplate.power.block.PressurePipeBlock]
- *   run - a segment whose own [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.primaryNetworkType]
- *   is `Pressure` rather than carrying it merely as a secondary;
+ *   run - a segment whose own [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.primaryNetworkTypes]
+ *   is `{Pressure}` rather than carrying it merely as a secondary;
  * - [SubnetBoundary]'s own item-network boundary (an [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType]
  *   hook facing another hook) - the two sides are logically separate *networks* by design, and
  *   pressure crossing there for free same as it crosses an ordinary unhooked pipe-to-pipe
@@ -31,17 +31,17 @@ import net.minecraft.server.level.ServerLevel
  * across, also by a caller whose own [pos] isn't a pipe at all (a non-pipe
  * [net.kernelpanicsoft.boilerplate.power.PressureConsumer] like a warehouse controller, sitting
  * directly against a dedicated Pressure Pipe run). The primary-mismatch check below requires *both*
- * sides to actually resolve a primary type for exactly that reason - a non-pipe consumer's own
- * [primaryNetworkTypeAt] is `null`, and treating `null` as "mismatched" against literally any
- * neighbor's real primary would wrongly wall off every such consumer from a dedicated pressure run
+ * sides to actually resolve a primary set for exactly that reason - a non-pipe consumer's own
+ * [primaryNetworkTypesAt] is empty, and treating empty as "mismatched" against literally any
+ * neighbor's real primaries would wrongly wall off every such consumer from a dedicated pressure run
  * sitting right next to it, which was never the point (only an actual item-pipe-vs-pressure-pipe
  * junction needs bridging).
  */
 object PressureNetworkBoundary {
 	fun isBoundaryEdge(level: ServerLevel, pos: BlockPos, direction: Direction): Boolean {
-		val ownPrimary = primaryNetworkTypeAt(level, pos)
-		val neighborPrimary = primaryNetworkTypeAt(level, pos.relative(direction))
-		val primaryMismatch = ownPrimary != null && neighborPrimary != null && ownPrimary != neighborPrimary
+		val ownPrimaries = primaryNetworkTypesAt(level, pos)
+		val neighborPrimaries = primaryNetworkTypesAt(level, pos.relative(direction))
+		val primaryMismatch = ownPrimaries.isNotEmpty() && neighborPrimaries.isNotEmpty() && ownPrimaries.none { it in neighborPrimaries }
 		val subnetBoundary = SubnetBoundary.isBoundaryEdge(level, pos, direction)
 		return (primaryMismatch || subnetBoundary) && !adapterBridges(level, pos, direction)
 	}

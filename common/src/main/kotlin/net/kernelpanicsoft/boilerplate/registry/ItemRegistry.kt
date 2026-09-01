@@ -144,6 +144,10 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 		FilterCardItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES); stacksTo(1) }, conditionTypeId = ItemConditionType.ID)
 	}
 
+	val FluidFilterCard by register("fluid_filter_card") {
+		FilterCardItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES); stacksTo(1) }, conditionTypeId = FluidConditionType.ID)
+	}
+
 	val ModFilterCard by register("mod_filter_card") {
 		FilterCardItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES); stacksTo(1) }, conditionTypeId = ModConditionType.ID)
 	}

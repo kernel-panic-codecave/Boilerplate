@@ -1,8 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
-import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
+import net.kernelpanicsoft.boilerplate.debug.DebugOverlayViewers
 import net.minecraft.core.BlockPos
-import java.util.UUID
 
 /**
  * How the route search treated one hop between two positions - what [TraceEdge]s the in-world
@@ -58,23 +57,8 @@ object DebugRouteTrace {
 
 	private val recent = ArrayList<RouteSearchTrace>()
 
-	/** Players whose F3+B hitbox overlay is currently on - the ones asking for route-search tracing. */
-	private val viewers = HashSet<UUID>()
-
-	/**
-	 * Whether route-search tracing (server) and snapshot broadcasting are active at all. Driven by
-	 * players toggling the overlay (see [setViewer]) - never inside a GameTest server, where no
-	 * client has anything to toggle.
-	 */
-	@Volatile
-	var enabled: Boolean = false
-		private set
-
-	/** Tracks [player]'s overlay state; tracing runs while at least one player has it on. */
-	fun setViewer(player: UUID, on: Boolean) {
-		if (on) viewers += player else viewers -= player
-		enabled = viewers.isNotEmpty() && !AGameTestPlatform.isGameTest
-	}
+	/** Whether route-search tracing is active at all - just [DebugOverlayViewers]' own gate, since tracing is only ever wanted while somebody is looking at the overlay that draws it. */
+	val enabled: Boolean get() = DebugOverlayViewers.enabled
 
 	/** Starts a fresh trace for a search rooted at [from], bounding the kept history to the most recent [TRACE_CAP] searches. */
 	fun startSearch(from: BlockPos): RouteSearchTrace {

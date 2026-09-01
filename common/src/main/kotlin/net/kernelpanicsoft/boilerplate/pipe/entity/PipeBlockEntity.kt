@@ -1,15 +1,19 @@
 package net.kernelpanicsoft.boilerplate.pipe.entity
 
-import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.boilerplate.network.PipeContentsSyncPacket
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import earth.terrarium.common_storage_lib.item.ItemApi
+import net.kernelpanicsoft.boilerplate.network.SResourceStack
 import net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.ItemNetworkType
+import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
+import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypesAt
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.kernelpanicsoft.boilerplate.power.PressureLine
@@ -19,7 +23,6 @@ import net.kernelpanicsoft.boilerplate.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.entity.item.ItemEntity
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
@@ -50,6 +53,10 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	val travelingItems by listField(TravelingItem.serializer()) { emptyList() }
 
 	private var ticksSinceSync = 0
+
+	/** The game tick this segment last pushed its contents on, and what it pushed - together they let [syncNow] drop a genuinely redundant repeat within one tick without suppressing a real second change. */
+	private var lastSyncedTick = -1L
+	private var lastSyncedItems: List<TravelingItem> = emptyList()
 
 	/**
 	 * How much faster than [SEGMENT_SPEED] this segment is currently moving items, from whatever
@@ -123,7 +130,19 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 			val isFinalHop = item.path.size == 1
 
-			if (PipeRouter.isPipe(serverLevel, nextPos) && !boundary && !isFinalHop) {
+			val networkType = networkTypeForResource(item.stack.resource as ResourceComponent)
+
+			// No registered network type carries this resource - it can't be routed or deposited
+			// anywhere (a kind whose carrier isn't loaded, say), so get it out of the network as a
+			// jam rather than stranding it forever at the segment boundary.
+			if (networkType == null) {
+				jamAndRelease(serverLevel, pos, item)
+				items.removeAt(index)
+				hopped = true
+				continue
+			}
+
+			if (networkType.isPipeAt(serverLevel, nextPos) && !boundary && !isFinalHop) {
 				val nextTile = serverLevel.getBlockEntity(nextPos) as? PipeBlockEntity
 				if (nextTile == null) {
 					jamAndRelease(serverLevel, pos, item)
@@ -132,28 +151,22 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					continue
 				}
 				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace, item.reservationId)
+				// Push the *receiving* segment's contents on this same tick, not just this one's.
+				// Both halves of a hand-off have to reach the client anchored to the same server
+				// tick or the item is briefly drawn by neither: this segment's own sync (below)
+				// says the item is gone the moment it leaves, while the neighbour would otherwise
+				// not mention having it until its own SYNC_INTERVAL_TICKS came round - up to 4
+				// ticks of the item simply not existing anywhere the renderer can see it, which
+				// reads as a flicker every time anything crosses a block boundary.
+				// [PipeContentsClientCache] already documents this pairing as the invariant it
+				// dead-reckons against; this is what actually upholds it.
+				nextTile.syncNow(serverLevel, nextTile.travelingItems)
 				items.removeAt(index)
 				hopped = true
 				continue
 			}
 
 			val deliverFace = item.targetFace ?: direction?.opposite
-			// A delivery explicitly targeting a face's own hook (deliverTo + deliverFace = the
-			// interface's own requisition, or a RequesterHookType supplier topping it up) lands
-			// straight in that hook's stock, bypassing its pass-through surface. A generic routed
-			// push (targetFace == null) resolves the ordinary find() way instead, which for an
-			// interface hook hands back its InterfacePassThroughStorage.
-			val interfaceStock = if (item.targetFace != null) {
-				(serverLevel.getBlockEntity(nextPos) as? MultipartBlockEntity)?.hooks?.get(item.targetFace.name) as? InterfaceHookState
-			} else null
-			val storage = interfaceStock?.stock ?: ItemApi.BLOCK.find(serverLevel, nextPos, deliverFace)
-			if (storage == null) {
-				jamAndRelease(serverLevel, pos, item)
-				items.removeAt(index)
-				hopped = true
-				continue
-			}
-
 			val reservationOwner = reservationOwnerAt(serverLevel, nextPos, item)
 			if (item.reservationId != null && reservationOwner == null) {
 				// The reservation this delivery was for was cancelled - redirect back into the
@@ -174,18 +187,35 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 			val resource = item.stack.resource
 			// A reserved delivery lands in its own reserved slot specifically, bypassing the
-			// network-facing (reservation-blocking) view that ItemApi handed back - see
-			// ReservedSlotStorage. Everything else takes the ordinary any-slot path.
+			// network-facing (reservation-blocking) view that the api handed back - see
+			// ReservedSlotStorage. Everything else takes the ordinary any-slot path. Reservations
+			// are an item-network (terminal) concept, so the item router's own api resolves the
+			// pass-through/interface-stock nuance; the fluid path (a later pass) always deposits
+			// straight through its network type's own api.
 			val reservation = reservationOwner?.pendingDeliveries
 				?.firstOrNull { it.id == item.reservationId }
 				// Never index blindly off persisted state: a slot count that shrank under a saved
 				// reservation would crash the tick loop outright. Falling through to the ordinary
 				// path just lands it in any free slot instead.
 				?.takeIf { it.slot in 0 until reservationOwner.output.size() }
-			val inserted = if (reservation != null) {
-				reservationOwner.output.insert(reservation.slot, resource, item.stack.amount, false)
+			val inserted = if (networkType === ItemNetworkType) {
+				if (reservation != null) {
+					reservationOwner.output.insert(reservation.slot, resource as ItemResource, item.stack.amount, false)
+				} else {
+					val interfaceStock = if (item.targetFace != null) {
+						(serverLevel.getBlockEntity(nextPos) as? MultipartBlockEntity)?.hooks?.get(item.targetFace.name) as? InterfaceHookState
+					} else null
+					val storage = interfaceStock?.stock ?: ItemApi.BLOCK.find(serverLevel, nextPos, deliverFace)
+					if (storage == null) {
+						jamAndRelease(serverLevel, pos, item)
+						items.removeAt(index)
+						hopped = true
+						continue
+					}
+					storage.insert(resource as ItemResource, item.stack.amount, false)
+				}
 			} else {
-				storage.insert(resource, item.stack.amount, false)
+				networkType.deposit(serverLevel, nextPos, deliverFace, item.stack, simulate = false)
 			}
 			when {
 				inserted >= item.stack.amount -> {
@@ -207,8 +237,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 		ticksSinceSync++
 		if (hopped || (items.isNotEmpty() && ticksSinceSync >= SYNC_INTERVAL_TICKS)) {
-			ticksSinceSync = 0
-			syncToNearbyPlayers(serverLevel, pos, items)
+			syncNow(serverLevel, items)
 		}
 	}
 
@@ -250,8 +279,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	}
 
 	private fun jam(level: ServerLevel, pos: BlockPos, item: TravelingItem) {
-		ItemEntity(level, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5, item.stack.resource.toStack(item.stack.amount.toInt()))
-			.also { level.addFreshEntity(it) }
+		networkTypeForResource(item.stack.resource as ResourceComponent)?.jam(level, pos, item.stack)
 	}
 
 	/**
@@ -307,7 +335,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	/**
 	 * The replacement [TravelingItem] for a delivery whose own reservation was cancelled - rerouted
 	 * back into the network instead of landing at the terminal it was originally headed for, via the
-	 * same push-model search ([PipeRouter.findRoute]) an extractor uses, from [pos]'s own position,
+	 * same push-model search ([ResourceNetworkType.route]) an extractor uses, from [pos]'s own position,
 	 * excluding [cancelledDestination] so it can't just hand the item straight back to where it was
 	 * already refused. `null` when nothing else on the network accepts it, leaving the caller to
 	 * [jam] it rather than the item silently vanishing.
@@ -321,8 +349,34 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 * not merely mis-ordered - see [tick]'s own KDoc for the same one-snapshot rule.
 	 */
 	private fun redirectedDelivery(level: ServerLevel, pos: BlockPos, cancelledDestination: BlockPos, item: TravelingItem): TravelingItem? {
-		val route = PipeRouter.findRoute(level, pos, item.stack.resource, item.color, exclude = setOf(cancelledDestination)) ?: return null
+		// Routed through whichever ResourceNetworkType actually carries this envelope rather than
+		// the item router directly: reservations are an item-network concept today, but a pipe
+		// carries every registered PRIMARY type at once, so hardcoding the item router here would
+		// mis-route (and hard-cast) any other kind that ever reaches this path.
+		val networkType = networkTypeForResource(item.stack.resource as ResourceComponent) ?: return null
+		val route = networkType.route(level, pos, item.stack, item.color, exclude = setOf(cancelledDestination)) ?: return null
 		return TravelingItem(item.stack, item.fromDirection, 0f, route, item.color, null, null)
+	}
+
+	/**
+	 * Pushes [items] to nearby clients now and restarts this segment's sync interval.
+	 *
+	 * Called both at the end of this segment's own tick and - crucially - by a *neighbouring*
+	 * segment the instant it hands an item over, so the two packets describing one hand-off carry
+	 * the same [ServerLevel.getGameTime] and the client can hand the item across without ever
+	 * losing sight of it (see the call site in [tick], and [PipeContentsClientCache]).
+	 *
+	 * Repeats within a single tick are dropped only when the contents are actually identical. A
+	 * blanket once-per-tick guard would be wrong: a segment that receives a hand-off *and* then
+	 * moves something out on the same tick has genuinely changed twice and must send the second
+	 * state too.
+	 */
+	private fun syncNow(level: ServerLevel, items: List<TravelingItem>) {
+		if (lastSyncedTick == level.gameTime && lastSyncedItems == items) return
+		lastSyncedTick = level.gameTime
+		lastSyncedItems = items.toList()
+		ticksSinceSync = 0
+		syncToNearbyPlayers(level, blockPos, items)
 	}
 
 	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos, items: List<TravelingItem>) {

@@ -156,16 +156,16 @@ class RackGameTest {
 		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(unstackablePos))
 
 		succeedWhen {
-			val diamondEntries = controller.index.locations[diamond]
-			assertTrue(diamondEntries != null && diamondEntries.size == 1 && diamondEntries[0].amount == 5L) {
+			val diamondEntries = controller.index.slotsFor(diamond)
+			assertTrue(diamondEntries.size == 1 && diamondEntries[0].amount == 5L) {
 				"Expected the general rack's 5 diamonds to be indexed, got $diamondEntries"
 			}
-			val cobblestoneEntries = controller.index.locations[cobblestone]
-			assertTrue(cobblestoneEntries != null && cobblestoneEntries.size == 1 && cobblestoneEntries[0].amount == 500L) {
+			val cobblestoneEntries = controller.index.slotsFor(cobblestone)
+			assertTrue(cobblestoneEntries.size == 1 && cobblestoneEntries[0].amount == 500L) {
 				"Expected the bulk rack's 500 cobblestone to be indexed, got $cobblestoneEntries"
 			}
-			val pickaxeEntries = controller.index.locations[namedPickaxe]
-			assertTrue(pickaxeEntries != null && pickaxeEntries.size == 1 && pickaxeEntries[0].amount == 1L) {
+			val pickaxeEntries = controller.index.slotsFor(namedPickaxe)
+			assertTrue(pickaxeEntries.size == 1 && pickaxeEntries[0].amount == 1L) {
 				"Expected the unstackable rack's named pickaxe to be indexed, got $pickaxeEntries"
 			}
 		}

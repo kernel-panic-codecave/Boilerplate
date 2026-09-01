@@ -3,11 +3,7 @@ package net.kernelpanicsoft.boilerplate.gametest
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
-import net.kernelpanicsoft.boilerplate.crafting.CraftingRequest
-import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
-import net.kernelpanicsoft.boilerplate.crafting.Pattern
-import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
-import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.crafting.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
@@ -18,6 +14,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.power.PressureTankEncasementType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
@@ -31,7 +28,9 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity
 
 /**
  * GameTest coverage for [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.advanceSteps]'s
- * own pressure-scaled pull-back interval: two identical single-step crafts, one with a full
+ * own pressure-scaled fetch interval for a **vanilla crafting table** step - the one case the CPU
+ * still fetches for at all, since a processing machine is expected to get its own output onto the
+ * network. Two identical single-step crafts, one with a full
  * pressure tank attached to the CPU's own leader and one without - since a step's own finished
  * output is pulled back unconditionally once the timer fires (regardless of whether its own inputs
  * were ever genuinely fed), the finished result is placed directly in each "machine" from the
@@ -45,7 +44,7 @@ class CraftingCpuPressureScalingGameTest {
 	fun GameTestHelper.testAFullPressureLinePullsBackSoonerThanNoPressureAtAll() {
 		val target = ItemResource.of(ItemStack(Items.IRON_BLOCK))
 
-		fun setUpChain(xOffset: Int): Triple<MultipartBlockEntity, BlockPos, BlockPos> {
+		fun setUpChain(xOffset: Int): Triple<MultipartBlockEntity, BlockPos, PatternProviderHookState> {
 			val sourceChestPos = BlockPos(xOffset, 2, 0)
 			val providerPipePos = BlockPos(xOffset, 2, 1)
 			val linkPipePos = BlockPos(xOffset, 2, 2)
@@ -55,18 +54,22 @@ class CraftingCpuPressureScalingGameTest {
 			val machinePos = BlockPos(xOffset + 1, 2, 5)
 
 			setBlock(sourceChestPos, Blocks.CHEST.defaultBlockState())
-			setBlock(machinePos, Blocks.CHEST.defaultBlockState())
+			// A real crafting table, not a stand-in chest: the pressure-scaled fetch this test is
+			// about only exists for the crafting-table case now. A processing machine is expected to
+			// get its own output onto the network (auto-eject, or an extraction hook), so nothing
+			// fetches for it and there is no interval to scale.
+			setBlock(machinePos, Blocks.CRAFTING_TABLE.defaultBlockState())
 
 			setBlock(patternHookPos, BlockRegistry.Multipart.defaultBlockState())
 			val patternHook = getBlockEntity(patternHookPos) as MultipartBlockEntity
 			patternHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-			val patternHookState = patternHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+			val patternHookState = patternHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() }
 			val pattern = Pattern(
-				inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT)), ItemResource.of(ItemStack(Items.IRON_INGOT))),
+				inputs = listOf(ItemStack(Items.IRON_INGOT).resourceStack, ItemStack(Items.IRON_INGOT).resourceStack),
 				outputs = listOf(ResourceStack(target, 1)),
-				kind = PatternKind.PROCESSING,
+				kind = PatternKind.CRAFTING,
 			)
-			patternHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
+			patternHookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
 
 			setBlock(providerPipePos, BlockRegistry.Multipart.defaultBlockState())
 			val providerTile = getBlockEntity(providerPipePos) as MultipartBlockEntity
@@ -82,11 +85,11 @@ class CraftingCpuPressureScalingGameTest {
 
 			(getBlockEntity(sourceChestPos) as ChestBlockEntity).setItem(0, ItemStack(Items.IRON_INGOT, 8))
 
-			return Triple(cpuTile, absolutePos(cpuPos), machinePos)
+			return Triple(cpuTile, absolutePos(cpuPos), patternHookState as PatternProviderHookState)
 		}
 
-		val (noPressureCpuTile, noPressureCpuPos, noPressureMachinePos) = setUpChain(xOffset = 0)
-		val (pressureCpuTile, pressureCpuPos, pressureMachinePos) = setUpChain(xOffset = 8)
+		val (noPressureCpuTile, noPressureCpuPos, noPressureHookState) = setUpChain(xOffset = 0)
+		val (pressureCpuTile, pressureCpuPos, pressureHookState) = setUpChain(xOffset = 8)
 
 		val tankPos = BlockPos(9, 2, 3)
 		setBlock(tankPos, BlockRegistry.Multipart.defaultBlockState())
@@ -117,8 +120,10 @@ class CraftingCpuPressureScalingGameTest {
 		// pre-placed item did exactly that). Placed well before either job's own first pull-check
 		// fires (t=40/t=60 below), so both find it waiting once their own timer comes due.
 		runAfterDelay(25) {
-			(getBlockEntity(noPressureMachinePos) as ChestBlockEntity).setItem(0, ItemStack(Items.IRON_BLOCK, 1))
-			(getBlockEntity(pressureMachinePos) as ChestBlockEntity).setItem(0, ItemStack(Items.IRON_BLOCK, 1))
+			// A crafting table has no inventory of its own - its results live in the hook's own
+			// virtual output buffer, which is exactly what the CPU fetches from on its interval.
+			noPressureHookState.outputBufferFor(0).insert(target, 1, false)
+			pressureHookState.outputBufferFor(0).insert(target, 1, false)
 		}
 
 		// The pull-back itself is a real network delivery (RequestFulfillment.request), not an

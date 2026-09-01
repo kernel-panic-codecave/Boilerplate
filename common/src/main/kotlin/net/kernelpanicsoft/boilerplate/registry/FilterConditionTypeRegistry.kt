@@ -8,6 +8,8 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ModConditionState
@@ -27,6 +29,7 @@ object FilterConditionTypeRegistry : ADeferredRegistryHolder<FilterConditionType
 	Registrars.FILTER_CONDITION_TYPE.key() as ResourceKey<Registry<FilterConditionType<out FilterConditionState>>>,
 ) {
 	val Item: FilterConditionType<ItemConditionState> by register(ItemConditionType.ID) { ItemConditionType }
+	val Fluid: FilterConditionType<FluidConditionState> by register(FluidConditionType.ID) { FluidConditionType }
 	val Mod: FilterConditionType<ModConditionState> by register(ModConditionType.ID) { ModConditionType }
 	val Tag: FilterConditionType<TagConditionState> by register(TagConditionType.ID) { TagConditionType }
 	val Color: FilterConditionType<ColorConditionState> by register(ColorConditionType.ID) { ColorConditionType }

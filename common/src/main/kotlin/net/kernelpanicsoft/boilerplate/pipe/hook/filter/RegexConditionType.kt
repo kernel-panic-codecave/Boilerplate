@@ -14,7 +14,7 @@ import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
-import net.minecraft.core.registries.BuiltInRegistries
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -26,7 +26,7 @@ object RegexConditionType : FilterConditionType<RegexConditionState>() {
 
 	override fun matches(state: RegexConditionState, context: FilterContext): Boolean {
 		if (state.regex.isBlank()) return false
-		val id = (BuiltInRegistries.ITEM.getKey(context.resource.item) as ResourceLocation?)?.toString() ?: return false
+		val id = ResourceKindRegistry.forResource(context.resource)?.registryId(context.resource)?.toString() ?: return false
 		return runCatching { Regex(state.regex).containsMatchIn(id) }.getOrDefault(false)
 	}
 

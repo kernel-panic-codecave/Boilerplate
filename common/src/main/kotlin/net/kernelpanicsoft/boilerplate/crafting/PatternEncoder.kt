@@ -4,6 +4,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.CraftingInput
@@ -23,30 +24,34 @@ import net.minecraft.world.item.crafting.RecipeType
  */
 object PatternEncoder {
 	fun encode(level: ServerLevel, kind: PatternKind, grid: ArchieItemStorage, patternOutputs: ArchieItemStorage): Pattern? {
-		val gridItems = (0 until grid.size()).map { grid.get(it).getItem() }
-		val gridResources = gridItems.map { ItemResource.of(it) }
-		if (gridResources.all { it.isBlank }) return null
+
+		val inputs = (0 until grid.size()).map { grid[it].contents }
+		// Nothing to encode from an entirely empty grid, whichever mode is selected. Not merely
+		// tidiness: PROCESSING would otherwise happily encode `inputs=[] -> outputs=[whatever]`, a
+		// pattern that produces something from nothing, which the crafting layer would then treat
+		// as a real recipe.
+		if (inputs.all { it.isEmpty }) return null
 
 		return when (kind) {
 			PatternKind.CRAFTING -> {
-				val craftingInput = CraftingInput.of(3, 3, gridItems)
+				val craftingInput = CraftingInput.of(3, 3, inputs.map { it.itemStack })
 				val recipe = level.recipeManager.getRecipeFor(RecipeType.CRAFTING, craftingInput, level).orElse(null) ?: return null
 				val assembled = recipe.value().assemble(craftingInput, level.registryAccess())
 				if (assembled.isEmpty) null
 				else Pattern(
-					inputs = gridResources,
+					inputs = inputs,
 					outputs = listOf(ResourceStack(ItemResource.of(assembled), assembled.count.toLong())),
 					kind = PatternKind.CRAFTING,
 				)
 			}
 
 			PatternKind.PROCESSING -> {
-				val outputs = (0 until patternOutputs.size()).mapNotNull { i ->
-					val stack = patternOutputs.get(i).getItem()
-					if (stack.isEmpty) null else ResourceStack(ItemResource.of(stack), stack.count.toLong())
-				}
+				// Filtered *before* the emptiness check, not after: the unfiltered list is one entry
+				// per slot and so is only ever `isEmpty` for a zero-slot storage, which meant this
+				// guard never fired and a PROCESSING pattern could be encoded with no outputs at all.
+				val outputs = (0 until patternOutputs.size()).map { patternOutputs[it].contents }.filter { !it.isEmpty }
 				if (outputs.isEmpty()) null
-				else Pattern(inputs = gridResources, outputs = outputs, kind = PatternKind.PROCESSING)
+				else Pattern(inputs = inputs.filter { !it.isEmpty }, outputs = outputs, kind = PatternKind.PROCESSING)
 			}
 		}
 	}

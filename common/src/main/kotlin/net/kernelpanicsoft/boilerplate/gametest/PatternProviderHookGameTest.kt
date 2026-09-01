@@ -13,6 +13,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
@@ -45,8 +46,8 @@ class PatternProviderHookGameTest {
 		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
 
 		val pattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_LOG).resourceStack),
+			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
@@ -74,8 +75,8 @@ class PatternProviderHookGameTest {
 		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
 
 		val pattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_LOG).resourceStack),
+			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
@@ -98,11 +99,11 @@ class PatternProviderHookGameTest {
 
 		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
 		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() }
 
 		val pattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
+			outputs = listOf(ItemStack(Items.STICK, 4).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
@@ -133,16 +134,16 @@ class PatternProviderHookGameTest {
 
 		val hook = getBlockEntity(hookPos) as MultipartBlockEntity
 		hook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() }
 
 		val decoyPattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_TRAPDOOR)), 2)),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
+			outputs = listOf(ItemStack(Items.OAK_TRAPDOOR, 2).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
 		val wantedPattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
+			outputs = listOf(ItemStack(Items.STICK, 4).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = decoyPattern })
@@ -169,16 +170,16 @@ class PatternProviderHookGameTest {
 		val hookState = hook.hooks.getOrPut(Direction.NORTH.name) { PatternProviderHookType.createState() }
 
 		val sticksPattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
+			outputs = listOf(ItemStack(Items.STICK, 4).resourceStack),
 			kind = PatternKind.PROCESSING,
 		)
 		val pickaxePattern = Pattern(
 			inputs = listOf(
-				ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS)),
-				ItemResource.of(ItemStack(Items.STICK)), ItemResource.of(ItemStack(Items.STICK)),
+				ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack,
+				ItemStack(Items.STICK).resourceStack, ItemStack(Items.STICK).resourceStack,
 			),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.WOODEN_PICKAXE)), 1)),
+			outputs = listOf(ItemStack(Items.WOODEN_PICKAXE).resourceStack),
 			kind = PatternKind.PROCESSING,
 		)
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
@@ -225,13 +226,13 @@ class PatternProviderHookGameTest {
 		val southState = hook.hooks.getOrPut(Direction.SOUTH.name) { PatternProviderHookType.createState() }
 
 		val northPattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_BLOCK)), 1)),
+			inputs = listOf(ItemStack(Items.IRON_INGOT).resourceStack),
+			outputs = listOf(ItemStack(Items.IRON_BLOCK, 1).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
 		val southPattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_TRAPDOOR)), 1)),
+			inputs = listOf(ItemStack(Items.IRON_INGOT).resourceStack),
+			outputs = listOf(ItemStack(Items.IRON_TRAPDOOR, 1).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
 		northState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = northPattern })

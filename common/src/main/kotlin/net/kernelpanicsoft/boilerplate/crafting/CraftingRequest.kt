@@ -72,7 +72,7 @@ object CraftingRequest {
 	 * number instead, and no real inventory holds anywhere near that much anyway.
 	 */
 	private fun stockOf(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, providers: List<RequestFulfillment.ProviderSource>, resource: ItemResource): Long =
-		warehouses.sumOf { warehouse -> warehouse.index.locations[resource]?.sumOf { it.amount } ?: 0L } +
+		warehouses.sumOf { warehouse -> warehouse.index.slotsFor(resource).sumOf { it.amount } } +
 			providers.sumOf { source ->
 				if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) 0L
 				else source.storage(level)?.extract(resource, Int.MAX_VALUE.toLong(), true) ?: 0L

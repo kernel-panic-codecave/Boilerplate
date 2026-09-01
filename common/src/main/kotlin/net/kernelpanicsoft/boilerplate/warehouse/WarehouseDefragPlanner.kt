@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
 import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.minecraft.server.level.ServerLevel
 
@@ -25,7 +26,11 @@ object WarehouseDefragPlanner {
 	fun plan(level: ServerLevel, controller: WarehouseControllerBlockEntity): List<GantryJob.Move> {
 		val jobs = mutableListOf<GantryJob.Move>()
 
-		for ((resource, entries) in controller.index.locations) {
+		for ((key, entries) in controller.index.locations) {
+			// Consolidation is item-only: [GantryJob.Move] carries a ResourceStack<ItemResource>,
+			// and "merge two partial stacks" doesn't map onto tanks anyway - two half-full tanks of
+			// the same fluid are not wasting a slot the way two partial item stacks are.
+			val resource = key.resource as? ItemResource ?: continue
 			if (entries.size <= 1) continue
 			val sorted = entries.sortedByDescending { it.amount }
 			val absorber = sorted.first()

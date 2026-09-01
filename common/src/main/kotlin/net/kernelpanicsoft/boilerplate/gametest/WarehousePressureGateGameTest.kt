@@ -47,8 +47,8 @@ class WarehousePressureGateGameTest {
 		// WarehouseReservationGameTest's identical note.
 		runAfterDelay(10) {
 			val serverLevel = level as ServerLevel
-			assertTrue(controller.index.locations[diamond]?.firstOrNull()?.amount == 8L) {
-				"Expected the rack's 8 diamonds to be indexed before requesting, got ${controller.index.locations[diamond]}"
+			assertTrue(controller.index.slotsFor(diamond).firstOrNull()?.amount == 8L) {
+				"Expected the rack's 8 diamonds to be indexed before requesting, got ${controller.index.slotsFor(diamond)}"
 			}
 			assertTrue(!controller.hasPressure()) { "Expected the controller to report no reachable pressure" }
 
@@ -77,8 +77,8 @@ class WarehousePressureGateGameTest {
 
 		runAfterDelay(10) {
 			val serverLevel = level as ServerLevel
-			assertTrue(controller.index.locations[diamond]?.firstOrNull()?.amount == 8L) {
-				"Expected the rack's 8 diamonds to be indexed before requesting, got ${controller.index.locations[diamond]}"
+			assertTrue(controller.index.slotsFor(diamond).firstOrNull()?.amount == 8L) {
+				"Expected the rack's 8 diamonds to be indexed before requesting, got ${controller.index.slotsFor(diamond)}"
 			}
 			assertTrue(controller.hasPressure()) { "Expected the controller to report reachable pressure via the adjacent creative source" }
 

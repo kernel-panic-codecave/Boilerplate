@@ -1,6 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.serialization.field
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
@@ -39,12 +39,18 @@ abstract class SortingHookState(defaultType: ResourceLocation) : HookHolderState
 	 * [net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity.acceptsByFilter]'s own
 	 * "unconfigured rack takes anything" default.
 	 *
+	 * [resource] is any registered kind, not just an item: one plain pipe carries the item and fluid
+	 * networks at once, so a fluid routed past a sorting hook is evaluated here too. Which
+	 * conditions can actually judge it is the card's own business - a mod/tag/regex card is
+	 * kind-agnostic, an item ghost grid never matches a fluid (see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionType]).
+	 *
 	 * [color] is the traveling item's own consignment color, if any - see [FilterContext.color].
 	 * Shared by [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter]'s push-routing search
 	 * and [net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment]'s pull-request search
 	 * alike, so a [SyncHookType] hook's filter constrains both directions identically.
 	 */
-	fun accepts(resource: ItemResource, color: DyeColor? = null): Boolean {
+	fun accepts(resource: ResourceComponent, color: DyeColor? = null): Boolean {
 		val card = filter.get(0).resource
 		if (card.isBlank) return routing.mode == FilterMode.BLACKLIST
 

@@ -1,16 +1,16 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
-import earth.terrarium.common_storage_lib.item.ItemApi
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
+import net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
+import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypesAt
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
-import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
+import net.kernelpanicsoft.boilerplate.registry.Registrars
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -22,6 +22,13 @@ import net.minecraft.world.item.Item
  * network can route it somewhere that will accept it, spawns it as a [TravelingItem]. The only
  * self-initiating hook - a [FilterHookType] hook never pulls on its own.
  *
+ * Kind-parametric, not item-specific: it asks each carrier network its own segment actually
+ * conducts ([carriersAt]) to try the pull, so one hook item pulls items from a chest and fluids
+ * from a tank depending only on what is on the face - and an addon registering a gas
+ * [ResourceNetworkType] gets extraction with no edit here. The per-kind work (which capability to
+ * probe, how much counts as one batch, how to route it) all lives on
+ * [ResourceNetworkType.extractRoutable]; see its KDoc for why the loop cannot live in this class.
+ *
  * Facing an [InterfaceHookType] hook directly is the one case where the neighbor genuinely *is*
  * "a pipe" (another [MultipartBlockEntity]) and this hook still pulls from it anyway - the subnet
  * boundary's own active-extract role (`docs/design/m2-sorting-routing.md`), reaching across into
@@ -32,8 +39,16 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 
 	override val id: ResourceLocation get() = ID
 
-	/** Attachable only on an item-pipe segment (see [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]). */
-	override val compatibleNetworkTypes by lazy { setOf(NetworkTypeRegistry.Item) }
+	/**
+	 * Attachable on a segment carrying *any* registered resource network - derived from the live
+	 * registry rather than a literal `{item}`, so an addon's own carrier kind makes this hook
+	 * attachable on its pipes without touching Boilerplate.
+	 *
+	 * A computed `get()` rather than the `by lazy` this used to be: a derived value must not be
+	 * captured before the registry is populated.
+	 */
+	override val compatibleNetworkTypes: Set<NetworkType>
+		get() = Registrars.NETWORK_TYPE.filterTo(hashSetOf()) { it is ResourceNetworkType<*> }
 
 	/** [PipeHookType.basePressureCost] - Its own periodic pull is real per-tick work, but a single simple extraction - a middling draw. */
 	override val basePressureCost: Long = 2L
@@ -62,28 +77,33 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 		// to extract from) - except an InterfaceHookType hook facing this one, a subnet boundary
 		// this hook is deliberately allowed to reach across (see `docs/design/m2-sorting-routing.md`).
 		if (level.getBlockState(neighborPos).block is PipeBlock && !SubnetBoundary.isBoundaryEdge(level, pos, direction)) return
-		val storage = ItemApi.BLOCK.find(level, neighborPos, direction.opposite) ?: return
 
-		for (slotIndex in 0 until storage.size()) {
-			val resource = storage.get(slotIndex).resource
-			if (resource.isBlank) continue
-
-			val available = storage.extract(resource, EXTRACTION_AMOUNT, true)
-			if (available <= 0) continue
-
-			val route = PipeRouter.findRoute(level, pos, resource, color, exclude = setOf(neighborPos)) ?: continue
-
-			val extracted = storage.extract(resource, available, false)
-			if (extracted <= 0) continue
-
-			tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction, 0f, route, color)
+		// One pull per interval, whichever kind wins - the same "first willing source" shape this
+		// has always had across an inventory's slots, now extended across the segment's own carrier
+		// kinds. A kind with nothing routable on the face costs one capability lookup and falls
+		// through to the next.
+		for (carrier in carriersAt(level, pos)) {
+			val extraction = carrier.extractRoutable(level, pos, neighborPos, direction.opposite, color) ?: continue
+			tile.travelingItems += TravelingItem(extraction.stack, direction, 0f, extraction.route, color)
 			return
 		}
 	}
 
-	const val EXTRACTION_INTERVAL_TICKS = 10
+	/**
+	 * The carrier networks [pos]'s own segment conducts, in a stable order.
+	 *
+	 * Sorted by registry id rather than left in [primaryNetworkTypesAt]'s set order, which comes
+	 * from a `hashSetOf` and is therefore arbitrary *and* free to differ between runs. Without this
+	 * a face exposing both an item and a fluid capability would pick a different kind to drain on
+	 * different launches. The order is deliberately stable-but-meaningless, not a priority: it only
+	 * decides which kind gets first refusal on any given tick.
+	 */
+	private fun carriersAt(level: ServerLevel, pos: BlockPos): List<ResourceNetworkType<*>> =
+		primaryNetworkTypesAt(level, pos)
+			.filterIsInstance<ResourceNetworkType<*>>()
+			.sortedBy { it.id.toString() }
 
-	const val EXTRACTION_AMOUNT = 64L
+	const val EXTRACTION_INTERVAL_TICKS = 10
 
 	override fun asItem(): Item = ItemRegistry.ExtractionHook
 }

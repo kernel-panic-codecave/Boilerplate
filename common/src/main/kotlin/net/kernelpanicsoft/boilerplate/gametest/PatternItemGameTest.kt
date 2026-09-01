@@ -1,12 +1,11 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
-import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.item.ItemStack
@@ -26,8 +25,8 @@ class PatternItemGameTest {
 	fun GameTestHelper.testEncodedPatternSurvivesACopy() {
 		val stack = ItemStack(ItemRegistry.Pattern)
 		val pattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_LOG).resourceStack),
+			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceStack),
 			kind = PatternKind.PROCESSING,
 		)
 		PatternItemData(stack).pattern = pattern
@@ -40,8 +39,8 @@ class PatternItemGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 5)
 	fun GameTestHelper.testIdenticallyEncodedStacksStackTogether() {
 		val pattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.IRON_INGOT))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.IRON_NUGGET)), 9)),
+			inputs = listOf(ItemStack(Items.IRON_INGOT).resourceStack),
+			outputs = listOf(ItemStack(Items.IRON_NUGGET, 9).resourceStack),
 			kind = PatternKind.PROCESSING,
 		)
 		val a = ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern }

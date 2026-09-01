@@ -11,7 +11,7 @@ import net.kernelpanicsoft.boilerplate.pipe.item.EncasementItem
 import net.kernelpanicsoft.boilerplate.pipe.item.HookItem
 import net.kernelpanicsoft.boilerplate.pipe.item.PipeItem
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
-import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypeAt
+import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypesAt
 import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager
 import net.kernelpanicsoft.boilerplate.registry.EncasementTypeRegistry
 import net.kernelpanicsoft.boilerplate.registry.HookTypeRegistry
@@ -52,6 +52,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParams
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.MenuProvider
 
 /**
  * A pipe segment that can additionally carry attachments: a
@@ -74,6 +75,27 @@ import net.minecraft.world.phys.Vec3
  * keeps looking like whatever pipe type it actually is.
  */
 class MultipartBlock(properties: Properties) : PipeBlock(properties) {
+	/**
+	 * `null`, so vanilla's spectator interaction never opens this block's menu.
+	 *
+	 * Spectators *can* open block menus in vanilla - [net.minecraft.server.level.ServerPlayerGameMode.useItemOn]
+	 * has an explicit branch that calls `player.openMenu(state.getMenuProvider(...))` before any of
+	 * the normal use handling runs, which is how a spectator peeks into a chest. That branch uses
+	 * the **plain** `openMenu`, though, and every menu here is an Architectury *extended* menu whose
+	 * client-side constructor reads its block position out of a [net.minecraft.network.FriendlyByteBuf].
+	 * Opened that way there is no buffer at all, so the client died on
+	 * `Cannot invoke "FriendlyByteBuf.readBlockPos()" because "buf" is null` before the screen ever
+	 * appeared.
+	 *
+	 * Returning `null` makes that branch fall through to `PASS`. Normal play is unaffected: this
+	 * block opens its own menus through `MenuRegistry.openExtendedMenu` from its use handler, which
+	 * never consults this. The only other callers are vanilla's two spectator *crosshair* checks
+	 * ([net.minecraft.client.gui.Gui] / [net.minecraft.client.renderer.GameRenderer]), which now
+	 * correctly stop advertising a crosshair for a menu a spectator cannot open.
+	 */
+	override fun getMenuProvider(state: BlockState, level: Level, pos: BlockPos): MenuProvider? = null
+
+
 	init
 	{
 		register()
@@ -114,8 +136,8 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 	/**
 	 * Right-clicking a face with a [HookItem] attaches that hook to it (unless that face already
 	 * carries one), and an [EncasementItem] wraps the whole segment instead - either only if the
-	 * underlying pipe's own [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.primaryNetworkType]
-	 * is one of the attachment's [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]
+	 * underlying pipe's own [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.primaryNetworkTypes]
+	 * includes any of the attachment's [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]
 	 * (a pipe-less segment, with no primary type resolved yet, accepts anything). A [PipeItem]
 	 * against a pipe-less segment instead names its own [PipeItem.pipeBlock] - gated the other way
 	 * round, against an *already-encased* segment's own `compatibleNetworkTypes`, since there's no
@@ -151,7 +173,7 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 		{
 			if (tile.pipeBlockId != MultipartBlockEntity.NONE) return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION
 			val encasementType = tile.encasement.value?.fromRegistry
-			if (encasementType != null && pipeItem.pipeBlock.primaryNetworkType !in encasementType.compatibleNetworkTypes) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			if (encasementType != null && pipeItem.pipeBlock.primaryNetworkTypes.none { it in encasementType.compatibleNetworkTypes }) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			if (level.isClientSide) return ItemInteractionResult.SUCCESS
 			tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(pipeItem.pipeBlock)
 		}
@@ -160,8 +182,8 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 			if (level.isClientSide) return ItemInteractionResult.SUCCESS
 			if (tile.encasement.value != null) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			val encasementType = EncasementTypeRegistry.byId(encasementItem.encasementId) ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
-			val primary = primaryNetworkTypeAt(level, pos)
-			if (primary != null && primary !in encasementType.compatibleNetworkTypes) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			val primaries = primaryNetworkTypesAt(level, pos)
+			if (primaries.isNotEmpty() && primaries.none { it in encasementType.compatibleNetworkTypes }) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			val encasementState = encasementType.createState()
 			tile.encasement.value = encasementState
 			(level as? ServerLevel)?.let { encasementType.onAttached(it, pos, tile, encasementState) }
@@ -172,8 +194,8 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 			val direction = armFor(level, state, pos, hitResult, player) ?: hitResult.direction
 			if (tile.hooks.containsKey(direction.name)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			val hookType = HookTypeRegistry.byId(hookItem.hookId) ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
-			val primary = primaryNetworkTypeAt(level, pos)
-			if (primary != null && primary !in hookType.compatibleNetworkTypes) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+			val primaries = primaryNetworkTypesAt(level, pos)
+			if (primaries.isNotEmpty() && primaries.none { it in hookType.compatibleNetworkTypes }) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
 			tile.hooks.getOrPut(direction.name) { hookType.createState() }
 			resyncNetworkMembership(level, pos)
 		}

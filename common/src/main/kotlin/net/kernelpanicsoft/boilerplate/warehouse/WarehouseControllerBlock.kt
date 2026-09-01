@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.MenuProvider
 
 /**
  * A warehouse's single binding point - see [WarehouseWandItem]/[WarehouseControllerBlockEntity].
@@ -23,6 +24,10 @@ import net.minecraft.world.phys.BlockHitResult
  * over it.
  */
 class WarehouseControllerBlock(properties: Properties) : BaseEntityBlock(properties) {
+	/** `null` - see [net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock.getMenuProvider] for why every extended-menu block here has to opt out of vanilla's spectator open path. */
+	override fun getMenuProvider(state: BlockState, level: Level, pos: BlockPos): MenuProvider? = null
+
+
 	override fun codec(): MapCodec<out BaseEntityBlock> = CODEC
 
 	override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity = WarehouseControllerBlockEntity(pos, state)

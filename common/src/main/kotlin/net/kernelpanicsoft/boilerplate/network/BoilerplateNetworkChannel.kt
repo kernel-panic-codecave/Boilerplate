@@ -20,6 +20,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 			clientbound(CraftingBufferStatusPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(PendingDeliveriesPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(DebugNetworkSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(WarehouseDebugSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestTerminalSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }

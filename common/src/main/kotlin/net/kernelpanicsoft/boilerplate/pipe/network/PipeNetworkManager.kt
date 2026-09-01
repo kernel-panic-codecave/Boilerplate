@@ -13,7 +13,7 @@ import java.util.WeakHashMap
  */
 class PipeNetworkManager private constructor() : AbstractPipeNetworkManager<ItemPipeNetwork>() {
 	override fun createNetwork(id: UUID): ItemPipeNetwork = ItemPipeNetwork(id)
-	override fun isMember(level: ServerLevel, pos: BlockPos): Boolean = PipeRouter.isPipe(level, pos)
+	override fun isMember(level: ServerLevel, pos: BlockPos): Boolean = ItemPipeRouter.isPipe(level, pos)
 	override fun isBoundaryEdge(level: ServerLevel, pos: BlockPos, direction: Direction): Boolean = SubnetBoundary.isBoundaryEdge(level, pos, direction)
 
 	companion object {

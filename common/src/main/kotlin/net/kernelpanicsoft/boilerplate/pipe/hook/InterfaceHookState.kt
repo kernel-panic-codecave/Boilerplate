@@ -1,14 +1,19 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import earth.terrarium.common_storage_lib.resources.fluid.util.FluidAmounts
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.storage.base.StorageSlot
+import net.kernelpanicsoft.archie.transfer.ArchieFluidStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.boilerplate.pipe.attachment.FluidStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer
+import net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 
@@ -41,13 +46,34 @@ private val PASS_THROUGH_IN_FLIGHT = object : ThreadLocal<MutableSet<Long>>() {
  * [net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer] - see that
  * interface's own KDoc for why.
  */
-class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExposer {
+class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExposer, FluidStorageExposer {
 	val ghosts: ArchieItemStorage by itemField(SLOTS)
 
 	val stock: ArchieItemStorage by itemField(SLOTS)
 
 	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> =
 		InterfacePassThroughStorage(tile, this)
+
+	/**
+	 * The fluid counterpart of [stock] - one fluid, not a nine-column row.
+	 *
+	 * Nothing fills this yet. The interface's *stocking* role - keeping each column topped up to its
+	 * [ghosts] target - runs on [net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment],
+	 * which is item-typed, so a fluid interface is a pass-through junction only for now (see
+	 * [exposedFluidStorage]). The buffer exists so a neighbour reading or draining the face sees a
+	 * real surface rather than nothing at all.
+	 */
+	val fluidStock: ArchieFluidStorage by fluidField(FluidAmounts.toPlatformAmount(FLUID_STOCK_MILLIBUCKETS), size = 1)
+
+	/**
+	 * The fluid face this interface presents - pass-through, exactly like [exposedItemStorage]:
+	 * an insert is routed straight into the fluid network or rejected with `0`, never staged.
+	 *
+	 * This is what makes an interface a *directed junction* for fluids as well as items, which is
+	 * the half of its role the subnet-boundary system actually depends on (see [InterfaceHookType]).
+	 */
+	override fun exposedFluidStorage(tile: MultipartBlockEntity): CommonStorage<FluidResource> =
+		InterfaceFluidPassThroughStorage(tile, this)
 
 	/** Ticks since this hook last ran its periodic management (self-requisition + excess drain); resets to 0 on every run, successful or not - see [InterfaceHookType.tick]. */
 	var ticksSinceManage: Int = 0
@@ -60,6 +86,9 @@ class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExp
 
 	companion object {
 		const val SLOTS = 9
+
+		/** [fluidStock]'s capacity, in millibuckets - stated loader-independently and converted through [FluidAmounts.toPlatformAmount], never read from a `FluidAmounts` constant (they all read `0` in Common Storage Lib 0.0.5). */
+		const val FLUID_STOCK_MILLIBUCKETS = 8_000L
 	}
 }
 
@@ -114,8 +143,62 @@ class InterfacePassThroughStorage(
 			// Only a directly-adjacent feeder - a real accepting inventory - is shut out of the route, so
 			// items never bounce right back into the block feeding the face. A neighboring pipe is never a
 			// route destination anyway, and excluding one would sever the interface's own onward path.
-			val exclude = setOfNotNull(source?.takeIf { !PipeRouter.isPipe(level, it) })
-			val route = PipeRouter.findRoute(level, tile.blockPos, resource, exclude = exclude) ?: return 0
+			val exclude = setOfNotNull(source?.takeIf { !ItemPipeRouter.isPipe(level, it) })
+			val route = ItemPipeRouter.findRoute(level, tile.blockPos, resource, exclude = exclude) ?: return 0
+			if (simulate) return amount
+			val direction = interfaceState.directionOn(tile) ?: return 0
+			tile.travelingItems += TravelingItem(ResourceStack(resource, amount), direction, 0f, route, null)
+			return amount
+		} finally {
+			PASS_THROUGH_IN_FLIGHT.get().remove(key)
+		}
+	}
+}
+
+/**
+ * The fluid counterpart of [InterfacePassThroughStorage]: reads and extractions hit
+ * [InterfaceHookState.fluidStock], every insert is routed *through* into the fluid network instead
+ * of being staged, and a route-less insert returns `0` - which is what makes an interface a
+ * one-way junction when it sits on a [net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary]
+ * edge.
+ *
+ * Shares [PASS_THROUGH_IN_FLIGHT] with the item surface rather than keeping its own set. Two
+ * interfaces pointing at each other recurse identically whichever kind is crossing, and a single
+ * per-position guard covers both - a fluid pass-through that re-entered through the item surface
+ * (or the reverse) would otherwise still loop.
+ */
+class InterfaceFluidPassThroughStorage(
+	private val tile: MultipartBlockEntity,
+	private val interfaceState: InterfaceHookState,
+) : CommonStorage<FluidResource> by interfaceState.fluidStock {
+
+	override fun insert(resource: FluidResource, amount: Long, simulate: Boolean): Long =
+		passThrough(resource, amount, simulate)
+
+	/** Slot-valued reads and extractions resolve to the real stock slot; slot inserts join the pass-through surface. */
+	override fun get(index: Int): StorageSlot<FluidResource> = PassThroughSlot(interfaceState.fluidStock.get(index))
+
+	override fun insert(index: Int, resource: FluidResource, amount: Long, simulate: Boolean): Long =
+		passThrough(resource, amount, simulate)
+
+	private inner class PassThroughSlot(
+		private val delegate: StorageSlot<FluidResource>,
+	) : StorageSlot<FluidResource> by delegate {
+		override fun insert(resource: FluidResource, amount: Long, simulate: Boolean): Long =
+			passThrough(resource, amount, simulate)
+	}
+
+	private fun passThrough(resource: FluidResource, amount: Long, simulate: Boolean): Long {
+		if (resource.isBlank || amount <= 0) return 0
+		val level = tile.level as? ServerLevel ?: return 0
+		val key = tile.blockPos.asLong()
+		if (!PASS_THROUGH_IN_FLIGHT.get().add(key)) return 0
+		try {
+			val source = interfaceState.directionOn(tile)?.let { tile.blockPos.relative(it) }
+			// Only a directly-adjacent feeder is shut out of the route, so fluid never bounces
+			// straight back into the block feeding the face - the same rule the item surface uses.
+			val exclude = setOfNotNull(source?.takeIf { !FluidPipeRouter.isPipe(level, it) })
+			val route = FluidPipeRouter.findRoute(level, tile.blockPos, resource, exclude = exclude) ?: return 0
 			if (simulate) return amount
 			val direction = interfaceState.directionOn(tile) ?: return 0
 			tile.travelingItems += TravelingItem(ResourceStack(resource, amount), direction, 0f, route, null)

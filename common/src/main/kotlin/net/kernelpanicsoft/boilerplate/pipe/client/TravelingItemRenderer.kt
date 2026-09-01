@@ -2,6 +2,8 @@ package net.kernelpanicsoft.boilerplate.pipe.client
 
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.math.Axis
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.entity.ItemRenderer
@@ -20,6 +22,14 @@ import net.minecraft.world.phys.Vec3
  * [TravelingItemBlockEntityRenderer] for a plain [net.kernelpanicsoft.boilerplate.pipe.block.GlassPipeBlock],
  * and [MultipartTravelingItemRenderer] for a [net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock]
  * promoted from one.
+ *
+ * A [TravelingItem] is an envelope around any
+ * [earth.terrarium.common_storage_lib.resources.ResourceComponent], and one pipe carries every
+ * registered [net.kernelpanicsoft.boilerplate.pipe.network.PipeCarriage.PRIMARY] network type at
+ * once, so this dispatches on the envelope's kind: items render as their own model, fluids as a
+ * rippling icosahedron ([TravelingFluidRenderer]). A kind with no renderer of its own is skipped
+ * rather than cast blindly - a hard cast here is a `ClassCastException` inside the level render
+ * loop, which takes the whole frame down rather than dropping one sprite.
  */
 object TravelingItemRenderer {
 	fun render(
@@ -34,14 +44,12 @@ object TravelingItemRenderer {
 		partialTick: Float,
 	) {
 		for ((stack, fromDirection, progress, path) in items) {
-			// Progress is dead-reckoned past `1f` once an item has reached/handed off at the exit
-			// face, and the neighbor segment's own copy of it starts from the same face on the same
-			// server tick - so anything still mid-path that's already at/past the face is that
-			// neighbor's to draw now, and drawing it again here would park a ghost on the boundary
-			// plane (see [PipeContentsClientCache]'s KDoc). An item on its *final* leg
-			// (`path.size == 1`) is a delivery at its destination, not a handoff: it holds at the
-			// face mouth until the deposit's next sync removes it, reading it as "arrived, waiting
-			// on room".
+			// [PipeContentsClientCache] already hands a mid-path item to the next segment the
+			// moment its progress passes the exit face, so one that is still listed here past `1f`
+			// is on its *final* leg: a delivery at its destination rather than a hand-off. It holds
+			// at the face mouth until the deposit's next sync removes it, reading as "arrived,
+			// waiting on room". The mid-path case is kept as a guard only - drawing it here would
+			// park a ghost on the boundary plane the neighbour is already drawing past.
 			val renderProgress = when {
 				progress >= 1f && path.size > 1 -> continue
 				progress >= 1f -> 1f
@@ -54,13 +62,24 @@ object TravelingItemRenderer {
 			val to = toDirection?.let(::tipOf) ?: CENTER
 			val itemPos = pathPosition(from, to, renderProgress.toDouble())
 			val seed = pos.asLong().toInt()
-			val centeringOffset = centeringOffset(itemRenderer, stack.resource.cachedStack, level, seed)
+
+			val fluid = stack.resource as? FluidResource
+			if (fluid != null) {
+				TravelingFluidRenderer.render(
+					fluid, itemPos, poseStack, bufferSource, packedLight, packedOverlay,
+					level.gameTime + partialTick,
+				)
+				continue
+			}
+
+			val resource = stack.resource as? ItemResource ?: continue
+			val centeringOffset = centeringOffset(itemRenderer, resource.cachedStack, level, seed)
 
 			poseStack.pushPose()
 			poseStack.translate(itemPos.x, itemPos.y - centeringOffset, itemPos.z)
 			poseStack.mulPose(Axis.YP.rotationDegrees((level.gameTime + partialTick) * SPIN_DEGREES_PER_TICK))
 			poseStack.scale(ITEM_SCALE, ITEM_SCALE, ITEM_SCALE)
-			itemRenderer.renderStatic(stack.resource.cachedStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
+			itemRenderer.renderStatic(resource.cachedStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
 			poseStack.popPose()
 		}
 	}

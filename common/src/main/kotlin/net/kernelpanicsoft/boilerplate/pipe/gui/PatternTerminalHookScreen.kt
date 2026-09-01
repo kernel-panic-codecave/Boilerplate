@@ -51,10 +51,10 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 		var inputs by remember { mutableStateOf(menu.currentGhostInputs()) }
 		var outputs by remember { mutableStateOf(menu.currentGhostOutputs()) }
 
-		fun setInput(index: Int, resource: ItemResource)
+		fun setInput(index: Int, resource: ItemResource, amount: Long)
 		{
-			inputs = inputs.toMutableList().also { it[index] = resource }
-			menu.setGhostInput(index, resource)
+			inputs = inputs.toMutableList().also { it[index] = resource to amount }
+			menu.setGhostInput(index, resource, amount)
 		}
 
 		fun setOutput(index: Int, resource: ItemResource, amount: Long)
@@ -77,13 +77,21 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 					Column {
 						Text(Component.literal("Inputs"), dropShadow = false)
 						GhostSlotGrid(
-							resources = inputs,
+							resources = inputs.map { it.first },
 							columns = 3,
 							carried = { menu.carried },
-							onPlace = { index, resource -> setInput(index, resource) },
-							onClear = { index -> setInput(index, ItemResource.BLANK) },
+							onPlace = { index, resource -> setInput(index, resource, inputs.getOrNull(index)?.second ?: 1) },
+							onClear = { index -> setInput(index, ItemResource.BLANK, 1) },
 							clickHandler = clickHandler,
 							handleClick = { null },
+							amounts = inputs.map { it.second },
+							// Scrollable only for PROCESSING: a CRAFTING pattern's grid is matched
+							// against a real vanilla recipe and is one-item-per-cell, so a per-cell
+							// count there would be meaningless (and is ignored at encode time).
+							onAmountScroll = if (kind != PatternKind.PROCESSING) null else { index, delta ->
+								val (resource, amount) = inputs.getOrNull(index) ?: return@GhostSlotGrid
+								if (!resource.isBlank) setInput(index, resource, (amount + delta).coerceIn(1, 64))
+							},
 						)
 					}
 					Column {

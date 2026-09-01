@@ -1,7 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import androidx.compose.runtime.*
-import dev.architectury.extensions.injected.InjectedRegistryEntryExtension
 import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
@@ -12,11 +11,9 @@ import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import net.minecraft.core.registries.Registries
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
-import net.minecraft.tags.TagKey
-import net.minecraft.world.item.Item
 
 /**
  * Matches every item in [TagConditionState.tagId]'s item tag, e.g. `"minecraft:logs"`. A trailing
@@ -33,13 +30,15 @@ object TagConditionType : FilterConditionType<TagConditionState>() {
 	override fun matches(state: TagConditionState, context: FilterContext): Boolean {
 		val tagId = state.tagId
 		if (tagId.isEmpty()) return false
-		val holder = (context.resource.item as InjectedRegistryEntryExtension<Item>).holder
+		// The kind supplies its own tags, so an item card matches item tags and a fluid card fluid
+		// tags without this having to know which registry either lives in - see [ResourceKind.tagsOf].
+		val tags = ResourceKindRegistry.forResource(context.resource)?.tagsOf(context.resource).orEmpty()
 		if ('*' !in tagId) {
 			val location = runCatching { ResourceLocation.parse(tagId) }.getOrNull() ?: return false
-			return holder.`is`(TagKey.create(Registries.ITEM, location))
+			return tags.any { it.location == location }
 		}
 		val regex = Regex(tagId.split('*').joinToString(".*") { Regex.escape(it) })
-		return holder.tags().toList().any { regex.matches(it.location.toString()) }
+		return tags.any { regex.matches(it.location.toString()) }
 	}
 
 	@Composable

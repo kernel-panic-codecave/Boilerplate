@@ -15,7 +15,6 @@ import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import dev.engine_room.flywheel.lib.material.Materials
 import dev.engine_room.flywheel.lib.math.MoreMath
-import dev.engine_room.flywheel.lib.model.LineModelBuilder
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.SingleMeshModel
 import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder
@@ -61,7 +60,6 @@ class WarehouseControllerVisual(
 	private val yRodInstances = ArrayList<TransformedInstance>()
 	private var bottomRodInstance: TransformedInstance? = null
 	private var headInstance: TransformedInstance? = null
-	private var outlineInstance: TransformedInstance? = null
 	private var carriedItemInstances: List<TransformedInstance> = emptyList()
 	private var carriedItemsCacheKey: List<ResourceStack<ItemResource>> = emptyList()
 
@@ -69,40 +67,8 @@ class WarehouseControllerVisual(
 		val HEAD_MODEL_RL: ResourceLocation = Boilerplate.MOD % "block" / "gantry_head"
 		val HEAD_PARTIAL_MODEL: PartialModel = PartialModel.of(HEAD_MODEL_RL)
 
-		/**
-		 * A wireframe box slightly larger than a full block, centered on the head (same local-space
-		 * convention as [headInstance] - local `[0,1]` maps to world `[head - 0.5, head + 0.5]`) -
-		 * [GantryVisualState]'s own colored feedback indicator, tinted per-instance via
-		 * [dev.engine_room.flywheel.lib.instance.ColoredLitInstance.color] rather than baked into the
-		 * mesh, so the same model works for every state.
-		 */
-		val OUTLINE_MODEL: Model by lazy {
-			// Hugs the head's own 10x10x10 element rather than the whole block cell it sits in - a
-			// -0.1..1.1 cage is nearly twice the head's size.
-			val lo = 0.5f - HEAD_HALF_EXTENT - OUTLINE_MARGIN
-			val hi = 0.5f + HEAD_HALF_EXTENT + OUTLINE_MARGIN
-			LineModelBuilder()
-				.line(lo, lo, lo, hi, lo, lo)
-				.line(hi, lo, lo, hi, lo, hi)
-				.line(hi, lo, hi, lo, lo, hi)
-				.line(lo, lo, hi, lo, lo, lo)
-				.line(lo, hi, lo, hi, hi, lo)
-				.line(hi, hi, lo, hi, hi, hi)
-				.line(hi, hi, hi, lo, hi, hi)
-				.line(lo, hi, hi, lo, hi, lo)
-				.line(lo, lo, lo, lo, hi, lo)
-				.line(hi, lo, lo, hi, hi, lo)
-				.line(hi, lo, hi, hi, hi, hi)
-				.line(lo, lo, hi, lo, hi, hi)
-				.build()
-		}
-
-		private val INDEXING_COLOR = intArrayOf(255, 204, 0)
-		private val MOVING_COLOR = intArrayOf(51, 204, 255)
-
 		/** Half the head model's own extent - `block/gantry_head` spans `[3,3,3]`..`[13,13,13]`, so 5/16 either side of its block cell's centre. Every head-relative offset is derived from this rather than assuming a full 16x16x16 block. */
 		private const val HEAD_HALF_EXTENT = 5f / 16f
-		private const val OUTLINE_MARGIN = 0.02f
 
 		/** Clear of the head's own top face by a small gap. */
 		private const val CARRIED_ITEM_Y_OFFSET = HEAD_HALF_EXTENT + 0.12f
@@ -415,23 +381,6 @@ class WarehouseControllerVisual(
 			setChanged()
 		}
 
-		val outlineColor = colorFor(blockEntity.visualState)
-		if (outlineColor == null) {
-			outlineInstance?.delete()
-			outlineInstance = null
-		} else {
-			if (outlineInstance == null) {
-				val outlineInstancer = instancerProvider().instancer(InstanceTypes.TRANSFORMED, OUTLINE_MODEL)
-				outlineInstance = outlineInstancer.createInstance()
-			}
-			outlineInstance?.apply {
-				setIdentityTransform()
-				translate(headOffsetX, headOffsetY, headOffsetZ)
-				color(outlineColor[0], outlineColor[1], outlineColor[2])
-				setChanged()
-			}
-		}
-
 		val carried = GantryClientCache.carriedItems(blockEntity.blockPos)
 		if (carried != carriedItemsCacheKey) {
 			carriedItemInstances.forEach(Instance::delete)
@@ -474,13 +423,6 @@ class WarehouseControllerVisual(
 		}
 	}
 
-	/** [GantryVisualState] -> outline tint (`[r, g, b]`, `0..255` each), or `null` for [GantryVisualState.IDLE] (no outline at all). */
-	private fun colorFor(state: GantryVisualState): IntArray? = when (state) {
-		GantryVisualState.INDEXING -> INDEXING_COLOR
-		GantryVisualState.MOVING -> MOVING_COLOR
-		GantryVisualState.IDLE -> null
-	}
-
 	/** Deletes and clears every pooled instance - the unbound (`bounds == null`) state, and [_delete]. */
 	private fun clearInstances() {
 		xRailInstances.forEach(Instance::delete)
@@ -493,8 +435,6 @@ class WarehouseControllerVisual(
 		bottomRodInstance = null
 		headInstance?.delete()
 		headInstance = null
-		outlineInstance?.delete()
-		outlineInstance = null
 		carriedItemInstances.forEach(Instance::delete)
 		carriedItemInstances = emptyList()
 		carriedItemsCacheKey = emptyList()

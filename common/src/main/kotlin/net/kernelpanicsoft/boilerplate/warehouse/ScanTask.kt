@@ -1,6 +1,6 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 
@@ -26,7 +26,7 @@ class ImmediateScanTask(
 	override fun tick(): Boolean {
 		if (completed) return true
 
-		val results = mutableMapOf<ItemResource, MutableList<WarehouseIndex.RackSlotRef>>()
+		val results = mutableMapOf<ResourceIdentity, MutableList<WarehouseIndex.RackSlotRef>>()
 		val discoveredContainers = mutableSetOf<BlockPos>()
 
 		val mutablePos = BlockPos.MutableBlockPos()
@@ -64,7 +64,7 @@ class ChunkParallelScanTask(
 	private val bounds: Bounds,
 	private val index: WarehouseIndex
 ) : ScanTask {
-	private val pendingLocations = mutableMapOf<ItemResource, MutableList<WarehouseIndex.RackSlotRef>>()
+	private val pendingLocations = mutableMapOf<ResourceIdentity, MutableList<WarehouseIndex.RackSlotRef>>()
 	private val discoveredContainers = mutableSetOf<BlockPos>()
 
 	private val minChunkX = bounds.min.x shr 4
@@ -139,7 +139,7 @@ class IncrementalTickScanTask(
 		private const val BUDGET_CHECK_INTERVAL = 256
 	}
 
-	private val pendingLocations = mutableMapOf<ItemResource, MutableList<WarehouseIndex.RackSlotRef>>()
+	private val pendingLocations = mutableMapOf<ResourceIdentity, MutableList<WarehouseIndex.RackSlotRef>>()
 	private val discoveredContainers = mutableSetOf<BlockPos>()
 
 	private var currX = bounds.min.x

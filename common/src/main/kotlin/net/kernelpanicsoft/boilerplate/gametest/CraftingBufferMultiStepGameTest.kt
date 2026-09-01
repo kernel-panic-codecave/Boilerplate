@@ -1,18 +1,13 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
-import net.kernelpanicsoft.boilerplate.crafting.CraftingRequest
-import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
-import net.kernelpanicsoft.boilerplate.crafting.Pattern
-import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
-import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.crafting.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
@@ -58,24 +53,24 @@ class CraftingBufferMultiStepGameTest {
 		setBlock(planksHookPos, BlockRegistry.Multipart.defaultBlockState())
 		val planksHook = getBlockEntity(planksHookPos) as MultipartBlockEntity
 		planksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		val planksHookState = planksHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		val planksHookState = planksHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() }
 		val planksPattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_LOG))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.OAK_PLANKS)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_LOG).resourceStack),
+			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceStack),
 			kind = PatternKind.PROCESSING,
 		)
-		planksHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = planksPattern })
+		planksHookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = planksPattern })
 
 		setBlock(sticksHookPos, BlockRegistry.Multipart.defaultBlockState())
 		val sticksHook = getBlockEntity(sticksHookPos) as MultipartBlockEntity
 		sticksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		val sticksHookState = sticksHook.hooks.getOrPut(Direction.WEST.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		val sticksHookState = sticksHook.hooks.getOrPut(Direction.WEST.name) { PatternProviderHookType.createState() }
 		val sticksPattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
+			outputs = listOf(ItemStack(Items.STICK, 4).resourceStack),
 			kind = PatternKind.PROCESSING,
 		)
-		sticksHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
+		sticksHookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })
 
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(hubPipePos, BlockRegistry.Pipe.defaultBlockState())
@@ -105,6 +100,10 @@ class CraftingBufferMultiStepGameTest {
 			assertTrue(logsDelivered >= 1) { "Expected the CPU to have pushed at least 1 oak log into the planks machine by now, got $logsDelivered" }
 			for (i in 0 until planksMachine.containerSize) planksMachine.setItem(i, ItemStack.EMPTY)
 			planksMachine.setItem(0, ItemStack(Items.OAK_PLANKS, 4))
+			// ...and ejects. Added at the finish moment rather than in setup - see
+			// placeExtractionHook; in setup it would drain the logs back out before the stand-in
+			// machine ever "consumed" them.
+			placeExtractionHook(BlockPos(3, 2, 5), Direction.SOUTH)
 		}
 
 		runAfterDelay(800) {
@@ -113,6 +112,7 @@ class CraftingBufferMultiStepGameTest {
 			assertTrue(planksDelivered >= 2) { "Expected the CPU to have pulled the planks step's own output back and pushed 2 of them into the sticks machine by now, got $planksDelivered" }
 			for (i in 0 until sticksMachine.containerSize) sticksMachine.setItem(i, ItemStack.EMPTY)
 			sticksMachine.setItem(0, ItemStack(Items.STICK, 4))
+			placeExtractionHook(BlockPos(0, 2, 5), Direction.SOUTH)
 		}
 
 		succeedWhen {

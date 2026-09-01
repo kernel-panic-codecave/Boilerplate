@@ -140,11 +140,13 @@ internal fun ABlockStateProvider.boilerplateBlockStates() {
 	simpleBlockWithItem(BlockRegistry.UnstackableRack, blockModels().getExistingFile(modLoc("unstackable_rack")))
 
 	// Same plain-cube default as the racks above - creative/testing-only, so real art is low priority.
+	simpleBlockWithItem(BlockRegistry.FluidTank)
 	simpleBlockWithItem(BlockRegistry.CreativePressureSource)
 
 	// Filter cards are plain items (no block of their own), unlike a hook's block-model-backed
 	// icon above - a flat `item/generated` icon over each one's own `textures/item/*.png` instead.
 	itemModels().basicItem(ItemRegistry.ItemFilterCard)
+	itemModels().basicItem(ItemRegistry.FluidFilterCard)
 	itemModels().basicItem(ItemRegistry.ModFilterCard)
 	itemModels().basicItem(ItemRegistry.TagFilterCard)
 	itemModels().basicItem(ItemRegistry.ColorFilterCard)

@@ -39,14 +39,20 @@ class CraftingBufferJob(val id: String, val target: ItemResource, val targetAmou
 	val fedAmounts: MutableMap<Pair<Int, ItemResource>, Long> = mutableMapOf()
 
 	/**
-	 * [steps] index -> cumulative amount of that step's own [CraftStep.resource] already pulled back
-	 * into the cluster's own storage - not just its *current* amount there, since an intermediate
+	 * [steps] index -> cumulative amount of that step's own [CraftStep.resource] that has actually
+	 * reached the cluster's own storage - not just its *current* amount there, since an intermediate
 	 * step's own output is typically consumed again as a later step's input, which would otherwise
 	 * make it look like less was ever produced than actually was.
+	 *
+	 * Recomputed each tick from live state (see [CraftingBufferEncasementType]'s own step loop)
+	 * rather than accumulated as deliveries are dispatched. Counting dispatches was always a lie -
+	 * a delivery still in flight counted as arrived - and there is nothing left to count now that
+	 * outputs arrive by being *pushed* here rather than pulled by this job.
 	 */
 	val stepDelivered: MutableMap<Int, Long> = mutableMapOf()
 
-	/** Ticks since the last attempt to pull a step's own output into the cluster's own storage - throttled rather than every tick, matching every other polling hook in this subsystem. */
+
+	/** Ticks since the last attempt to drain a step's own output out of its machine - throttled rather than every tick, matching every other polling hook in this subsystem. */
 	var ticksSincePull: Int = 0
 
 	/** [steps] is empty (a request already fully covered by stock, nothing to craft) - how much of [targetAmount] has been claimed straight from a warehouse into the cluster's own storage so far. Unused otherwise; see [delivered]. */
@@ -60,6 +66,26 @@ class CraftingBufferJob(val id: String, val target: ItemResource, val targetAmou
 
 	/** Whether this job is finished (delivered or gave up) - once true, the cluster drains everything left in its own storage back onto the network and clears this job out. */
 	var done: Boolean = false
+
+	/**
+	 * How much of [resource] this job's own steps still expect to receive, given [inStorage] of it
+	 * sitting in the cluster right now - what makes this cluster a routing destination for it at
+	 * all (see [CraftingBufferEncasementType.awaitsDelivery]). `0` for a resource no step produces.
+	 *
+	 * Already-received is `[inStorage] + whatever has since been fed onward as a later step's own
+	 * input` - an intermediate is routinely consumed again the moment it lands, so its current
+	 * amount alone would read as never having arrived and this job would keep attracting it forever.
+	 */
+	fun outstandingOutput(resource: ItemResource, inStorage: Long): Long {
+		var needed = 0L
+		for (step in steps) {
+			if (step.resource != resource) continue
+			needed += step.runs * (step.pattern.outputs.firstOrNull { it.resource == resource }?.amount ?: 1L)
+		}
+		if (needed <= 0L) return 0L
+		val fedOnward = fedAmounts.entries.sumOf { (key, amount) -> if (key.second == resource) amount else 0L }
+		return needed - (inStorage + fedOnward)
+	}
 
 	/** Whether [index]'s own requirement for [resource] (an input of `steps[index].pattern`) has been fully delivered yet - see [fedAmounts]. `true` for a resource that isn't actually one of [index]'s own inputs. */
 	fun isInputFed(index: Int, resource: ItemResource): Boolean {

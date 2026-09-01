@@ -1,12 +1,12 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob
 import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
@@ -22,8 +22,8 @@ import net.minecraft.world.item.Items
 @Suppress("unused")
 class CraftingBufferJobGameTest {
 	private fun pattern(output: ItemStack, vararg inputs: ItemStack): Pattern = Pattern(
-		inputs = inputs.map { ItemResource.of(it) },
-		outputs = listOf(ResourceStack(ItemResource.of(output), output.count.toLong())),
+		inputs = inputs.map { it.resourceStack },
+		outputs = listOf(output.resourceStack),
 		kind = PatternKind.PROCESSING,
 	)
 

@@ -14,7 +14,7 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
-import net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -146,7 +146,12 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		}
 		for (warehouse in RequestFulfillment.reachableWarehouses(level, tile.blockPos)) {
 			if (!warehouse.hasPressure()) continue
-			for ((resource, entries) in warehouse.index.locations) add(resource, entries.sumOf { it.amount })
+			// Items only: the terminal grid renders item stacks and has no fluid widget yet, so a
+			// warehouse's tanks are indexed but not listed here. Surfacing them is fluid-GUI work.
+			for ((key, entries) in warehouse.index.locations) {
+				val resource = key.resource as? ItemResource ?: continue
+				add(resource, entries.sumOf { it.amount })
+			}
 		}
 
 		val stacks = totals.map { (resource, amount) -> ResourceStack(resource, amount.coerceAtMost(Int.MAX_VALUE.toLong())) }
@@ -398,7 +403,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 
 	fun deposit(stack: ResourceStack<ItemResource>, clearCarried: Boolean = false, clearSlot: Int? = null) {
 		val level = level as? ServerLevel ?: return
-		val route = PipeRouter.findRoute(level, tile.blockPos, stack.resource)
+		val route = ItemPipeRouter.findRoute(level, tile.blockPos, stack.resource)
 		if (route != null)
 		{
 			tile.travelingItems += TravelingItem(stack, direction, 0f, route)

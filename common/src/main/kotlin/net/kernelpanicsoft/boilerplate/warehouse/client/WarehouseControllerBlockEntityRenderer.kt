@@ -6,7 +6,6 @@ import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.kernelpanicsoft.boilerplate.warehouse.*
 import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerBlockEntityRenderer.Companion.HEAD_HALF_EXTENT
-import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.block.ModelBlockRenderer
@@ -22,7 +21,6 @@ import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.state.properties.BooleanProperty
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import java.util.*
@@ -79,6 +77,10 @@ import kotlin.math.sin
  * `block/gantry_head` model tied to no real block or item - registered directly as an "additional
  * model" via each platform's own model-loading hooks (`BoilerplateFabric`/`BoilerplateNeoForge`),
  * baked purely as a target for this renderer to look up.
+ *
+ * The head's [GantryVisualState] status cage is deliberately *not* drawn here any more - it lived
+ * in this class and in [WarehouseControllerVisual] as two hand-synchronised copies of one
+ * state-to-colour mapping. [WarehouseDebugRenderer] owns it now, once, over both render paths.
  */
 class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvider.Context) : BlockEntityRenderer<WarehouseControllerBlockEntity> {
 	private val blockModelShaper = context.blockRenderDispatcher.blockModelShaper
@@ -128,14 +130,6 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		}
 
 		drawAt(tile.blockPos, head, level, poseStack, consumer, headModel, level.getBlockState(BlockPos.containing(head)), packedOverlay)
-
-		colorFor(tile.visualState)?.let { (r, g, b) ->
-			val lineConsumer = bufferSource.getBuffer(RenderType.lines())
-			poseStack.pushPose()
-			poseStack.translate(head.x - tile.blockPos.x, head.y - tile.blockPos.y, head.z - tile.blockPos.z)
-			LevelRenderer.renderLineBox(poseStack, lineConsumer, OUTLINE_BOX, r, g, b, 1f)
-			poseStack.popPose()
-		}
 
 		renderCarriedItems(tile, head, level, poseStack, bufferSource, packedLight, packedOverlay, partialTick)
 	}
@@ -193,13 +187,6 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 			itemRenderer.renderStatic(stack.itemStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
 			poseStack.popPose()
 		}
-	}
-
-	/** [GantryVisualState] -> outline tint (`0f..1f` each), or `null` for [GantryVisualState.IDLE] (no outline at all) - see [WarehouseControllerVisual]'s own copy of this mapping. */
-	private fun colorFor(state: GantryVisualState): Triple<Float, Float, Float>? = when (state) {
-		GantryVisualState.INDEXING -> Triple(1f, 0.8f, 0f)
-		GantryVisualState.MOVING -> Triple(0.2f, 0.8f, 1f)
-		GantryVisualState.IDLE -> null
 	}
 
 	private fun drawAt(
@@ -299,15 +286,7 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 		private val UP_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.UP)
 		private val DOWN_PROPERTY = GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN)
 
-		/** [GantryVisualState]'s outline box - a hair proud of the head's own [HEAD_HALF_EXTENT] surface, centred on it. Sized off the real 10x10x10 model rather than a full block, which drew a cage roughly twice the head's size around it. */
-		private val OUTLINE_BOX = AABB(
-			-HEAD_HALF_EXTENT - OUTLINE_MARGIN, -HEAD_HALF_EXTENT - OUTLINE_MARGIN, -HEAD_HALF_EXTENT - OUTLINE_MARGIN,
-			HEAD_HALF_EXTENT + OUTLINE_MARGIN, HEAD_HALF_EXTENT + OUTLINE_MARGIN, HEAD_HALF_EXTENT + OUTLINE_MARGIN,
-		)
-
-		private const val OUTLINE_MARGIN = 0.02
-
-		/** Clear of the head's own top face ([HEAD_HALF_EXTENT]) by a small gap, rather than the near-full-block height this used to assume. */
+			/** Clear of the head's own top face ([HEAD_HALF_EXTENT]) by a small gap, rather than the near-full-block height this used to assume. */
 		private const val CARRIED_ITEM_Y_OFFSET = HEAD_HALF_EXTENT + 0.12
 		/** Kept inside the head's own footprint so a batch orbits *over* it rather than out past its corners. */
 		private const val CARRIED_ITEM_RADIUS = (HEAD_HALF_EXTENT * 0.7).toFloat()

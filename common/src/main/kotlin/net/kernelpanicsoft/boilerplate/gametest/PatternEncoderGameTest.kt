@@ -100,4 +100,55 @@ class PatternEncoderGameTest {
 		assertTrue(pattern == null) { "Expected an empty grid to be a no-op regardless of outputs, got $pattern" }
 		succeed()
 	}
+
+	/**
+	 * A PROCESSING pattern carries a **count** on each input and output, so `64 sand -> 64 glass` is
+	 * one pattern that batches at 64 rather than 64 patterns of one.
+	 *
+	 * The count has to survive the grid round-trip, which is the part worth pinning: the grid is an
+	 * [ArchieItemStorage], whose slots are stack-size aware, so a naive encode could silently clamp
+	 * or drop back to 1.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testProcessingPatternKeepsInputAndOutputCounts() {
+		val grid = ArchieItemStorage(Pattern.GRID_SIZE)
+		val patternOutputs = ArchieItemStorage(Pattern.GRID_SIZE)
+		grid.get(0).set(ItemStack(Items.SAND, 64))
+		patternOutputs.get(0).set(ItemStack(Items.GLASS, 64))
+
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
+
+		assertTrue(pattern != null) { "Expected a processing pattern to encode, got null" }
+		assertTrue(pattern!!.inputs.size == 1 && pattern.inputs[0].amount == 64L) {
+			"Expected one input of 64 sand, got ${pattern.inputs.map { it.resource to it.amount }}"
+		}
+		assertTrue(pattern.outputs.size == 1 && pattern.outputs[0].amount == 64L) {
+			"Expected one output of 64 glass, got ${pattern.outputs.map { it.resource to it.amount }}"
+		}
+		assertTrue(pattern.requiredInputs()[ItemResource.of(ItemStack(Items.SAND))] == 64L) {
+			"Expected one run to require 64 sand, got ${pattern.requiredInputs()}"
+		}
+		succeed()
+	}
+
+	/**
+	 * The same count spread across several cells still totals correctly - [Pattern.requiredInputs]
+	 * sums per resource, so two cells of 32 sand is the same requirement as one of 64.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testProcessingInputCountsAccumulateAcrossCells() {
+		val grid = ArchieItemStorage(Pattern.GRID_SIZE)
+		val patternOutputs = ArchieItemStorage(Pattern.GRID_SIZE)
+		grid.get(0).set(ItemStack(Items.SAND, 32))
+		grid.get(1).set(ItemStack(Items.SAND, 32))
+		patternOutputs.get(0).set(ItemStack(Items.GLASS, 64))
+
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
+
+		assertTrue(pattern != null) { "Expected a processing pattern to encode, got null" }
+		assertTrue(pattern!!.requiredInputs()[ItemResource.of(ItemStack(Items.SAND))] == 64L) {
+			"Expected the two half-stacks to total 64 sand per run, got ${pattern.requiredInputs()}"
+		}
+		succeed()
+	}
 }

@@ -26,14 +26,14 @@ import net.minecraft.world.phys.shapes.VoxelShape
  * [net.kernelpanicsoft.boilerplate.registry.BlockRegistry.Multipart], the same block a promoted
  * item segment uses (see [net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity]).
  * Only the three things that actually differ from a plain item pipe are overridden below: its
- * [primaryNetworkType], its narrower 4x4 cross-section, and which capability it auto-connects to
+ * [primaryNetworkTypes], its narrower 4x4 cross-section, and which capability it auto-connects to
  * externally ([PressureApi] rather than `ItemApi` - deliberately not
  * [earth.terrarium.common_storage_lib.energy.EnergyApi]/RF/FE, see that object's own KDoc).
  */
 class PressurePipeBlock(properties: Properties) : PipeBlock(properties) {
 	override fun codec(): MapCodec<PressurePipeBlock> = CODEC
 
-	override val primaryNetworkType: NetworkType get() = NetworkTypeRegistry.Pressure
+	override val primaryNetworkTypes: Set<NetworkType> get() = setOf(NetworkTypeRegistry.Pressure)
 
 	/**
 	 * A slimmer 4x4 cross-section - deliberately narrower than item pipes' own 6x6 core (see

@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.registry
 
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.boilerplate.Boilerplate
+import net.kernelpanicsoft.boilerplate.pipe.network.FluidNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
 import net.kernelpanicsoft.boilerplate.power.network.PressureNetworkType
@@ -17,6 +18,7 @@ object NetworkTypeRegistry : ADeferredRegistryHolder<NetworkType>(
 ) {
 	val Item: NetworkType by register(ItemNetworkType.ID) { ItemNetworkType }
 	val Pressure: NetworkType by register(PressureNetworkType.ID) { PressureNetworkType }
+	val Fluid: NetworkType by register(FluidNetworkType.ID) { FluidNetworkType }
 
 	/** Looks up a registered [NetworkType] by its full id - see [HookTypeRegistry.byId], which this mirrors exactly. */
 	fun byId(id: ResourceLocation): NetworkType? = Registrars.NETWORK_TYPE.get(id)

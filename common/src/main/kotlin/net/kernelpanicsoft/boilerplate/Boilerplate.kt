@@ -13,7 +13,9 @@ import net.kernelpanicsoft.archie.registries.CustomModelRegistry
 import net.kernelpanicsoft.boilerplate.datagen.BoilerplateDatagen
 import net.kernelpanicsoft.boilerplate.gametest.BoilerplateGameTest
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import net.kernelpanicsoft.boilerplate.debug.DebugOverlayViewers
 import net.kernelpanicsoft.boilerplate.network.DebugNetworkSync
+import net.kernelpanicsoft.boilerplate.network.WarehouseDebugSync
 import net.kernelpanicsoft.boilerplate.pipe.network.DebugRouteTrace
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager
@@ -58,6 +60,7 @@ object Boilerplate {
 		Registrars.init()
 		TagsRegistry.init()
 		NetworkTypeRegistry.init()
+		ResourceKindRegistry.init()
 		HookTypeRegistry.init()
 		EncasementTypeRegistry.init()
 		FilterConditionTypeRegistry.init()
@@ -74,7 +77,8 @@ object Boilerplate {
 		TickEvent.SERVER_LEVEL_POST.register { level -> PipeNetworkManager.get(level).tick(level) }
 		TickEvent.SERVER_LEVEL_POST.register { level -> PressurePipeNetworkManager.get(level).tick(level) }
 		TickEvent.SERVER_LEVEL_POST.register { level -> DebugNetworkSync.tickLevel(level) }
-		PlayerEvent.PLAYER_QUIT.register { player -> DebugRouteTrace.setViewer(player.uuid, on = false) }
+		TickEvent.SERVER_LEVEL_POST.register { level -> WarehouseDebugSync.tickLevel(level) }
+		PlayerEvent.PLAYER_QUIT.register { player -> DebugOverlayViewers.setViewer(player.uuid, on = false) }
 
 		if (AGameTestPlatform.isGameTest) {
 			AGametestEvents += MOD

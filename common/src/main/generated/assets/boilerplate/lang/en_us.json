@@ -1,5 +1,6 @@
 {
   "block.boilerplate.bulk_rack": "Bulk Rack",
+  "block.boilerplate.fluid_tank": "Fluid Tank",
   "block.boilerplate.gantry_rail": "Gantry Rail",
   "block.boilerplate.general_rack": "General Rack",
   "block.boilerplate.glass_pipe": "Glass Pipe",
@@ -9,6 +10,7 @@
   "encasement.boilerplate.crafting_buffer": "Crafting Buffer",
   "filter.boilerplate.color": "Color Condition Card",
   "filter.boilerplate.combined": "Combined Condition Card",
+  "filter.boilerplate.fluid": "Fluid Condition Card",
   "filter.boilerplate.item": "Item Condition Card",
   "filter.boilerplate.mod": "Mod Condition Card",
   "filter.boilerplate.regex": "Regex Condition Card",

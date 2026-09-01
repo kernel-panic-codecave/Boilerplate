@@ -1,18 +1,14 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
-import net.kernelpanicsoft.boilerplate.crafting.CraftingRequest
-import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
-import net.kernelpanicsoft.boilerplate.crafting.Pattern
-import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
-import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.crafting.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
@@ -53,13 +49,13 @@ class CraftingBufferVanillaTableGameTest {
 		setBlock(patternHookPos, BlockRegistry.Multipart.defaultBlockState())
 		val patternHook = getBlockEntity(patternHookPos) as MultipartBlockEntity
 		patternHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		val patternHookState = patternHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() } as PatternProviderHookState
+		val patternHookState = patternHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() }
 		val pattern = Pattern(
-			inputs = listOf(ItemResource.of(ItemStack(Items.OAK_PLANKS)), ItemResource.of(ItemStack(Items.OAK_PLANKS))),
-			outputs = listOf(ResourceStack(ItemResource.of(ItemStack(Items.STICK)), 4)),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
+			outputs = listOf(ItemStack(Items.STICK, 4).resourceStack),
 			kind = PatternKind.CRAFTING,
 		)
-		patternHookState.patterns.get(0).set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
+		patternHookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })
 		placeCreativePressureSource(patternHookPos.above())
 
 		setBlock(feedPipePos, BlockRegistry.Pipe.defaultBlockState())

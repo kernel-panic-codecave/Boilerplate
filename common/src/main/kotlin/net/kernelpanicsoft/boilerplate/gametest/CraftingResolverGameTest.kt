@@ -6,6 +6,7 @@ import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.item.ItemStack
@@ -19,8 +20,8 @@ import net.minecraft.world.item.Items
 @Suppress("unused")
 class CraftingResolverGameTest {
 	private fun pattern(output: ItemStack, vararg inputs: ItemStack): Pattern = Pattern(
-		inputs = inputs.map { ItemResource.of(it) },
-		outputs = listOf(ResourceStack(ItemResource.of(output), output.count.toLong())),
+		inputs = inputs.map { it.resourceStack },
+		outputs = listOf(output.resourceStack),
 		kind = PatternKind.PROCESSING,
 	)
 
@@ -141,6 +142,111 @@ class CraftingResolverGameTest {
 
 		val none = CraftingResolver.maxCraftable(ItemResource.of(ItemStack(Items.NETHER_STAR)), upperBound = 10, stockOf = { 0 }, patternFor = { null })
 		assertTrue(none == 0L) { "Expected an entirely unresolvable resource to report 0 craftable, got $none" }
+		succeed()
+	}
+
+	/**
+	 * Existing stock of the **requested target** never reduces how much gets crafted.
+	 *
+	 * "Craft me 64 wooden pickaxes" with 32 already on the shelf must plan 64 runs, not 32 runs
+	 * plus handing back the 32 you already had - which is what happened while the target went
+	 * through the same `stockOf` deduction as its ingredients, and defeats the point of asking for
+	 * a craft at all.
+	 */
+	@GameTest(template = SMALL)
+	fun GameTestHelper.testExistingStockOfTheTargetDoesNotReduceTheCraft() {
+		val pickaxe = ItemResource.of(ItemStack(Items.WOODEN_PICKAXE))
+		val planks = ItemResource.of(ItemStack(Items.OAK_PLANKS))
+		val recipe = pattern(ItemStack(Items.WOODEN_PICKAXE), ItemStack(Items.OAK_PLANKS))
+
+		val result = CraftingResolver.resolve(
+			target = pickaxe,
+			amount = 64,
+			// Plenty of the target already in stock, and plenty of its ingredient.
+			stockOf = { if (it == pickaxe) 32 else 1024 },
+			patternFor = { if (it == pickaxe) recipe else null },
+		)
+
+		assertTrue(result is CraftingResolver.Result.Success) { "Expected a resolvable plan, got $result" }
+		val plan = (result as CraftingResolver.Result.Success).plan
+		assertTrue(plan.steps.size == 1 && plan.steps[0].runs == 64L) {
+			"Expected all 64 to be crafted, got ${plan.steps.map { it.runs }}"
+		}
+		assertTrue(plan.stockPulls[pickaxe] == null) {
+			"Expected the target itself never to be pulled from stock, got ${plan.stockPulls}"
+		}
+		succeed()
+	}
+
+	/** The ingredient half of the same rule: stock of anything that *isn't* the target still reduces what has to be crafted. */
+	@GameTest(template = SMALL)
+	fun GameTestHelper.testExistingStockOfAnIngredientStillReducesSubCrafting() {
+		val pickaxe = ItemResource.of(ItemStack(Items.WOODEN_PICKAXE))
+		val planks = ItemResource.of(ItemStack(Items.OAK_PLANKS))
+		val logs = ItemResource.of(ItemStack(Items.OAK_LOG))
+
+		val pickaxeRecipe = pattern(ItemStack(Items.WOODEN_PICKAXE), ItemStack(Items.OAK_PLANKS))
+		val plankRecipe = pattern(ItemStack(Items.OAK_PLANKS), ItemStack(Items.OAK_LOG))
+
+		val result = CraftingResolver.resolve(
+			target = pickaxe,
+			amount = 4,
+			// Enough planks in stock to cover every pickaxe, so no plank sub-craft should be planned.
+			stockOf = { if (it == planks) 64 else 0 },
+			patternFor = {
+				when (it) {
+					pickaxe -> pickaxeRecipe
+					planks -> plankRecipe
+					else -> null
+				}
+			},
+		)
+
+		assertTrue(result is CraftingResolver.Result.Success) { "Expected a resolvable plan, got $result" }
+		val plan = (result as CraftingResolver.Result.Success).plan
+		assertTrue(plan.stockPulls[planks] == 4L) { "Expected the planks to come from stock, got ${plan.stockPulls}" }
+		assertTrue(plan.steps.none { it.resource == planks }) {
+			"Expected no plank sub-craft when stock already covers them, got ${plan.steps.map { it.resource }}"
+		}
+		succeed()
+	}
+
+	/**
+	 * A batched processing pattern runs once for a whole batch, not once per item.
+	 *
+	 * `64 sand -> 64 glass` asked for 64 glass is **one** run needing 64 sand - the point of being
+	 * able to put a count on an input at all. The same request against a `1 sand -> 1 glass` pattern
+	 * is 64 runs, which is what a machine with no batching would have to do.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testABatchedPatternRunsOncePerBatch() {
+		val sand = ItemResource.of(ItemStack(Items.SAND))
+		val glass = ItemResource.of(ItemStack(Items.GLASS))
+
+		val batched = Pattern(
+			inputs = listOf(ResourceStack(sand, 64)),
+			outputs = listOf(ResourceStack(glass, 64)),
+			kind = PatternKind.PROCESSING,
+		)
+		val singles = Pattern(
+			inputs = listOf(ResourceStack(sand, 1)),
+			outputs = listOf(ResourceStack(glass, 1)),
+			kind = PatternKind.PROCESSING,
+		)
+
+		fun runsFor(recipe: Pattern): Long {
+			val result = CraftingResolver.resolve(
+				target = glass,
+				amount = 64,
+				stockOf = { if (it == sand) 1024 else 0 },
+				patternFor = { if (it == glass) recipe else null },
+			)
+			assertTrue(result is CraftingResolver.Result.Success) { "Expected 64 glass to resolve, got $result" }
+			return (result as CraftingResolver.Result.Success).plan.steps.single().runs
+		}
+
+		assertTrue(runsFor(batched) == 1L) { "Expected a 64-per-run pattern to need exactly one run, got ${runsFor(batched)}" }
+		assertTrue(runsFor(singles) == 64L) { "Expected a 1-per-run pattern to need 64 runs, got ${runsFor(singles)}" }
 		succeed()
 	}
 }

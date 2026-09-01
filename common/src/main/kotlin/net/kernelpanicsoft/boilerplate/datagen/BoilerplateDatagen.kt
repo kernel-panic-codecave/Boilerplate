@@ -30,6 +30,7 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 				addBlock("General Rack") { BlockRegistry.GeneralRack }
 				addBlock("Bulk Rack") { BlockRegistry.BulkRack }
 				addBlock("Unstackable Rack") { BlockRegistry.UnstackableRack }
+				addBlock("Fluid Tank") { BlockRegistry.FluidTank }
 
 				// Hook items override their descriptionId to `hook.<type id>` - adding them here
 				// emits those keys, which is also what the segment menus' own titles read.
@@ -50,6 +51,7 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 
 				// FilterCardItem answers as `filter.<condition type id>`.
 				addItem("Item Condition Card") { ItemRegistry.ItemFilterCard }
+				addItem("Fluid Condition Card") { ItemRegistry.FluidFilterCard }
 				addItem("Mod Condition Card") { ItemRegistry.ModFilterCard }
 				addItem("Tag Condition Card") { ItemRegistry.TagFilterCard }
 				addItem("Color Condition Card") { ItemRegistry.ColorFilterCard }
@@ -76,6 +78,7 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.GeneralRack
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.BulkRack
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.UnstackableRack
+				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.FluidTank
 			}
 			itemTags { _ ->
 				TagsRegistry.Items.TOOLS_WRENCH += ItemRegistry.BrassWrench

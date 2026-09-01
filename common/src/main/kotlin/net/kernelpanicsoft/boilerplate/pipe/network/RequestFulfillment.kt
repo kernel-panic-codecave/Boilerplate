@@ -135,7 +135,7 @@ object RequestFulfillment {
 			val storage = source.storage(level) ?: continue
 			val available = storage.extract(stack.resource, stack.amount, true)
 			if (available <= 0) continue
-			val route = PipeRouter.findRouteTo(level, source.hookPos, deliverTo) ?: continue
+			val route = ItemPipeRouter.findRouteTo(level, source.hookPos, deliverTo) ?: continue
 			val extracted = storage.extract(stack.resource, available, false)
 			if (extracted <= 0) continue
 			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
@@ -158,7 +158,7 @@ object RequestFulfillment {
 	): Long {
 		for (controller in warehouses) {
 			if (!controller.hasPressure()) continue
-			val slot = controller.index.locations[stack.resource]?.firstOrNull() ?: continue
+			val slot = controller.index.slotsFor(stack.resource).firstOrNull() ?: continue
 			val amount = minOf(stack.amount, slot.amount)
 			controller.enqueueRetrieve(slot, stack.withCount(amount), DeliveryTarget.Pipe(deliverTo, deliverFace, reservationId))
 			onDispatch?.invoke(controller.retrievePipeHops(deliverTo), controller.retrieveGantryBlocks(slot), amount)
@@ -237,7 +237,7 @@ object RequestFulfillment {
 				val neighborPos = current.relative(direction)
 				if (!visited.add(neighborPos)) continue
 				if (SubnetBoundary.isBoundaryEdge(level, current, direction)) continue
-				if (PipeRouter.isPipe(level, neighborPos)) {
+				if (ItemPipeRouter.isPipe(level, neighborPos)) {
 					val currentState = level.getBlockState(current)
 					val neighborState = level.getBlockState(neighborPos)
 					if (

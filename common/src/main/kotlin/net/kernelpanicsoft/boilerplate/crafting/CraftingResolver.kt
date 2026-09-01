@@ -18,7 +18,9 @@ data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ItemRes
  * wiring. See `docs/design/m4-crafting-automation.md`.
  *
  * Walk order: for each resource, first check [stockOf], then [patternFor] a sub-craft for
- * whatever's still short. Resolved in two passes rather than one interleaved recursion, since a
+ * whatever's still short - except [target] itself, which is always crafted in full (see the
+ * demand loop). Existing stock of the very thing that was requested is not a reason to craft less
+ * of it. Resolved in two passes rather than one interleaved recursion, since a
  * shared resource's *total* demand (needed to decide how much of it actually has to come from
  * stock vs. crafting) isn't known until every consumer of it has been discovered:
  *
@@ -84,7 +86,13 @@ object CraftingResolver {
 			val totalDemand = demand[resource] ?: 0L
 			if (totalDemand <= 0L) continue
 
-			val fromStock = stockOf(resource).coerceAtLeast(0L).coerceAtMost(totalDemand)
+			// The requested [target] is never satisfied out of stock, however much of it is already
+			// sitting there. "Craft me 64" means craft 64 - having 32 on the shelf should not turn
+			// that into "craft 32 and hand back the 32 you already had", which is what this
+			// deduction did when it applied to the target as well as to ingredients. Every *other*
+			// resource still prefers stock: not re-crafting an ingredient you already have is the
+			// whole point of consulting it.
+			val fromStock = if (resource == target) 0L else stockOf(resource).coerceAtLeast(0L).coerceAtMost(totalDemand)
 			if (fromStock > 0) stockPulls[resource] = (stockPulls[resource] ?: 0L) + fromStock
 			val shortfall = totalDemand - fromStock
 			if (shortfall <= 0L) continue

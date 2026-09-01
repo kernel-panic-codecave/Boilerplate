@@ -34,13 +34,20 @@ object ItemConditionType : FilterConditionType<ItemConditionState>() {
 
 	override fun createState(): ItemConditionState = ItemConditionState()
 
+	/**
+	 * Item-only by nature: this card names concrete items in a ghost grid, so a resource of any
+	 * other kind simply isn't something it can express and never matches. A fluid is filtered by
+	 * [ModConditionType]/[TagConditionType]/[RegexConditionType] - all of which are kind-agnostic -
+	 * until a fluid ghost grid exists to state one directly.
+	 */
 	override fun matches(state: ItemConditionState, context: FilterContext): Boolean {
+		val tested = context.resource as? ItemResource ?: return false
 		val entries = state.itemMatches.filterNot { it.isBlank }
 		return if (state.matchComponents) {
-			val stack = context.resource.toStack(1)
+			val stack = tested.toStack(1)
 			entries.any { it.test(stack) }
 		} else {
-			entries.any { it.isOf(context.resource.item) }
+			entries.any { it.isOf(tested.item) }
 		}
 	}
 

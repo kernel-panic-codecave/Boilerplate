@@ -29,7 +29,7 @@ abstract class PipeAttachmentType<S : AttachmentHolderState> : ItemLike
 
 	/**
 	 * The [NetworkType]s a segment may carry this attachment under - checked against that
-	 * segment's own [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.primaryNetworkType]
+	 * segment's own [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.primaryNetworkTypes]
 	 * at attach time (see [net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock.clickBlockWithItem]).
 	 * Required on every concrete type rather than defaulting to "always compatible", so a new
 	 * attachment kind has to state which pipe kind it belongs on.

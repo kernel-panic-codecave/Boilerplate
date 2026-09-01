@@ -2,13 +2,12 @@ package net.kernelpanicsoft.boilerplate.pipe.entity
 
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
-import net.kernelpanicsoft.boilerplate.network.SItemResource
 import net.kernelpanicsoft.boilerplate.network.SResourceStack
 import net.kernelpanicsoft.boilerplate.util.SDirection
 import net.kernelpanicsoft.boilerplate.util.SDyeColor
 
 /**
- * An item stack in flight through a pipe network.
+ * A resource stack in flight through a pipe network - items and fluids alike.
  *
  * [color] is the consignment color set by whichever extractor/request initiated the trip;
  * sorting pipes route on it, plain pipes ignore it. See `docs/design/m2-sorting-routing.md`.
@@ -35,7 +34,7 @@ import net.kernelpanicsoft.boilerplate.util.SDyeColor
  */
 @Serializable
 data class TravelingItem(
-	val stack: SResourceStack<SItemResource>,
+	val stack: SResourceStack<*>,
 	val fromDirection: SDirection,
 	var progress: Float = 0f,
 	var path: List<SBlockPos> = emptyList(),

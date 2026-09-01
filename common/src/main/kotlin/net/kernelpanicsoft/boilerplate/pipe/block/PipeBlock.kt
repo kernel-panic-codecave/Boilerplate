@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.block
 
 import com.mojang.serialization.MapCodec
+import earth.terrarium.common_storage_lib.fluid.FluidApi
 import earth.terrarium.common_storage_lib.item.ItemApi
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
@@ -8,10 +9,11 @@ import net.kernelpanicsoft.boilerplate.pipe.item.EncasementItem
 import net.kernelpanicsoft.boilerplate.pipe.item.HookItem
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.adapterBridges
-import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypeAt
+import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypesAt
+import net.kernelpanicsoft.boilerplate.pipe.network.registeredPrimaryCarriage
+import net.kernelpanicsoft.boilerplate.pipe.network.registeredSecondaryCarriage
 import net.kernelpanicsoft.boilerplate.pipe.network.underlyingPipeBlockAt
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
-import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
 import net.kernelpanicsoft.boilerplate.registry.TileRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -71,22 +73,34 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	open val isTranslucent: Boolean = false
 
 	/**
-	 * The one [NetworkType] governing which [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType]
-	 * this pipe type may carry - checked against an attachment's own
+	 * The [NetworkType]s this pipe type is a *primary* carrier of - the set governing which
+	 * [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType] this pipe type may
+	 * carry, checked against an attachment's own
 	 * [net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.compatibleNetworkTypes]
-	 * at attach time (see [MultipartBlock.clickBlockWithItem]). [GlassPipeBlock] inherits this
-	 * unchanged; [PressurePipeBlock] overrides it to [NetworkTypeRegistry.Pressure].
+	 * at attach time (see [MultipartBlock.clickBlockWithItem]). A pipe can be a primary carrier of
+	 * more than one kind at once (a pipe carrying both items and fluids). Derived from the
+	 * registered `network_type` set via [registeredPrimaryCarriage] (every registered
+	 * [NetworkType.genericPipeCarriage] of [net.kernelpanicsoft.boilerplate.pipe.network.PipeCarriage.PRIMARY] -
+	 * Boilerplate's own items and fluids), so an addon registering its gas kind as a primary generic
+	 * carrier makes the plain pipe carry it with no per-block edit. [GlassPipeBlock] inherits this
+	 * unchanged; [PressurePipeBlock] overrides it to [NetworkTypeRegistry.Pressure]. A plain pipe
+	 * carries both items and fluids - one pipe kind serves both networks, routing each envelope
+	 * through whichever [net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType] its
+	 * resource kind resolves to ([PipeBlockEntity.tick]).
 	 */
-	open val primaryNetworkType: NetworkType get() = NetworkTypeRegistry.Item
+	open val primaryNetworkTypes: Set<NetworkType> get() = registeredPrimaryCarriage()
 
 	/**
 	 * Every other [NetworkType] this pipe type also conducts (registers into, see
 	 * [PipeBlockEntity.tick]) without accepting that type's own attachments - a plain item pipe
 	 * conducts pressure alongside items, so a dedicated [PressurePipeBlock] run is only needed
-	 * where a branch wants pressure with no item transport at all. [PressurePipeBlock] overrides
-	 * this back to empty (nothing needs an item pipe's own attachments to also flow through it).
+	 * where a branch wants pressure with no item transport at all, mirroring
+	 * [registeredSecondaryCarriage] for [NetworkType.genericPipeCarriage] of
+	 * [net.kernelpanicsoft.boilerplate.pipe.network.PipeCarriage.SECONDARY]. [PressurePipeBlock]
+	 * overrides this back to empty (nothing needs an item pipe's own attachments to also flow
+	 * through it).
 	 */
-	open val secondaryNetworkTypes: Set<NetworkType> get() = setOf(NetworkTypeRegistry.Pressure)
+	open val secondaryNetworkTypes: Set<NetworkType> get() = registeredSecondaryCarriage()
 
 	/** This pipe type's own core cross-section - see [CORE_SHAPE] for the default every pipe but [PressurePipeBlock] uses. */
 	open val coreShape: VoxelShape get() = CORE_SHAPE
@@ -122,9 +136,10 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 		}
 
 	/**
-	 * A pipe forms a visible connecting arm toward a neighbor sharing its own [primaryNetworkType]
-	 * (an item pipe toward another item pipe, a pressure pipe toward another pressure pipe -
-	 * [primaryNetworkTypeAt] resolves a promoted [MultipartBlock] through its own
+	 * A pipe forms a visible connecting arm toward a neighbor sharing any of its own
+	 * [primaryNetworkTypes] (an item pipe toward another item-carrying pipe, a pipe carrying both
+	 * items and fluids toward another such pipe -
+	 * [primaryNetworkTypesAt] resolves a promoted [MultipartBlock] through its own
 	 * [MultipartBlockEntity.pipeBlockId]) - deliberately *not* "any neighbor whose full network set
 	 * includes mine": an item pipe's own [secondaryNetworkTypes] already carries pressure, but a
 	 * dedicated [PressurePipeBlock] butting against it would show a visible cross-section mismatch
@@ -132,7 +147,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	 * collar - see that hook's own KDoc. Falls back to [externalConnectionExists] for a neighbor
 	 * that isn't a pipe at all.
 	 *
-	 * Resolved via [underlyingPipeBlockAt] rather than reading [primaryNetworkType]/
+	 * Resolved via [underlyingPipeBlockAt] rather than reading [primaryNetworkTypes]/
 	 * [externalConnectionExists] straight off `this`: `this` is [MultipartBlock] itself for every
 	 * promoted segment regardless of which pipe type it was promoted from, so reading those
 	 * properties directly would always answer as an item pipe (`MultipartBlock` never overrides
@@ -151,15 +166,15 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	private fun canConnect(level: LevelAccessor, pos: BlockPos, direction: Direction): Boolean {
 		val neighborPos = pos.relative(direction)
 		val ownPipeBlock = underlyingPipeBlockAt(level, pos) ?: this
-		if (primaryNetworkTypeAt(level, neighborPos) == ownPipeBlock.primaryNetworkType) return true
+		if (primaryNetworkTypesAt(level, neighborPos).any { it in ownPipeBlock.primaryNetworkTypes }) return true
 		if (adapterBridges(level, pos, direction)) return true
 		val realLevel = level as? Level ?: return false
 		return ownPipeBlock.externalConnectionExists(realLevel, neighborPos, direction.opposite)
 	}
 
-	/** The external (non-pipe) capability this pipe type auto-connects to - [ItemApi] for a plain item pipe; [PressurePipeBlock] overrides this to [net.kernelpanicsoft.boilerplate.power.PressureApi] instead. */
+	/** The external (non-pipe) capability this pipe type auto-connects to - [ItemApi] and [FluidApi] for a plain pipe; [PressurePipeBlock] overrides this to [net.kernelpanicsoft.boilerplate.power.PressureApi] instead. */
 	protected open fun externalConnectionExists(level: Level, pos: BlockPos, direction: Direction): Boolean =
-		ItemApi.BLOCK.find(level, pos, direction) != null
+		ItemApi.BLOCK.find(level, pos, direction) != null || FluidApi.BLOCK.find(level, pos, direction) != null
 
 	/**
 	 * The segment's body piece - what remains once hooks and arms are accounted for: a wrapped

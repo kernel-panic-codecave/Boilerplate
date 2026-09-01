@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.registry
 
 import net.kernelpanicsoft.archie.registries.RegistrarHelper
 import net.kernelpanicsoft.boilerplate.Boilerplate
+import net.kernelpanicsoft.boilerplate.network.ResourceKind
 import net.kernelpanicsoft.boilerplate.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.boilerplate.pipe.encasement.PipeEncasementType
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
@@ -23,4 +24,6 @@ object Registrars : RegistrarHelper(Boilerplate.MOD_ID) {
 	val ENCASEMENT_TYPE by registry<PipeEncasementType<out EncasementHolderState>>("pipe_encasement_type") { syncToClients() }
 	val FILTER_CONDITION_TYPE by registry<FilterConditionType<out FilterConditionState>>("filter_condition_type") { syncToClients() }
 	val NETWORK_TYPE by registry<NetworkType>("network_type") { syncToClients() }
+
+	val RESOURCE_KIND by registry<ResourceKind>("resource_kind") { syncToClients() }
 }

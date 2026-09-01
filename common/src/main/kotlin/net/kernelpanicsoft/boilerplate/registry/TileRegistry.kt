@@ -4,10 +4,13 @@ import dev.architectury.registry.client.rendering.BlockEntityRendererRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.transfer.exposeEnergyStorage
+import net.kernelpanicsoft.archie.transfer.exposeFluidStorage
 import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.archie.util.blockEntityType
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
+import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackFluidStorageExposer
+import net.kernelpanicsoft.boilerplate.pipe.attachment.FluidStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.client.MultipartBlockEntityVisual
 import net.kernelpanicsoft.boilerplate.pipe.client.MultipartTravelingItemRenderer
@@ -22,6 +25,7 @@ import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerBlock
 import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual
 import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlockEntity
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -73,6 +77,12 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 			(hookAtFace as? ItemStorageExposer)?.exposedItemStorage(tile)
 				?: (tile.encasement.value as? ItemStorageExposer)?.exposedItemStorage(tile)
 				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackItemStorageExposer)?.exposedItemStorage(tile) }
+		}
+		exposeFluidStorage { tile, direction ->
+			val hookAtFace = direction?.let { tile.hooks[it.name] }
+			(hookAtFace as? FluidStorageExposer)?.exposedFluidStorage(tile)
+				?: (tile.encasement.value as? FluidStorageExposer)?.exposedFluidStorage(tile)
+				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackFluidStorageExposer)?.exposedFluidStorage(tile) }
 		}
 		exposePressureStorage { tile, direction ->
 			val hookAtFace = direction?.let { tile.hooks[it.name] }
@@ -140,6 +150,14 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 		blockEntityType({ pos, state -> PipeBlockEntity(PressurePipe, pos, state) }) {
 			add(BlockRegistry.PressurePipe)
 		}
+	}
+
+	val FluidTank: BlockEntityType<FluidTankBlockEntity> by register("fluid_tank") {
+		blockEntityType(::FluidTankBlockEntity) {
+			add(BlockRegistry.FluidTank)
+		}
+	}.apply {
+		exposeFluidStorage { tile -> tile.storage }
 	}
 
 	val CreativePressureSource: BlockEntityType<CreativePressureSourceBlockEntity> by register("creative_pressure_source") {

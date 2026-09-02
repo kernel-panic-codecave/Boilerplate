@@ -28,7 +28,7 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
 
 /**
- * GameTest coverage for [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.advanceSteps]'s
+ * GameTest coverage for [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime]'s
  * own pressure-scaled fetch interval for a **vanilla crafting table** step - the one case the CPU
  * still fetches for at all, since a processing machine is expected to get its own output onto the
  * network. Two identical single-step crafts, one with a full

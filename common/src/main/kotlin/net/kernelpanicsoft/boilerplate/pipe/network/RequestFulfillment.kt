@@ -119,7 +119,7 @@ object RequestFulfillment {
 	 * Serves only the *first* willing [sources] entry per call, returning whatever that one extract
 	 * yielded - a caller chasing a larger total ([request], or a Crafting CPU's raw-material
 	 * claiming, see
-	 * [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.claimOutstandingStock])
+	 * [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime])
 	 * keeps calling until this returns `0`.
 	 *
 	 * A source whose own [HookHolderState.active] is `false` (no reachable pressure) is

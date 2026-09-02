@@ -6,7 +6,6 @@ import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.network.displayName
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
@@ -215,9 +214,10 @@ object CraftingCpuRuntime {
 				if (remaining <= 0) continue
 				// The direct-to-buffer path is only ever a vanilla crafting table's, and those are
 				// item-only - a fluid input to one cannot exist, so it always takes the network path.
-				val fed = if (isCraftingTable && key.resource is ItemResource)
-					feedPatternBufferDirectly(level, pos, tile, state, job, index, key.resource as ItemResource, remaining)
-				else pushToNetwork(level, pos, tile, state, key.resource, remaining, tablePos)
+				val input = key.resource
+				val fed = if (isCraftingTable && input is ItemResource)
+					feedPatternBufferDirectly(level, pos, tile, state, job, index, input, remaining)
+				else pushToNetwork(level, pos, tile, state, input, remaining, tablePos)
 				if (fed > 0) job.fedAmounts[index to key] = already + fed
 			}
 		}

@@ -55,6 +55,24 @@ class WarehouseFluidGameTest {
 	}
 
 	/**
+	 * A bound (but rackless) warehouse with a pipe run up against it - the fixture for asking
+	 * whether the *controller itself* is a routable destination, which has nothing to do with what
+	 * it contains. Returns `(controller position, pipe position)`, both relative.
+	 */
+	private fun GameTestHelper.layOutPipedWarehouse(): Pair<BlockPos, BlockPos> {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val pipePos = BlockPos(1, 2, 0)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
+		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		return controllerPos to pipePos
+	}
+
+	/**
 	 * A tank in the volume is indexed, and its fluid is findable by a *separately built* handle -
 	 * the [ResourceIdentity] keying the index depends on, since `FluidResource` has no `equals`.
 	 */
@@ -181,15 +199,7 @@ class WarehouseFluidGameTest {
 	 */
 	@GameTest(template = SMALL, timeoutTicks = 400)
 	fun GameTestHelper.testTheControllerIsARoutableFluidDestination() {
-		val controllerPos = BlockPos(0, 2, 0)
-		val cornerTwoPos = BlockPos(4, 3, 4)
-		val pipePos = BlockPos(1, 2, 0)
-		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
-		placeAdjacentPressureSource(controllerPos.below())
-		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
-
-		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
-		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+		val (controllerPos, pipePos) = layOutPipedWarehouse()
 
 		runAfterDelay(20) {
 			val route = FluidPipeRouter.findRoute(level as ServerLevel, absolutePos(pipePos), FluidResource.of(Fluids.WATER))
@@ -210,15 +220,8 @@ class WarehouseFluidGameTest {
 	 */
 	@GameTest(template = SMALL, timeoutTicks = 400)
 	fun GameTestHelper.testTheControllerFilterRejectsFluidItIsNotConfiguredFor() {
-		val controllerPos = BlockPos(0, 2, 0)
-		val cornerTwoPos = BlockPos(4, 3, 4)
-		val pipePos = BlockPos(1, 2, 0)
-		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
-		placeAdjacentPressureSource(controllerPos.below())
-		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
-
+		val (controllerPos, pipePos) = layOutPipedWarehouse()
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
-		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
 
 		// A fluid card naming lava, on a whitelist controller - so water is not wanted here.
 		val card = ItemStack(ItemRegistry.FluidFilterCard)

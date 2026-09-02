@@ -77,7 +77,7 @@ class CraftingBufferJob(val id: String, val target: ResourceComponent, val targe
 	/**
 	 * How much of [resource] this job's own steps still expect to receive, given [inStorage] of it
 	 * sitting in the cluster right now - what makes this cluster a routing destination for it at
-	 * all (see [CraftingBufferEncasementType.awaitsDelivery]). `0` for a resource no step produces.
+	 * all (see [CraftingCpuRuntime.awaitsDelivery]). `0` for a resource no step produces.
 	 *
 	 * Already-received is `[inStorage] + whatever has since been fed onward as a later step's own
 	 * input` - an intermediate is routinely consumed again the moment it lands, so its current

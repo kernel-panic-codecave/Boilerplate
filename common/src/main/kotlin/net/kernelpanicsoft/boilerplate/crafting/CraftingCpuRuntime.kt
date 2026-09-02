@@ -11,9 +11,10 @@ import net.kernelpanicsoft.boilerplate.network.displayName
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
-import net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget
 import net.minecraft.core.BlockPos
@@ -140,10 +141,11 @@ object CraftingCpuRuntime {
 	 * Only ever [CraftingResolver.Plan.stockPulls]'s own raw materials, never an intermediate a step
 	 * of this same job will produce itself.
 	 *
-	 * The warehouse half is item-only: a fluid retrieve is a gantry job that doesn't exist yet (see
-	 * [RequestFulfillment.fulfillFluidFromProvider]), so a fluid raw material must be reachable
-	 * through a provider/interface hook. A fluid claim that finds no such source simply stays
-	 * outstanding and is retried, exactly like an item claim against an empty network.
+	 * Both halves are kind-agnostic. The warehouse one in particular: a bound warehouse indexes and
+	 * moves every registered kind that has a
+	 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind], so a fluid raw material comes
+	 * off a tank in storage exactly as an item comes off a rack. A claim that finds no source at all
+	 * simply stays outstanding and is retried.
 	 */
 	private fun claimOutstandingStock(level: ServerLevel, pos: BlockPos, job: CraftingBufferJob) {
 		if (job.outstandingStockClaims.values.all { it <= 0 }) return
@@ -152,25 +154,26 @@ object CraftingCpuRuntime {
 		for ((key, amount) in job.outstandingStockClaims.entries.toList()) {
 			if (amount <= 0) continue
 			var remaining = amount
-			when (val resource = key.resource) {
-				is ItemResource -> {
-					while (remaining > 0) {
-						val pulled = RequestFulfillment.fulfillFromProvider(level, providers, ResourceStack(resource, remaining), pos)
-						if (pulled <= 0) break
-						remaining -= pulled
-					}
-					for (warehouse in warehouses) {
-						if (remaining <= 0) break
-						remaining -= warehouse.claimAndEnqueue(resource, remaining, DeliveryTarget.Pipe(pos))
-					}
+			val resource = key.resource
+
+			// Providers are reached per kind - different capability, different router, so this is the
+			// one place the two still split.
+			while (remaining > 0) {
+				val pulled = when (resource) {
+					is FluidResource -> RequestFulfillment.fulfillFluidFromProvider(level, providers, ResourceStack(resource, remaining), pos)
+					is ItemResource -> RequestFulfillment.fulfillFromProvider(level, providers, ResourceStack(resource, remaining), pos)
+					else -> 0L
 				}
-				is FluidResource -> {
-					while (remaining > 0) {
-						val pulled = RequestFulfillment.fulfillFluidFromProvider(level, providers, ResourceStack(resource, remaining), pos)
-						if (pulled <= 0) break
-						remaining -= pulled
-					}
-				}
+				if (pulled <= 0) break
+				remaining -= pulled
+			}
+
+			// The warehouse half needs no split at all: its index and its gantry work in bare
+			// resources, so a bucket of lava is claimed off a tank exactly as an ingot is claimed off
+			// a rack.
+			for (warehouse in warehouses) {
+				if (remaining <= 0) break
+				remaining -= warehouse.claimAndEnqueue(resource, remaining, DeliveryTarget.Pipe(pos))
 			}
 			job.outstandingStockClaims[key] = remaining
 		}
@@ -372,22 +375,20 @@ object CraftingCpuRuntime {
 
 	/** A route from [from] to [to] over whichever network carries [resource]'s own kind. */
 	private fun routeTo(level: ServerLevel, from: BlockPos, to: BlockPos, resource: ResourceComponent): List<BlockPos>? =
-		if (resource is FluidResource) FluidPipeRouter.findRouteTo(level, from, to) else ItemPipeRouter.findRouteTo(level, from, to)
+		networkTypeForResource(resource)?.router?.findRouteTo(level, from, to)
 
 	/** A route from [from] to any destination accepting [resource], over whichever network carries its kind. */
-	private fun routeAnywhere(level: ServerLevel, from: BlockPos, resource: ResourceComponent, exclude: Collection<BlockPos>): List<BlockPos>? = when (resource) {
-		is FluidResource -> FluidPipeRouter.findRoute(level, from, resource, null, exclude)
-		is ItemResource -> ItemPipeRouter.findRoute(level, from, resource, null, exclude)
-		else -> null
-	}
+	private fun routeAnywhere(level: ServerLevel, from: BlockPos, resource: ResourceComponent, exclude: Collection<BlockPos>): List<BlockPos>? =
+		networkTypeForResource(resource)?.route(level, from, ResourceStack(resource, 1), null, exclude)
 
-	/** Extracts [amount] of [resource] from [storage], whose element type is only known to be some resource kind - the cast is what a `CommonStorage<*>` costs, and is safe because [poolFor] only ever pairs a pool with a resource of its own kind. */
-	@Suppress("UNCHECKED_CAST")
-	private fun extractFrom(storage: CommonStorage<*>, resource: ResourceComponent, amount: Long): Long = when (resource) {
-		is FluidResource -> (storage as CommonStorage<FluidResource>).extract(resource, amount, false)
-		is ItemResource -> (storage as CommonStorage<ItemResource>).extract(resource, amount, false)
-		else -> 0L
-	}
+	/**
+	 * Extracts [amount] of [resource] from [storage], whose element type is only known to be *some*
+	 * resource kind. The unchecked cast that costs lives once, inside the resource's own
+	 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind] - see its KDoc - rather than
+	 * being repeated here; [poolFor] guarantees the pairing it relies on.
+	 */
+	private fun extractFrom(storage: CommonStorage<*>, resource: ResourceComponent, amount: Long): Long =
+		ResourceKindRegistry.storageFor(resource)?.extract(storage, resource, amount, false) ?: 0L
 
 	/**
 	 * Which face a shipment leaving this segment should *appear* to have entered from - the one

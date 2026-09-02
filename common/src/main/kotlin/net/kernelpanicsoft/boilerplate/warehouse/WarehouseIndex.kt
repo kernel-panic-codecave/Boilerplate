@@ -1,13 +1,12 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
-import earth.terrarium.common_storage_lib.fluid.FluidApi
-import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.util.SDirection
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -125,10 +124,10 @@ class WarehouseIndex {
 			val state = level.getBlockState(pos)
 			if (state.isAir) continue
 
-			// Any indexable storage, not just an item one - a fluid tank is as much a put-away
-			// destination as a rack is.
+			// Any indexable storage of any registered kind - a fluid tank is as much a put-away
+			// destination as an item rack is.
 			for (dir in Direction.entries) {
-				if (storageAt(level, pos, dir) != null) {
+				if (storagesAt(level, pos, dir).isNotEmpty()) {
 					candidates.add(pos to dir)
 					break
 				}
@@ -180,18 +179,26 @@ class WarehouseIndex {
 		var foundStorage = false
 
 		for (dir in directionsToScan) {
-			val storage = storageAt(level, pos, dir) ?: continue
+			val storages = storagesAt(level, pos, dir)
+			if (storages.isEmpty()) continue
 			foundStorage = true
 			knownContainers.add(pos.immutable())
 
+			// Totals are aggregated across every kind this face exposes at once, since the index is
+			// keyed by resource rather than by kind - two kinds on one face simply contribute
+			// different keys.
 			val aggregated = mutableMapOf<ResourceIdentity, Long>()
-			for (i in 0 until storage.size()) {
-				val resource = storage.getResource(i) as? ResourceComponent ?: continue
-				if (resource.isBlank) continue
-				val amount = storage.getAmount(i)
-				if (amount > 0) {
-					val key = ResourceIdentity.of(resource)
-					aggregated[key] = (aggregated[key] ?: 0L) + amount
+			var anySlots = false
+			for (storage in storages) {
+				if (storage.size() > 0) anySlots = true
+				for (i in 0 until storage.size()) {
+					val resource = storage.getResource(i) as? ResourceComponent ?: continue
+					if (resource.isBlank) continue
+					val amount = storage.getAmount(i)
+					if (amount > 0) {
+						val key = ResourceIdentity.of(resource)
+						aggregated[key] = (aggregated[key] ?: 0L) + amount
+					}
 				}
 			}
 
@@ -199,7 +206,7 @@ class WarehouseIndex {
 				into.getOrPut(key) { mutableListOf() } += RackSlotRef(pos.immutable(), dir, totalAmount)
 			}
 
-			if (direction == null && storage.size() > 0) break
+			if (direction == null && anySlots) break
 		}
 
 		return foundStorage
@@ -285,14 +292,17 @@ class WarehouseIndex {
 
 	private companion object {
 		/**
-		 * Whatever indexable storage [pos] exposes on [direction] - an item one first, then a fluid
-		 * one. A single position is only ever indexed under one kind: the two capabilities are
-		 * probed in a fixed order so a block exposing both (a machine with an input tank and an
-		 * output buffer, say) is at least deterministic about which the warehouse tracks. Widening
-		 * that to per-kind indexing is warehouse fluid-parity work in its own right.
+		 * Every indexable storage [pos] exposes on [direction], one per registered
+		 * [net.kernelpanicsoft.boilerplate.network.ResourceKind] that has a
+		 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind].
+		 *
+		 * All of them, not the first: a block may expose more than one kind (a machine with an input
+		 * tank and an output buffer), and indexing only one of those made the other invisible to the
+		 * warehouse entirely. Registering a kind is the only thing needed to have it show up here -
+		 * nothing in this class names items or fluids.
 		 */
-		fun storageAt(level: ServerLevel, pos: BlockPos, direction: Direction?): CommonStorage<*>? =
-			ItemApi.BLOCK.find(level, pos, direction) ?: FluidApi.BLOCK.find(level, pos, direction)
+		fun storagesAt(level: ServerLevel, pos: BlockPos, direction: Direction?): List<CommonStorage<*>> =
+			ResourceKindRegistry.storageKinds().mapNotNull { it.storage?.find(level, pos, direction) }
 	}
 }
 

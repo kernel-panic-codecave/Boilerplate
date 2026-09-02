@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.network
 
 import earth.terrarium.common_storage_lib.fluid.FluidApi
 import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
@@ -78,14 +79,22 @@ object RequestFulfillment {
 	fun request(
 		level: ServerLevel,
 		from: BlockPos,
-		stack: ResourceStack<ItemResource>,
+		stack: ResourceStack<ResourceComponent>,
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
 		onDispatch: ((pipeHops: Int, gantryBlocks: Double, dispatched: Long) -> Unit)? = null,
 	): Long {
 		val reachable = reachablePipes(level, from)
-		val fromProvider = fulfillFromProvider(level, providerSources(level, reachable), stack, deliverTo, deliverFace, reservationId, onDispatch)
+		// Providers are reached per kind - a different capability, router and reachability graph
+		// each (see [fulfillFluidFromProvider]). The warehouse fallback below needs no such split:
+		// its index and its gantry already work in bare resources.
+		val sources = providerSources(level, reachable)
+		val fromProvider = when (val resource = stack.resource) {
+			is FluidResource -> fulfillFluidFromProvider(level, sources, ResourceStack(resource, stack.amount), deliverTo, deliverFace)
+			is ItemResource -> fulfillFromProvider(level, sources, ResourceStack(resource, stack.amount), deliverTo, deliverFace, reservationId, onDispatch)
+			else -> 0L
+		}
 		if (fromProvider > 0) return fromProvider
 		return fulfillFromWarehouse(level, warehousesIn(level, reachable), stack, deliverTo, deliverFace, reservationId, onDispatch)
 	}
@@ -186,11 +195,20 @@ object RequestFulfillment {
 		return 0
 	}
 
-	/** [fulfillFromProvider]'s own KDoc's "first willing source" shape, but over reachable warehouses - skips a controller [WarehouseControllerBlockEntity.hasPressure] says can't move its gantry at all, so this never queues a retrieve job that would just sit hard-gated at `0.0` speed forever. */
+	/**
+	 * [fulfillFromProvider]'s own KDoc's "first willing source" shape, but over reachable warehouses
+	 * - skips a controller [WarehouseControllerBlockEntity.hasPressure] says can't move its gantry
+	 * at all, so this never queues a retrieve job that would just sit hard-gated at `0.0` speed
+	 * forever.
+	 *
+	 * Kind-agnostic: the warehouse indexes and moves any registered
+	 * [net.kernelpanicsoft.boilerplate.network.ResourceKind] with a storage surface, so a bucket of
+	 * lava comes off a tank here exactly as a stack of ingots comes off a rack.
+	 */
 	private fun fulfillFromWarehouse(
 		level: ServerLevel,
 		warehouses: List<WarehouseControllerBlockEntity>,
-		stack: ResourceStack<ItemResource>,
+		stack: ResourceStack<ResourceComponent>,
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,

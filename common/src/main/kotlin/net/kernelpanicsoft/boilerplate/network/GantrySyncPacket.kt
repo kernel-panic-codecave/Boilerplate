@@ -30,7 +30,7 @@ data class GantrySyncPacket(
 	val controllerPos: SBlockPos,
 	val gantryPos: SVec3,
 	val path: List<SVec3>,
-	val carriedItems: List<SResourceStack<SItemResource>> = emptyList(),
+	val carriedItems: List<SResourceStack<SResourceComponent>> = emptyList(),
 	val speedPerTick: Double = 1.0,
 	val serverTick: Long = 0L,
 ) {

@@ -11,6 +11,7 @@ import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.network.FluidResourceSerializer
 import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
 import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.network.ResourceStorageKind
 import net.minecraft.core.Registry
 import net.minecraft.network.chat.Component
 import net.minecraft.core.registries.BuiltInRegistries
@@ -39,6 +40,7 @@ object ResourceKindRegistry : ADeferredRegistryHolder<ResourceKind>(
 		object : ResourceKind() {
 			override val kindTag: String get() = "item"
 			override val resourceClass: Class<out ResourceComponent> get() = ItemResource::class.java
+			override val storage get() = ItemStorageKind
 			override val serializer: KSerializer<ResourceComponent> get() = ItemResourceSerializer as KSerializer<ResourceComponent>
 
 			override fun displayName(resource: ResourceComponent): Component =
@@ -55,6 +57,7 @@ object ResourceKindRegistry : ADeferredRegistryHolder<ResourceKind>(
 		object : ResourceKind() {
 			override val kindTag: String get() = "fluid"
 			override val resourceClass: Class<out ResourceComponent> get() = FluidResource::class.java
+			override val storage get() = FluidStorageKind
 			override val serializer: KSerializer<ResourceComponent> get() = FluidResourceSerializer as KSerializer<ResourceComponent>
 
 			/**
@@ -82,6 +85,18 @@ object ResourceKindRegistry : ADeferredRegistryHolder<ResourceKind>(
 		for (kind in Registrars.RESOURCE_KIND) if (kind.resourceClass.isInstance(resource)) return kind
 		return null
 	}
+
+	/**
+	 * Every registered kind that can live in a storage, in registry order - what the warehouse
+	 * iterates instead of naming items and fluids.
+	 *
+	 * Recomputed per call rather than cached: the registry is small, and a cache would have to be
+	 * invalidated on late registration, which addons legitimately do.
+	 */
+	fun storageKinds(): List<ResourceKind> = Registrars.RESOURCE_KIND.filter { it.storage != null }
+
+	/** [resource]'s own kind's storage surface, or `null` if its kind is unregistered or cannot be stored. */
+	fun storageFor(resource: ResourceComponent): ResourceStorageKind? = forResource(resource)?.storage
 
 	/** The registered [ResourceKind] with [kindTag], or null if none is. */
 	fun byTag(kindTag: String): ResourceKind? {

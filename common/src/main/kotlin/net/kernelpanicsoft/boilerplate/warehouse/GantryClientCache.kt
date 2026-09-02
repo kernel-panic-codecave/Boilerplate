@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.minecraft.core.BlockPos
@@ -32,17 +33,17 @@ object GantryClientCache {
 		val path: List<Vec3>,
 		val serverTick: Long,
 		val speedPerTick: Double,
-		val carriedItems: List<ResourceStack<ItemResource>>,
+		val carriedItems: List<ResourceStack<ResourceComponent>>,
 	)
 
 	private val entries = HashMap<BlockPos, Entry>()
 
-	fun update(pos: BlockPos, gantryPos: Vec3, path: List<Vec3>, carriedItems: List<ResourceStack<ItemResource>>, speedPerTick: Double, serverTick: Long) {
+	fun update(pos: BlockPos, gantryPos: Vec3, path: List<Vec3>, carriedItems: List<ResourceStack<ResourceComponent>>, speedPerTick: Double, serverTick: Long) {
 		entries[pos] = Entry(gantryPos, path, serverTick, speedPerTick, carriedItems)
 	}
 
 	/** The gantry's own last-synced carried items - see [WarehouseControllerBlockEntity]'s `deliveryQueue`, the server-side source of truth this mirrors. Empty, not `null`, if nothing's ever been synced. */
-	fun carriedItems(pos: BlockPos): List<ResourceStack<ItemResource>> = entries[pos]?.carriedItems ?: emptyList()
+	fun carriedItems(pos: BlockPos): List<ResourceStack<ResourceComponent>> = entries[pos]?.carriedItems ?: emptyList()
 
 	/**
 	 * The gantry's dead-reckoned current position/remaining path, or `null` if nothing's ever been

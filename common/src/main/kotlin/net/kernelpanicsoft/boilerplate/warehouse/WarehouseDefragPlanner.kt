@@ -1,8 +1,7 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
-import earth.terrarium.common_storage_lib.item.ItemApi
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.server.level.ServerLevel
 
 /**
@@ -27,10 +26,14 @@ object WarehouseDefragPlanner {
 		val jobs = mutableListOf<GantryJob.Move>()
 
 		for ((key, entries) in controller.index.locations) {
-			// Consolidation is item-only: [GantryJob.Move] carries a ResourceStack<ItemResource>,
-			// and "merge two partial stacks" doesn't map onto tanks anyway - two half-full tanks of
-			// the same fluid are not wasting a slot the way two partial item stacks are.
-			val resource = key.resource as? ItemResource ?: continue
+			// Any registered kind, not just items. Consolidation was item-only on the reasoning that
+			// two half-full tanks "aren't wasting a slot the way two partial item stacks are" - but
+			// that is exactly backwards in a warehouse whose racks *are* tanks: a tank holds one
+			// fluid, so two half-full tanks of water occupy two of them and deny the second to
+			// anything else. Merging them frees a whole rack, which is the same win consolidating
+			// item stacks gives.
+			val resource = key.resource
+			val storageKind = ResourceKindRegistry.storageFor(resource) ?: continue
 			if (entries.size <= 1) continue
 			val sorted = entries.sortedByDescending { it.amount }
 			val absorber = sorted.first()
@@ -38,8 +41,8 @@ object WarehouseDefragPlanner {
 
 			for (source in sorted.drop(1)) {
 				if (!level.hasChunk(source.pos.x shr 4, source.pos.z shr 4)) continue
-				val absorberStorage = ItemApi.BLOCK.find(level, absorber.pos, absorber.direction) ?: continue
-				val room = absorberStorage.insert(resource, source.amount, true)
+				val absorberStorage = storageKind.find(level, absorber.pos, absorber.direction) ?: continue
+				val room = storageKind.insert(absorberStorage, resource, source.amount, true)
 				if (room <= 0) continue
 				jobs += GantryJob.Move(source, absorber.pos, absorber.direction, ResourceStack(resource, room))
 			}

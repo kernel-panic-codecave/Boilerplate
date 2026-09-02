@@ -66,6 +66,17 @@ abstract class ResourceKind {
 	abstract fun registryId(resource: ResourceComponent): ResourceLocation?
 
 	/**
+	 * How this kind's storage is reached and moved through, or `null` if this kind cannot live in a
+	 * storage at all.
+	 *
+	 * Registering a kind that provides one is all it takes to make that kind **warehouse-able**:
+	 * any block inside a bound volume exposing it becomes a rack, and gantry retrieval, put-away and
+	 * defragmentation all start working for it without an edit anywhere in the warehouse. See
+	 * [ResourceStorageKind].
+	 */
+	open val storage: ResourceStorageKind? get() = null
+
+	/**
 	 * A human-readable name for [resource] - what job status lines, tooltips and error text show.
 	 *
 	 * Defaults to the path of [registryId] (`water`, `diamond`), which is legible for any kind that

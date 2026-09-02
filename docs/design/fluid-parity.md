@@ -205,11 +205,40 @@ The whole crafting layer is now generic over `ResourceComponent`:
 
 Ghost-slot amounts for a fluid are authored and displayed in **millibuckets** and converted to platform units once, at encode time, in `PatternTerminalHookMenu.cellAmount` — everything downstream then compares in platform units without knowing.
 
+### Warehouse — **done, and kind-agnostic rather than fluid-aware**
+
+The warehouse no longer names items or fluids anywhere. A [`ResourceKind`] may declare a
+`ResourceStorageKind` — a capability holding the block lookup for that kind, its insert/extract, and
+its staging-buffer factory and codec — and **registering a kind that has one is the whole of what it
+takes to make that kind storable**. Indexing, gantry retrieval, put-away, defragmentation, claims
+and terminal delivery all iterate the registry.
+
+- `WarehouseIndex` indexes *every* kind a position exposes, not the first one found. A machine with
+  an input tank and an output buffer is now fully visible instead of half of it silently vanishing.
+- `GantryJob` carries a bare `ResourceComponent`, so a crane leg moves a bucket exactly as it moves
+  a stack. `pickUp`/`dropOff`/`shipOut` resolve the pool and the router from the cargo's own kind.
+- The controller holds a staging buffer **per kind**. The item pair stays a dedicated field (it is
+  also the controller's exposed item capability and what its GUI draws); every other kind's is built
+  on demand and persisted through its own kind's codec, so a fluid mid-flight survives a reload.
+- `WarehouseDefragPlanner` consolidates any kind. It was item-only on the reasoning that partial
+  tanks "don't waste a slot" — backwards in a warehouse whose racks *are* tanks, where two half-full
+  water tanks occupy two of them and deny the second to anything else.
+- `RequestFulfillment.request` and `claimAndEnqueue` are kind-agnostic, which closes the last gap in
+  fluid autocrafting: a crafting job's fluid raw material now comes off a warehouse tank exactly as
+  an item comes off a rack.
+
 ### Still item-only
 
-- **Warehouse retrieval of a fluid.** `claimAndEnqueue`/`enqueueRetrieve` are item-typed, and a fluid retrieve means a gantry job carrying it. A fluid raw material must currently be reachable through a provider or interface hook, or already sit in the CPU's own tanks. This is the one real gap in fluid autocrafting.
-- **The terminal's store/craft grid.** `StoreEntry`, `combineStoreEntries` and the stock rows are item-shaped, so `AbstractTerminalHookMenu.sendCraftableList` deliberately filters to item outputs. A fluid-producing pattern runs perfectly well as a *step* inside a craft; it just isn't independently requestable from the terminal yet. That is Stage 4's job.
-- **Racks, `GantryJob`, `WarehouseDefragPlanner`.**
+- **The terminal's store/craft grid.** `StoreEntry`, `combineStoreEntries` and the stock rows are
+  item-shaped, so `AbstractTerminalHookMenu.sendCraftableList` deliberately filters to item outputs.
+  A fluid-producing pattern runs perfectly well as a *step* inside a craft; it just isn't
+  independently requestable from the terminal yet. That is Stage 4's job.
+- **Rack priority and filter cards.** `RackBlockEntity` (priority, filter card, its screen) is still
+  item-typed, so a tank participates as an ordinary priority-0 rack with no filter of its own. It is
+  a configuration surface, not a transport limit.
+- **Carried-cargo visuals under Flywheel.** A fluid on the crane draws as the same rippling droplet
+  a pipe shows it as under the vanilla renderer, but Flywheel needs a baked mesh and the droplet is
+  generated per frame — so it is invisible there. Cosmetic only.
 
 ## Suggested order
 
@@ -219,4 +248,5 @@ Ghost-slot amounts for a fluid are authored and displayed in **millibuckets** an
 4. ~~Stage 2 filter conditions~~ — done bar the fluid ghost card, which needs Stage 4's slot
 5. Stage 4 GUI — a tank screen and a terminal listing (the warehouse indexes tanks already; the terminal just can't show them). The fluid ghost slot that would have gated this now exists, so the interface hook's fluid `ghosts` row is unblocked too
 6. ~~Stage 5 crafting~~ — done; patterns, the resolver, the job and the CPU are kind-generic, and a Crafting Tank holds the fluid side
-7. Stage 5 warehouse — fluid gantry retrieval, which is what still blocks a fluid raw material coming off a shelf
+7. ~~Stage 5 warehouse~~ — done; the warehouse is resource-kind agnostic and a registered kind is storable with no warehouse edit
+8. Stage 4 terminal — the last item-shaped surface left

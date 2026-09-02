@@ -48,6 +48,7 @@ import java.util.function.Consumer
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 class WarehouseControllerVisual(
 	visualizationContext: VisualizationContext,
@@ -61,7 +62,7 @@ class WarehouseControllerVisual(
 	private var bottomRodInstance: TransformedInstance? = null
 	private var headInstance: TransformedInstance? = null
 	private var carriedItemInstances: List<TransformedInstance> = emptyList()
-	private var carriedItemsCacheKey: List<ResourceStack<ItemResource>> = emptyList()
+	private var carriedItemsCacheKey: List<ResourceStack<ResourceComponent>> = emptyList()
 
 	companion object {
 		val HEAD_MODEL_RL: ResourceLocation = Boilerplate.MOD % "block" / "gantry_head"
@@ -381,11 +382,16 @@ class WarehouseControllerVisual(
 			setChanged()
 		}
 
-		val carried = GantryClientCache.carriedItems(blockEntity.blockPos)
+		// Items only. A carried stack may be of any registered kind now, but a Flywheel instance
+		// needs a baked mesh, and the rippling droplet the vanilla renderer draws for a fluid
+		// (TravelingFluidRenderer) is generated per frame rather than baked. A fluid on the crane is
+		// therefore invisible under Flywheel while remaining visible without it - cosmetic only, and
+		// the fix is an instanced fluid mesh rather than anything about the transport itself.
+		val carried = GantryClientCache.carriedItems(blockEntity.blockPos).filter { it.resource is ItemResource }
 		if (carried != carriedItemsCacheKey) {
 			carriedItemInstances.forEach(Instance::delete)
 			carriedItemInstances = carried.map { stack ->
-				val mesh = buildCarriedItemMesh(stack.itemStack)
+				val mesh = buildCarriedItemMesh((stack.resource as ItemResource).toStack(stack.amount.toInt().coerceAtLeast(1)))
 				val instancer = instancerProvider().instancer(InstanceTypes.TRANSFORMED, SingleMeshModel(mesh, Materials.CUTOUT_BLOCK))
 				instancer.createInstance()
 			}

@@ -25,6 +25,7 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.inventory.MenuType
 import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 /**
  * Menu for the warehouse terminal hook attached to [tile]: search/withdraw across *every* source
@@ -203,7 +204,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 			val reservationId = state.nextReservationId()
 			val startTick = level.gameTime
 			val dispatched = RequestFulfillment.request(
-				level, tile.blockPos, stack.withCount(take), tile.blockPos, direction, reservationId,
+				level, tile.blockPos, ResourceStack(stack.resource as ResourceComponent, take), tile.blockPos, direction, reservationId,
 			) { pipeHops, gantryBlocks, actual ->
 				state.pendingDeliveries += PendingDelivery(
 					reservationId, slot, stack.resource, actual, startTick,

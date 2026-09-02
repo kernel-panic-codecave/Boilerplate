@@ -28,6 +28,9 @@ import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.pipe.client.TravelingFluidRenderer
 
 /**
  * Renders the *moving* half of a warehouse gantry, styled after BuildCraft's Quarry: the static
@@ -184,7 +187,14 @@ class WarehouseControllerBlockEntityRenderer(context: BlockEntityRendererProvide
 				originZ + sin(angle) * radius,
 			)
 			poseStack.scale(CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE)
-			itemRenderer.renderStatic(stack.itemStack, ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
+			// The crane carries whatever kind the job was for, so this dispatches the same way the
+			// in-pipe renderers do: an item draws as its own model, a fluid as the same rippling
+			// droplet [TravelingFluidRenderer] draws in a pipe, so the two read as the same cargo
+			// moving through the system. A kind with no visual of its own simply doesn't draw.
+			when (val resource = stack.resource) {
+				is ItemResource -> itemRenderer.renderStatic(resource.toStack(stack.amount.toInt().coerceAtLeast(1)), ItemDisplayContext.GROUND, packedLight, packedOverlay, poseStack, bufferSource, level, seed)
+				is FluidResource -> TravelingFluidRenderer.render(resource, Vec3.ZERO, poseStack, bufferSource, packedLight, packedOverlay, level.gameTime + partialTick)
+			}
 			poseStack.popPose()
 		}
 	}

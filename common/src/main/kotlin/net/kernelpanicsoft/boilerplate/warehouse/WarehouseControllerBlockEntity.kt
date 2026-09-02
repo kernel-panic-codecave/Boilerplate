@@ -44,6 +44,16 @@ import net.minecraft.world.level.block.Block.UPDATE_ALL
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.chunk.status.ChunkStatus
 import net.minecraft.world.phys.Vec3
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import net.benwoodworth.knbt.NbtTag
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.network.ResourceStorageKind
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
+import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 
 class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(TileRegistry.WarehouseController, pos, state), PressureConsumer, ExtendedMenuProvider {
@@ -288,6 +298,61 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	val outboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
 
 	/**
+	 * Every non-item staging buffer's contents, keyed by [net.kernelpanicsoft.boilerplate.network.ResourceKind.kindTag]
+	 * and by direction (`in`/`out`), so a fluid the gantry was carrying survives a reload the same
+	 * way an item in [inboundBuffer] does.
+	 *
+	 * The item kind keeps its own dedicated fields above rather than living in here, because those
+	 * two are more than staging: they are the controller's own exposed item capability and what its
+	 * GUI draws. Everything else is reached through [inboundFor]/[outboundFor], which is what makes
+	 * a newly registered kind work here with no edit.
+	 */
+	private var extraBuffers: Map<String, NbtTag> by field(MapSerializer(String.serializer(), NbtTag.serializer())) { emptyMap() }
+
+	/** Live staging buffers for every kind but the item one, built on first use - see [extraBuffers]. */
+	private val bufferCache: MutableMap<String, CommonStorage<*>> = mutableMapOf()
+
+	/**
+	 * The inbound (put-away) staging buffer for [kind], or `null` if that kind cannot be stored at
+	 * all. [outboundFor] is the retrieval-side twin.
+	 *
+	 * Nothing below this point asks whether a resource is an item: a job's cargo resolves its own
+	 * kind and gets that kind's buffer.
+	 */
+	fun inboundFor(kind: ResourceKind): CommonStorage<*>? = bufferFor(kind, "in")
+
+	/** See [inboundFor]. */
+	fun outboundFor(kind: ResourceKind): CommonStorage<*>? = bufferFor(kind, "out")
+
+	private fun bufferFor(kind: ResourceKind, direction: String): CommonStorage<*>? {
+		if (kind.kindTag == ITEM_KIND_TAG) return if (direction == "in") inboundBuffer else outboundBuffer
+		val storageKind = kind.storage ?: return null
+		val key = "${kind.kindTag}_$direction"
+		bufferCache[key]?.let { return it }
+
+		// Created and restored together, so a buffer is never handed out empty when the save had
+		// contents for it - the onChange hook writes straight back into the persisted map.
+		val created = storageKind.createBuffer(BUFFER_SIZE) { persistBuffer(key, storageKind) }
+		bufferCache[key] = created
+		extraBuffers[key]?.let { storageKind.decodeBuffer(created, it) }
+		return created
+	}
+
+	private fun persistBuffer(key: String, storageKind: ResourceStorageKind) {
+		val buffer = bufferCache[key] ?: return
+		extraBuffers = extraBuffers + (key to storageKind.encodeBuffer(buffer))
+		setChanged()
+	}
+
+	/** The inbound staging buffer holding [resource]'s own kind - `null` for a resource of no storable kind. */
+	private fun inboundBufferFor(resource: ResourceComponent): CommonStorage<*>? =
+		ResourceKindRegistry.forResource(resource)?.let { inboundFor(it) }
+
+	/** See [inboundBufferFor]. */
+	private fun outboundBufferFor(resource: ResourceComponent): CommonStorage<*>? =
+		ResourceKindRegistry.forResource(resource)?.let { outboundFor(it) }
+
+	/**
 	 * [index]'s own persisted cache, refreshed from the live index on every [saveAdditional] and
 	 * restored (via [pendingIndexRestore]) on load, so a bound warehouse doesn't pay for a full
 	 * rescan of possibly millions of blocks on every single world load - only ever on a genuine
@@ -313,7 +378,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 * (which can be many ticks after a retrieval is queued), so without this a second concurrent
 	 * claim against the same live numbers could double-count the same physical items.
 	 */
-	private val claimed: MutableMap<ItemResource, Long> = mutableMapOf()
+	private val claimed: MutableMap<ResourceIdentity, Long> = mutableMapOf()
 
 	/**
 	 * [WarehouseDefragPlanner]'s own output, kept separate from [jobs] so a freshly requested
@@ -327,7 +392,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	private var rackSearchCursor = 0
 
 	/** What [tickGantrySync] last told clients the gantry was carrying, so it can notice the set changing while the gantry is parked - see its own KDoc for why that case would otherwise never be sent at all. */
-	private var lastSyncedCarried: List<ResourceStack<ItemResource>> = emptyList()
+	private var lastSyncedCarried: List<ResourceStack<ResourceComponent>> = emptyList()
 
 	/** The tier [bounds]' own size put this controller in - what sets its gantry speed, pressure draw and scan strategy. */
 	val scale: WarehouseScale get() = scaleClass
@@ -344,7 +409,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	val carriedJobs: List<GantryJob> get() = deliveryQueue.map { it.job }
 	val defragBacklog: List<GantryJob> get() = defragQueue.toList()
 
-	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, stack: ResourceStack<ItemResource>, deliverTo: DeliveryTarget? = null) {
+	fun enqueueRetrieve(slot: WarehouseIndex.RackSlotRef, stack: ResourceStack<ResourceComponent>, deliverTo: DeliveryTarget? = null) {
 		jobs += GantryJob.Retrieve(slot, stack, deliverTo)
 	}
 
@@ -399,8 +464,9 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 * how much was actually claimed (queued, not yet delivered) - possibly less than [amount], or
 	 * `0`, if the index doesn't have that much unclaimed.
 	 */
-	fun claimAndEnqueue(resource: ItemResource, amount: Long, deliverTo: DeliveryTarget): Long {
-		var skip = claimed[resource] ?: 0L
+	fun claimAndEnqueue(resource: ResourceComponent, amount: Long, deliverTo: DeliveryTarget): Long {
+		val key = ResourceIdentity.of(resource)
+		var skip = claimed[key] ?: 0L
 		var remaining = amount
 		var claimedNow = 0L
 		for (slot in index.slotsFor(resource)) {
@@ -417,15 +483,16 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			remaining -= take
 			claimedNow += take
 		}
-		if (claimedNow > 0) claimed[resource] = (claimed[resource] ?: 0L) + claimedNow
+		if (claimedNow > 0) claimed[key] = (claimed[key] ?: 0L) + claimedNow
 		return claimedNow
 	}
 
 	/** Releases a [claimAndEnqueue] reservation once its own job is actually attempted - see [GantryJob.Retrieve.claimed]'s own KDoc for why an ordinary, unclaimed [enqueueRetrieve] job never reaches this. */
-	private fun releaseClaim(resource: ItemResource, amount: Long) {
-		val current = claimed[resource] ?: return
+	private fun releaseClaim(resource: ResourceComponent, amount: Long) {
+		val key = ResourceIdentity.of(resource)
+		val current = claimed[key] ?: return
 		val next = current - amount
-		if (next <= 0) claimed.remove(resource) else claimed[resource] = next
+		if (next <= 0) claimed.remove(key) else claimed[key] = next
 	}
 
 	/** Plans and queues a consolidation pass via [WarehouseDefragPlanner] - see [defragQueue]. Safe to call repeatedly; a resource with nothing left to consolidate just contributes no jobs. */
@@ -686,60 +753,59 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		is GantryJob.Move -> job.targetPos
 	}
 
-	private fun pickUp(level: ServerLevel, job: GantryJob): ResourceStack<ItemResource>? = when (job) {
-		is GantryJob.Retrieve -> {
-			if (job.claimed) releaseClaim(job.stack.resource, job.stack.amount)
-			if (!level.hasChunk(job.slot.pos.x shr 4, job.slot.pos.z shr 4)) null
-			else {
-				val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)
-				val extracted = storage?.extract(job.stack.resource, job.stack.amount, false) ?: 0
-				index.recordExtraction(job.stack.resource, job.slot.pos, job.slot.direction, job.stack.amount, extracted)
-				if (extracted > 0) job.stack.withCount(extracted) else null
+	private fun pickUp(level: ServerLevel, job: GantryJob): ResourceStack<ResourceComponent>? {
+		val resource = job.stack.resource
+		val storageKind = ResourceKindRegistry.storageFor(resource) ?: return null
+
+		/** Pulls this job's cargo straight out of the rack it was planned against - shared by Retrieve and Move, which differ only in where it goes next. */
+		fun fromRack(slot: WarehouseIndex.RackSlotRef): ResourceStack<ResourceComponent>? {
+			if (!level.hasChunk(slot.pos.x shr 4, slot.pos.z shr 4)) return null
+			val storage = storageKind.find(level, slot.pos, slot.direction)
+			val extracted = if (storage == null) 0L else storageKind.extract(storage, resource, job.stack.amount, false)
+			index.recordExtraction(resource, slot.pos, slot.direction, job.stack.amount, extracted)
+			return if (extracted > 0) job.stack.withCount(extracted) else null
+		}
+
+		return when (job) {
+			is GantryJob.Retrieve -> {
+				if (job.claimed) releaseClaim(resource, job.stack.amount)
+				fromRack(job.slot)
 			}
-		}
-		is GantryJob.Stow -> {
-			val extracted = inboundBuffer.extract(job.stack.resource, job.stack.amount, false)
-			if (extracted > 0) job.stack.withCount(extracted) else null
-		}
-		is GantryJob.Move -> {
-			if (!level.hasChunk(job.slot.pos.x shr 4, job.slot.pos.z shr 4)) null
-			else {
-				val storage = ItemApi.BLOCK.find(level, job.slot.pos, job.slot.direction)
-				val extracted = storage?.extract(job.stack.resource, job.stack.amount, false) ?: 0
-				index.recordExtraction(job.stack.resource, job.slot.pos, job.slot.direction, job.stack.amount, extracted)
+			is GantryJob.Move -> fromRack(job.slot)
+			is GantryJob.Stow -> {
+				val buffer = inboundBufferFor(resource) ?: return null
+				val extracted = storageKind.extract(buffer, resource, job.stack.amount, false)
 				if (extracted > 0) job.stack.withCount(extracted) else null
 			}
 		}
 	}
 
-	private fun dropOff(level: ServerLevel, pos: BlockPos, job: GantryJob, resource: ItemResource, amount: Long) {
+	private fun dropOff(level: ServerLevel, pos: BlockPos, job: GantryJob, resource: ResourceComponent, amount: Long) {
+		val storageKind = ResourceKindRegistry.storageFor(resource) ?: return
+
+		/** Lands the cargo in the rack this job was planned against, falling back to the staging buffer for whatever didn't fit - shared by Stow and Move. */
+		fun intoRack(targetPos: BlockPos, targetDirection: Direction?) {
+			val inbound = inboundBufferFor(resource)
+			if (!level.hasChunk(targetPos.x shr 4, targetPos.z shr 4)) {
+				if (inbound != null) storageKind.insert(inbound, resource, amount, false)
+				return
+			}
+			val storage = storageKind.find(level, targetPos, targetDirection)
+			val inserted = if (storage == null) 0L else storageKind.insert(storage, resource, amount, false)
+			index.recordInsertion(resource, targetPos, targetDirection, inserted)
+			if (inserted < amount && inbound != null) storageKind.insert(inbound, resource, amount - inserted, false)
+		}
+
 		when (job) {
 			is GantryJob.Retrieve -> {
-				val inserted = outboundBuffer.insert(resource, amount, false)
+				val outbound = outboundBufferFor(resource) ?: return
+				val inserted = storageKind.insert(outbound, resource, amount, false)
 				if (inserted <= 0) return
 				val target = job.deliverTo
 				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos, target.face, target.reservationId)
 			}
-			is GantryJob.Stow -> {
-				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
-					val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
-					val inserted = storage?.insert(resource, amount, false) ?: 0
-					index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
-					if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
-				} else {
-					inboundBuffer.insert(resource, amount, false)
-				}
-			}
-			is GantryJob.Move -> {
-				if (level.hasChunk(job.targetPos.x shr 4, job.targetPos.z shr 4)) {
-					val storage = ItemApi.BLOCK.find(level, job.targetPos, job.targetDirection)
-					val inserted = storage?.insert(resource, amount, false) ?: 0
-					index.recordInsertion(resource, job.targetPos, job.targetDirection, inserted)
-					if (inserted < amount) inboundBuffer.insert(resource, amount - inserted, false)
-				} else {
-					inboundBuffer.insert(resource, amount, false)
-				}
-			}
+			is GantryJob.Stow -> intoRack(job.targetPos, job.targetDirection)
+			is GantryJob.Move -> intoRack(job.targetPos, job.targetDirection)
 		}
 	}
 
@@ -755,40 +821,57 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 * `testPutAwaySkipsFullIndexedRackForOneWithRoom`'s own KDoc records that exact bug from a
 	 * previous occurrence. The buffer is the designed resting place for an undeliverable retrieval.
 	 */
-	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ItemResource, amount: Long, deliverTo: BlockPos, deliverFace: Direction? = null, reservationId: Long? = null) {
+	private fun shipOut(level: ServerLevel, pos: BlockPos, resource: ResourceComponent, amount: Long, deliverTo: BlockPos, deliverFace: Direction? = null, reservationId: Long? = null) {
+		// Routed over whichever network carries this resource's own kind - a bucket of lava leaves
+		// down the fluid network exactly as a stack of ingots leaves down the item one.
+		val router = networkTypeForResource(resource)?.router ?: return
+		val storageKind = ResourceKindRegistry.storageFor(resource) ?: return
+		val outbound = outboundBufferFor(resource) ?: return
 		for (direction in Direction.entries) {
 			val neighborPos = pos.relative(direction)
 			if (!level.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) continue
 			val pipeTile = level.getBlockEntity(neighborPos) as? PipeBlockEntity ?: continue
-			val route = ItemPipeRouter.findRouteTo(level, neighborPos, deliverTo) ?: continue
-			val extracted = outboundBuffer.extract(resource, amount, false)
+			val route = router.findRouteTo(level, neighborPos, deliverTo) ?: continue
+			val extracted = storageKind.extract(outbound, resource, amount, false)
 			if (extracted <= 0) continue
 			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null, deliverFace, reservationId)
 			return
 		}
 	}
 
+	/**
+	 * Queues a [GantryJob.Stow] for everything sitting in a staging buffer that has somewhere to go
+	 * - across **every** registered kind's buffer, not just the item one, so a fluid pushed into
+	 * this controller gets put away in a tank exactly as an item gets put away in a rack.
+	 *
+	 * [GantryJob.Stow.sourceSlot] is only ever compared against jobs carrying the same resource
+	 * kind, since a slot index means nothing across two different buffers - the guard is keyed on
+	 * the pair.
+	 */
 	private fun planPutAway(level: ServerLevel) {
-		val queuedSlots = jobs.filterIsInstance<GantryJob.Stow>()
-			.mapTo(mutableSetOf()) { it.sourceSlot }
+		val queued = jobs.filterIsInstance<GantryJob.Stow>()
+			.mapTo(mutableSetOf()) { ResourceKindRegistry.forResource(it.stack.resource)?.kindTag to it.sourceSlot }
 
-		for (i in 0 until inboundBuffer.size()) {
-			if (i in queuedSlots) continue
+		for (kind in ResourceKindRegistry.storageKinds()) {
+			val buffer = inboundFor(kind) ?: continue
+			for (i in 0 until buffer.size()) {
+				if (kind.kindTag to i in queued) continue
 
-			val resource = inboundBuffer.getResource(i)
-			if (resource.isBlank) continue
+				val resource = buffer.getResource(i) as? ResourceComponent ?: continue
+				if (resource.isBlank) continue
 
-			val amount = inboundBuffer.getAmount(i)
-			if (amount <= 0) continue
+				val amount = buffer.getAmount(i)
+				if (amount <= 0) continue
 
-			val (targetPos, targetDirection) = bestRackFor(level, resource) ?: continue
+				val (targetPos, targetDirection) = bestRackFor(level, resource) ?: continue
 
-			jobs += GantryJob.Stow(
-				sourceSlot = i,
-				targetPos = targetPos,
-				targetDirection = targetDirection,
-				stack = ResourceStack(resource, amount)
-			)
+				jobs += GantryJob.Stow(
+					sourceSlot = i,
+					targetPos = targetPos,
+					targetDirection = targetDirection,
+					stack = ResourceStack(resource, amount)
+				)
+			}
 		}
 	}
 
@@ -808,7 +891,8 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 * warehouse whose first 256 racks are all full could never reach rack 257 no matter how many
 	 * passes ran - the item would just be stuck, not deferred.
 	 */
-	private fun bestRackFor(level: ServerLevel, resource: ItemResource): Pair<BlockPos, Direction?>? {
+	private fun bestRackFor(level: ServerLevel, resource: ResourceComponent): Pair<BlockPos, Direction?>? {
+		val storageKind = ResourceKindRegistry.storageFor(resource) ?: return null
 		// Descending: a higher RackBlockEntity.priority means "prefer this rack", which is the same
 		// direction RoutingModule.DEFAULT_ROUTE_PRIORITY relies on - it sits at -1 specifically to
 		// rank *below* an ordinary rack's own 0 baseline and only win when nothing else will take the
@@ -825,8 +909,10 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		fun probe(candidates: List<Pair<BlockPos, Direction?>>): Pair<BlockPos, Direction?>? {
 			for ((pos, direction) in searchWindow(candidates)) {
 				if (!level.hasChunk(pos.x shr 4, pos.z shr 4)) continue
-				val storage = ItemApi.BLOCK.find(level, pos, direction) ?: continue
-				if (storage.insert(resource, 1, true) > 0) return pos to direction
+				val storage = storageKind.find(level, pos, direction) ?: continue
+				// A simulated insert of the smallest meaningful unit - one item, or one millibucket's
+				// worth in platform units - is what "has room" means for a rack of any kind.
+				if (storageKind.insert(storage, resource, 1, true) > 0) return pos to direction
 			}
 			return null
 		}
@@ -880,6 +966,9 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			Comparator.comparingLong(BlockPos::asLong)
 		)
 
+		/** The item kind's own wire tag - the one kind whose staging buffers are dedicated fields ([inboundBuffer]/[outboundBuffer]) rather than living in `extraBuffers`, since those two are also this controller's exposed item capability and what its GUI draws. */
+		private const val ITEM_KIND_TAG = "item"
+
 		private const val BUFFER_SIZE = 9
 		private const val GANTRY_CARRY_CAPACITY = BUFFER_SIZE
 		/**
@@ -921,7 +1010,7 @@ private fun GantryJob.isSameKindAs(other: GantryJob): Boolean = when (this) {
 	is GantryJob.Move -> other is GantryJob.Move
 }
 
-private data class CarriedStack(val job: GantryJob, val resource: ItemResource, val amount: Long)
+private data class CarriedStack(val job: GantryJob, val resource: ResourceComponent, val amount: Long)
 
 @Serializable
 private data class BoundsSlot(val bounds: Bounds? = null)

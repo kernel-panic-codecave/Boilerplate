@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 
@@ -11,7 +11,13 @@ import net.minecraft.core.Direction
  * physical travel time is the point (see `docs/design/m3-warehouse-storage.md`).
  */
 sealed interface GantryJob {
-	val stack: ResourceStack<ItemResource>
+	/**
+	 * What this job is carrying. A bare [ResourceComponent], so a crane leg moves a bucket of
+	 * lava exactly as it moves a stack of ingots - which storage it comes out of and goes into is
+	 * resolved from the resource's own kind (see
+	 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind]).
+	 */
+	val stack: ResourceStack<ResourceComponent>
 
 	/**
 	 * Move [resource]/[amount] from [slot]'s rack into the controller's own outbound buffer. If
@@ -26,7 +32,7 @@ sealed interface GantryJob {
 	 */
 	data class Retrieve(
 		val slot: WarehouseIndex.RackSlotRef,
-		override val stack: ResourceStack<ItemResource>,
+		override val stack: ResourceStack<ResourceComponent>,
 		val deliverTo: DeliveryTarget? = null,
 		val claimed: Boolean = false,
 	) : GantryJob
@@ -36,7 +42,7 @@ sealed interface GantryJob {
 		val sourceSlot: Int,
 		val targetPos: BlockPos,
 		val targetDirection: Direction?,
-		override val stack: ResourceStack<ItemResource>
+		override val stack: ResourceStack<ResourceComponent>
 	) : GantryJob
 
 	/**
@@ -51,6 +57,6 @@ sealed interface GantryJob {
 		val slot: WarehouseIndex.RackSlotRef,
 		val targetPos: BlockPos,
 		val targetDirection: Direction?,
-		override val stack: ResourceStack<ItemResource>,
+		override val stack: ResourceStack<ResourceComponent>,
 	) : GantryJob
 }

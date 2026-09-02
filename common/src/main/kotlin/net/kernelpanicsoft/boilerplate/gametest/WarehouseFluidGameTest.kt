@@ -6,7 +6,12 @@ import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.fluid.util.FluidAmounts
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionState
+import net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
+import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.minecraft.world.item.ItemStack
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget
@@ -162,6 +167,78 @@ class WarehouseFluidGameTest {
 			assertTrue(controller.pendingJobs.any { ResourceIdentity.of(it.stack.resource) == ResourceIdentity.of(water) }) {
 				"Expected the claim to have queued a real gantry job carrying the water, got ${controller.pendingJobs}"
 			}
+		}
+	}
+
+	/**
+	 * A warehouse controller is a **routable destination for fluid**, the same way it already was
+	 * for items.
+	 *
+	 * It was not: the controller registered an item capability for its inbound buffer and no fluid
+	 * one, so `FluidApi.BLOCK` found nothing at its position and the fluid router never weighed it.
+	 * The gantry could put fluid away perfectly well - nothing could hand it any. This pins the
+	 * routing decision itself rather than the exposure, since that is the symptom.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testTheControllerIsARoutableFluidDestination() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val pipePos = BlockPos(1, 2, 0)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
+		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+
+		runAfterDelay(20) {
+			val route = FluidPipeRouter.findRoute(level as ServerLevel, absolutePos(pipePos), FluidResource.of(Fluids.WATER))
+			assertTrue(route?.lastOrNull() == absolutePos(controllerPos)) {
+				"Expected water pushed onto the pipe to route into the warehouse controller, got $route"
+			}
+			succeed()
+		}
+	}
+
+	/**
+	 * ...and its filter card gates that decision for fluids exactly as it does for items.
+	 *
+	 * The buffer is what the router's simulated insert probes, so the filter has to live *in* the
+	 * buffer: a controller told to reject water must not advertise itself as somewhere to send
+	 * water. Without this the fluid buffer accepted everything and a filtered warehouse quietly took
+	 * fluids it had been configured to refuse.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testTheControllerFilterRejectsFluidItIsNotConfiguredFor() {
+		val controllerPos = BlockPos(0, 2, 0)
+		val cornerTwoPos = BlockPos(4, 3, 4)
+		val pipePos = BlockPos(1, 2, 0)
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		placeAdjacentPressureSource(controllerPos.below())
+		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(cornerTwoPos))
+
+		// A fluid card naming lava, on a whitelist controller - so water is not wanted here.
+		val card = ItemStack(ItemRegistry.FluidFilterCard)
+		FilterCardState(card).apply {
+			(currentState() as FluidConditionState).fluidMatches[0] = FluidResource.of(Fluids.LAVA)
+			touchCurrentState()
+		}
+		controller.filter[0].set(card)
+
+		runAfterDelay(20) {
+			val serverLevel = level as ServerLevel
+			val lava = FluidPipeRouter.findRoute(serverLevel, absolutePos(pipePos), FluidResource.of(Fluids.LAVA))
+			assertTrue(lava?.lastOrNull() == absolutePos(controllerPos)) {
+				"Expected the whitelisted lava to still route into the controller, got $lava"
+			}
+			val water = FluidPipeRouter.findRoute(serverLevel, absolutePos(pipePos), FluidResource.of(Fluids.WATER))
+			assertTrue(water?.lastOrNull() != absolutePos(controllerPos)) {
+				"Expected water to be refused by the controller's own filter card, got $water"
+			}
+			succeed()
 		}
 	}
 }

@@ -39,8 +39,8 @@ object ItemStorageKind : ResourceStorageKind {
 		return (storage as CommonStorage<ItemResource>).extract(item, amount, simulate)
 	}
 
-	override fun createBuffer(slots: Int, onChange: () -> Unit): CommonStorage<*> =
-		ArchieItemStorage(slots) { onChange() }
+	override fun createBuffer(slots: Int, accepts: (ResourceComponent) -> Boolean, onChange: () -> Unit): CommonStorage<*> =
+		ArchieItemStorage(slots, { accepts(it) }) { onChange() }
 
 	override fun encodeBuffer(buffer: CommonStorage<*>): NbtTag =
 		SerializationManager.nbt.encodeToNbtTag(ArchieItemStorage.serializer(), buffer as ArchieItemStorage)
@@ -84,8 +84,8 @@ object FluidStorageKind : ResourceStorageKind {
 		return (storage as CommonStorage<FluidResource>).extract(fluid, amount, simulate)
 	}
 
-	override fun createBuffer(slots: Int, onChange: () -> Unit): CommonStorage<*> =
-		ArchieFluidStorage(FluidAmounts.toPlatformAmount(BUFFER_TANK_MILLIBUCKETS), slots) { onChange() }
+	override fun createBuffer(slots: Int, accepts: (ResourceComponent) -> Boolean, onChange: () -> Unit): CommonStorage<*> =
+		ArchieFluidStorage(FluidAmounts.toPlatformAmount(BUFFER_TANK_MILLIBUCKETS), slots, { accepts(it) }) { onChange() }
 
 	override fun encodeBuffer(buffer: CommonStorage<*>): NbtTag =
 		SerializationManager.nbt.encodeToNbtTag(ArchieFluidStorage.serializer(), buffer as ArchieFluidStorage)

@@ -47,8 +47,13 @@ interface ResourceStorageKind {
 	 *
 	 * [slots] is a slot count for a discrete kind and a tank count for a continuous one; each kind
 	 * decides what a "slot" of it holds (a fluid one sizes its own per-tank capacity).
+	 *
+	 * [accepts] is the owner's own admission rule (a warehouse controller's filter card, say). It
+	 * belongs *in* the buffer rather than being checked by callers, because the thing that consults
+	 * it is the router's simulated insert when it decides whether this block is a destination at
+	 * all - a buffer that accepted anything would advertise itself for resources its owner rejects.
 	 */
-	fun createBuffer(slots: Int, onChange: () -> Unit): CommonStorage<*>
+	fun createBuffer(slots: Int, accepts: (ResourceComponent) -> Boolean, onChange: () -> Unit): CommonStorage<*>
 
 	/** [buffer]'s contents as NBT, for a controller to persist across a reload. */
 	fun encodeBuffer(buffer: CommonStorage<*>): NbtTag

@@ -116,7 +116,13 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 		blockEntityType(::WarehouseControllerBlockEntity) {
 			add(BlockRegistry.WarehouseController)
 		}
-	}.apply { exposeItemStorage(WarehouseControllerBlockEntity::inboundBuffer) }
+	}.apply {
+		exposeItemStorage(WarehouseControllerBlockEntity::inboundBuffer)
+		// The fluid twin. A warehouse indexes and moves fluids like anything else now, so it has to
+		// be *reachable* by the fluid network too - without this the controller exposed no fluid
+		// capability at all and the router could never see it as a destination.
+		exposeFluidStorage { tile, _ -> tile.inboundFluidBuffer }
+	}
 
 	val GeneralRack: BlockEntityType<GeneralRackBlockEntity> by register("general_rack") {
 		blockEntityType(::GeneralRackBlockEntity) {

@@ -1,6 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
@@ -16,8 +16,12 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
  * matches or non-matches - a blacklist card in a blacklist destination double-inverts. An empty
  * card slot accepts everything, whichever mode is set: an unfiltered destination just accepts, and
  * every destination starts out that way.
+ *
+ * [resource] is any registered kind, not just an item: a warehouse controller's filter card has to
+ * mean the same thing for a fluid arriving at its tank buffer as for an item arriving at its item
+ * one, or a filtered warehouse would quietly accept fluids it was told to reject.
  */
-fun acceptsByFilter(filterStorage: ArchieItemStorage, routing: RoutingModule, resource: ItemResource): Boolean {
+fun acceptsByFilter(filterStorage: ArchieItemStorage, routing: RoutingModule, resource: ResourceComponent): Boolean {
 	val card = filterStorage[0].resource
 	if (card.isBlank) return true
 	val matches = evaluateGhostSlot(card, FilterContext(resource, null))

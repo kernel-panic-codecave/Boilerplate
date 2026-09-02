@@ -45,6 +45,7 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.chunk.status.ChunkStatus
 import net.minecraft.world.phys.Vec3
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -332,7 +333,13 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 		// Created and restored together, so a buffer is never handed out empty when the save had
 		// contents for it - the onChange hook writes straight back into the persisted map.
-		val created = storageKind.createBuffer(BUFFER_SIZE) { persistBuffer(key, storageKind) }
+		// The same admission rule the item buffer bakes in via its own itemField filter, so this
+		// controller's filter card gates every kind identically - including for the router's
+		// simulated insert, which is what decides whether this block is a destination at all.
+		val created = storageKind.createBuffer(
+			BUFFER_SIZE,
+			accepts = { direction == "out" || acceptsByFilter(filter, routing, it) },
+		) { persistBuffer(key, storageKind) }
 		bufferCache[key] = created
 		extraBuffers[key]?.let { storageKind.decodeBuffer(created, it) }
 		return created
@@ -343,6 +350,22 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		extraBuffers = extraBuffers + (key to storageKind.encodeBuffer(buffer))
 		setChanged()
 	}
+
+	/**
+	 * This controller's inbound **fluid** buffer, typed for the capability registration that exposes
+	 * it (see [net.kernelpanicsoft.boilerplate.registry.TileRegistry.WarehouseController]).
+	 *
+	 * Without this exposure a controller was simply invisible to the fluid network: `FluidApi.BLOCK`
+	 * found nothing at its position, so [net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter]
+	 * never weighed it as a destination and no fluid could be pushed into a warehouse at all - the
+	 * gantry could put fluid away perfectly well, but nothing could hand it any.
+	 *
+	 * The cast is safe by construction: the fluid kind's own
+	 * [net.kernelpanicsoft.boilerplate.registry.FluidStorageKind] is what built this buffer.
+	 */
+	@Suppress("UNCHECKED_CAST")
+	val inboundFluidBuffer: CommonStorage<FluidResource>?
+		get() = inboundFor(ResourceKindRegistry.Fluid) as? CommonStorage<FluidResource>
 
 	/** The inbound staging buffer holding [resource]'s own kind - `null` for a resource of no storable kind. */
 	private fun inboundBufferFor(resource: ResourceComponent): CommonStorage<*>? =

@@ -183,6 +183,7 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<CraftingTankGameTest>()
 		register<FluidPatternGameTest>()
 		register<WarehouseFluidGameTest>()
+		register<WarehouseIndexSnapshotGameTest>()
 		register<ItemIconGameTest>()
 	}
 }

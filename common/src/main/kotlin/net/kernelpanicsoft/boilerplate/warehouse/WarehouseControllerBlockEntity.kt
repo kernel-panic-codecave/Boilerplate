@@ -676,7 +676,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		super.loadAdditional(compoundTag, provider)
 		bounds?.let {
 			this.scaleClass = WarehouseScale.fromBounds(it)
-			if (indexSnapshot.entries.isNotEmpty()) {
+			if (indexSnapshot.hasData) {
 				index.restoreFrom(indexSnapshot, blockPos)
 				lastScannedBounds = it
 				pendingIndexRestore = true

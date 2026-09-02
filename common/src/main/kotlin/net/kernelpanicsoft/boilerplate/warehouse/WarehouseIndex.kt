@@ -80,9 +80,22 @@ class WarehouseIndex {
 		activeScanTask = scale.createScanTask(level, bounds, this)
 	}
 
-	/** Flattens [locations] into an NBT-serializable form for [WarehouseControllerBlockEntity] to persist. */
+	/**
+	 * Flattens this index into an NBT-serializable form for [WarehouseControllerBlockEntity] to
+	 * persist - both what is stored ([locations]) **and where the containers are**
+	 * ([knownContainers]).
+	 *
+	 * The container set has to be written separately rather than being re-derived from the entries,
+	 * because an **empty** rack has no entries at all. Deriving it lost every empty rack across a
+	 * reload, and with it every put-away destination that happened to be empty at save time (see
+	 * [availableSlots], which is rebuilt from [knownContainers]) - so a reloaded warehouse could not
+	 * stow into any of them until the low-frequency background audit rediscovered them. Discovering
+	 * *where* containers are is also the expensive half of a scan, which is what this snapshot
+	 * exists to avoid repeating.
+	 */
 	fun toSnapshot(): IndexSnapshot = IndexSnapshot(
-		locations.flatMap { (key, refs) -> refs.map { RackEntrySnapshot(it.pos, it.direction, key.resource, it.amount) } }
+		entries = locations.flatMap { (key, refs) -> refs.map { RackEntrySnapshot(it.pos, it.direction, key.resource, it.amount) } },
+		containers = knownContainers.toList(),
 	)
 
 	/**
@@ -100,6 +113,11 @@ class WarehouseIndex {
 		}
 		locations = restored
 		knownContainers.clear()
+		// Both sources, unioned: [IndexSnapshot.containers] is the real record (it includes empty
+		// racks), while the entry positions cover a snapshot written before that field existed -
+		// such a save restores exactly what it used to, rather than coming back with no containers
+		// at all.
+		knownContainers.addAll(snapshot.containers)
 		knownContainers.addAll(snapshot.entries.map { it.pos })
 	}
 
@@ -319,6 +337,26 @@ class WarehouseIndex {
 @Serializable
 data class RackEntrySnapshot(val pos: SBlockPos, val direction: SDirection?, val resource: SResourceComponent, val amount: Long)
 
-/** [WarehouseIndex.toSnapshot]'s own NBT-serializable output - just [WarehouseIndex.locations] flattened into a plain list. */
+/**
+ * [WarehouseIndex.toSnapshot]'s own NBT-serializable output - [WarehouseIndex.locations] flattened
+ * into a plain list, plus [WarehouseIndex.knownContainers] alongside it.
+ *
+ * [containers] is not redundant with [entries]' own positions: an empty rack contributes no entry,
+ * so deriving the container set from [entries] silently dropped every empty rack on load. Both
+ * fields default, so a snapshot written before either existed still reads.
+ */
 @Serializable
-data class IndexSnapshot(val entries: List<RackEntrySnapshot> = emptyList())
+data class IndexSnapshot(
+	val entries: List<RackEntrySnapshot> = emptyList(),
+	val containers: List<SBlockPos> = emptyList(),
+) {
+	/**
+	 * Whether this snapshot is worth restoring at all - i.e. whether the scan it cached found
+	 * *anything*, containers included.
+	 *
+	 * Deliberately not `entries.isNotEmpty()`. A warehouse whose racks all happen to be empty has no
+	 * entries but plenty of containers, and gating the restore on entries alone threw that whole
+	 * scan away on every load: the containers were written to NBT and then never read back.
+	 */
+	val hasData: Boolean get() = entries.isNotEmpty() || containers.isNotEmpty()
+}

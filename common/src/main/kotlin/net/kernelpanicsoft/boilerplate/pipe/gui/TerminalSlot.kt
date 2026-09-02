@@ -3,6 +3,8 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.input.Clickable
 import net.kernelpanicsoft.archie.gui.composables.theme.TextureStates
@@ -101,5 +103,24 @@ fun FakeSlot(stack: ResourceStack<ItemResource>?, isHovered: Boolean, countText:
 		}
 	) {
 		if (stack != null) ItemIcon(stack, countText)
+	}
+}
+
+/**
+ * [FakeSlot] for a resource of any registered kind - renders an item exactly as [FakeSlot] does and
+ * a fluid as its still sprite, tinted, the way [FluidGhostSlot] draws one.
+ *
+ * Exists because the crafting UI shows whatever a job or pattern actually names, and that may now
+ * be a fluid: a job crafting a fluid output, a pattern step consuming one. Dispatching here rather
+ * than at each call site keeps every one of those surfaces a single call.
+ */
+@Composable
+fun ResourceFakeSlot(resource: ResourceComponent, amount: Long, isHovered: Boolean = false) {
+	when (resource) {
+		is FluidResource -> FluidSlotFace(resource, isHovered)
+		is ItemResource -> FakeSlot(ResourceStack(resource, amount), isHovered)
+		// A kind with no renderer of its own still gets the empty slot frame rather than nothing at
+		// all, so an addon resource leaves a visible hole in the layout instead of collapsing it.
+		else -> FakeSlot(null, isHovered)
 	}
 }

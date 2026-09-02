@@ -19,6 +19,9 @@ import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.ResourceStack
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 
 /**
  * GameTest coverage for [PatternEncoder.encodeAndConsume] as wired up by
@@ -39,7 +42,7 @@ class PatternTerminalHookGameTest {
 		grid[0].set(ItemStack(Items.OAK_LOG))
 		val patternOutputs = ArchieItemStorage(9)
 
-		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid, patternOutputs, state.blankPatterns, state.output)
+		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells(), state.blankPatterns, state.output)
 		assertTrue(encoded) { "Expected encodeAndConsume to succeed with a matching grid and a blank pattern in the blank slot" }
 
 		assertTrue(state.blankPatterns[0].getItem().isEmpty) { "Expected the blank pattern stack to have been consumed from the blank slot" }
@@ -60,7 +63,7 @@ class PatternTerminalHookGameTest {
 		grid[0].set(ItemStack(Items.OAK_LOG))
 		val patternOutputs = ArchieItemStorage(9)
 
-		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid, patternOutputs, state.blankPatterns, state.output)
+		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells(), state.blankPatterns, state.output)
 		assertTrue(!encoded) { "Expected encodeAndConsume to fail without a blank pattern in the blank slot" }
 		assertTrue((0 until state.output.size()).all { state.output.get(it).getItem().isEmpty }) { "Expected nothing to land in output when there was no blank to consume" }
 		succeed()
@@ -124,3 +127,12 @@ class PatternTerminalHookGameTest {
 		succeed()
 	}
 }
+
+/**
+ * Every slot of this storage as [net.kernelpanicsoft.boilerplate.crafting.Pattern] cells, blanks
+ * included - the grid shape [PatternEncoder] takes now that a cell may hold any resource kind.
+ * These tests author item grids, so building the cells from a real item storage keeps them reading
+ * the way a player's grid actually fills.
+ */
+private fun ArchieItemStorage.patternCells(): List<ResourceStack<ResourceComponent>> =
+	(0 until size()).map { i -> get(i).getItem().resourceCell }

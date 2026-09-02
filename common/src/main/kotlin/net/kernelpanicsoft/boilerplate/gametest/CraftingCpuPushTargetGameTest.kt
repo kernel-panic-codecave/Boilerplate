@@ -9,6 +9,7 @@ import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
@@ -30,8 +31,8 @@ import net.minecraft.world.level.block.Blocks
 @Suppress("unused")
 class CraftingCpuPushTargetGameTest {
 	private fun processingPattern(output: ItemStack, vararg inputs: ItemStack): Pattern = Pattern(
-		inputs = inputs.map { it.resourceStack },
-		outputs = listOf(output.resourceStack),
+		inputs = inputs.map { it.resourceCell },
+		outputs = listOf(output.resourceCell),
 		kind = PatternKind.PROCESSING,
 	)
 

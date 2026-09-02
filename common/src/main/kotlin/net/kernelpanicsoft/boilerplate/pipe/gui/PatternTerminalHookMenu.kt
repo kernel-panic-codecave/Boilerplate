@@ -3,6 +3,10 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import earth.terrarium.common_storage_lib.resources.fluid.util.FluidAmounts
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.crafting.*
@@ -57,13 +61,21 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 		BoilerplateNetworkChannel.toServer(RequestPatternGridPreviewPacket)
 	}
 
-	/** Server-side: computes and replies with [InstantCrafting.match]'s current result for [PatternTerminalHookState.ghostInputs]. */
+	/**
+	 * Server-side: computes and replies with [InstantCrafting.match]'s current result for
+	 * [PatternTerminalHookState.ghostInputs].
+	 *
+	 * A vanilla recipe match is item-only, so a fluid cell simply contributes nothing to the grid -
+	 * the preview then shows whatever the remaining items match, or nothing, which is the honest
+	 * answer for a grid vanilla could never craft. The real encode is stricter and refuses outright
+	 * (see [PatternEncoder]); this is only a preview.
+	 */
 	fun sendGridPreview() {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
 		val grid = ArchieItemStorage(state.ghostInputs.size)
 		for ((index, resource) in state.ghostInputs.withIndex()) {
-			if (resource.isBlank) continue
+			if (resource.isBlank || resource !is ItemResource) continue
 			// A CRAFTING pattern is matched against a real vanilla recipe, which is one-item-per-cell -
 			// see PatternTerminalHookState.ghostInputAmounts for why a count there would be wrong.
 			val perRun = if (state.patternKind == PatternKind.PROCESSING) state.ghostInputAmounts[index].toInt().coerceAtLeast(1) else 1
@@ -76,13 +88,13 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	fun currentPatternKind(): PatternKind = (tile.hooks[direction.name] as? PatternTerminalHookState)?.patternKind ?: PatternKind.CRAFTING
 
 	/** [direction]'s current ghost input grid, read once when the screen opens - same "not wired into live sync" reasoning as [net.kernelpanicsoft.boilerplate.pipe.gui.SortingHookMenu.currentFilter]. */
-	fun currentGhostInputs(): List<Pair<ItemResource, Long>> {
+	fun currentGhostInputs(): List<Pair<ResourceComponent, Long>> {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK to 1L }
 		return state.ghostInputs.zip(state.ghostInputAmounts)
 	}
 
 	/** [direction]'s current (up to 9) ghost outputs, read once when the screen opens - same caveat as [currentGhostInputs]. Only meaningful in [PatternKind.PROCESSING]. */
-	fun currentGhostOutputs(): List<Pair<ItemResource, Long>> {
+	fun currentGhostOutputs(): List<Pair<ResourceComponent, Long>> {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK to 1L }
 		return state.ghostOutputs.zip(state.ghostOutputAmounts)
 	}
@@ -99,12 +111,12 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	}
 
 	/** Client-side: overwrites ghost input [index] with [resource] (or clears it, for [ItemResource.BLANK]) - see [net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlot]. */
-	fun setGhostInput(index: Int, resource: ItemResource, amount: Long = 1L) {
+	fun setGhostInput(index: Int, resource: ResourceComponent, amount: Long = 1L) {
 		BoilerplateNetworkChannel.toServer(SetPatternGhostInputPacket(index, resource, amount))
 	}
 
 	/** Server-side: applies [setGhostInput]'s request. */
-	fun applyGhostInput(index: Int, resource: ItemResource, amount: Long = 1L) {
+	fun applyGhostInput(index: Int, resource: ResourceComponent, amount: Long = 1L) {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
 		if (index !in state.ghostInputs.indices) return
 		state.ghostInputs[index] = resource
@@ -112,12 +124,12 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	}
 
 	/** Client-side: overwrites ghost output [index] with [resource] at [amount] (or clears it, for [ItemResource.BLANK]). */
-	fun setGhostOutput(index: Int, resource: ItemResource, amount: Long) {
+	fun setGhostOutput(index: Int, resource: ResourceComponent, amount: Long) {
 		BoilerplateNetworkChannel.toServer(SetPatternGhostOutputPacket(index, resource, amount))
 	}
 
 	/** Server-side: applies [setGhostOutput]'s request. */
-	fun applyGhostOutput(index: Int, resource: ItemResource, amount: Long) {
+	fun applyGhostOutput(index: Int, resource: ResourceComponent, amount: Long) {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
 		if (index !in state.ghostOutputs.indices) return
 		state.ghostOutputs[index] = resource
@@ -130,33 +142,43 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	}
 
 	/**
-	 * Server-side: builds throwaway [ArchieItemStorage] grid/pattern-outputs storages from the
-	 * ghost state ([PatternTerminalHookState.ghostInputs]/`.ghostOutputs`/`.ghostOutputAmounts`,
-	 * each materialized as a plain `amount = 1` (or the chosen output amount) stack) and hands them
-	 * to [PatternEncoder.encodeAndConsume] along with [PatternTerminalHookState.blankPatterns] (the
-	 * persistent slot to consume a blank from) and [PatternTerminalHookState.output] (this
-	 * terminal's own built-in output slots, where the encoded stack lands) - the same
-	 * recipe-matching logic the old Assembly Table Encode button used, just fed from ghost
-	 * references instead of real held items.
+	 * Server-side: materializes the ghost cells
+	 * ([PatternTerminalHookState.ghostInputs]/`.ghostOutputs` and their amounts) into plain
+	 * [ResourceStack]s and hands them to [PatternEncoder.encodeAndConsume], along with
+	 * [PatternTerminalHookState.blankPatterns] (the persistent slot to consume a blank from) and
+	 * [PatternTerminalHookState.patternOutput] (where the encoded stack lands).
+	 *
+	 * Cell amounts apply only in [PatternKind.PROCESSING]. A `CRAFTING` pattern's grid is matched
+	 * against a real vanilla recipe, which is positional and one-item-per-cell; encoding a count
+	 * there would leave [net.kernelpanicsoft.boilerplate.crafting.Pattern.requiredInputs] demanding
+	 * that many per run for a recipe that only ever consumes one.
 	 */
 	fun encode() {
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
+		val processing = state.patternKind == PatternKind.PROCESSING
 
-		val grid = ArchieItemStorage(state.ghostInputs.size)
-		for ((index, resource) in state.ghostInputs.withIndex()) {
-			if (resource.isBlank) continue
-			// A CRAFTING pattern is matched against a real vanilla recipe, which is one-item-per-cell -
-			// see PatternTerminalHookState.ghostInputAmounts for why a count there would be wrong.
-			val perRun = if (state.patternKind == PatternKind.PROCESSING) state.ghostInputAmounts[index].toInt().coerceAtLeast(1) else 1
-			grid[index].set(resource.toStack(perRun))
+		val inputs = state.ghostInputs.mapIndexed { index, resource ->
+			val perRun = if (processing) state.ghostInputAmounts[index].coerceAtLeast(1L) else 1L
+			ResourceStack(resource, if (resource.isBlank) 0L else cellAmount(resource, perRun))
 		}
-		val patternOutputs = ArchieItemStorage(state.ghostOutputs.size)
-		for (index in state.ghostOutputs.indices) {
-			val resource = state.ghostOutputs[index]
-			if (!resource.isBlank) patternOutputs[index].set(resource.toStack(state.ghostOutputAmounts[index].toInt().coerceAtLeast(1)))
+		val outputs = state.ghostOutputs.mapIndexed { index, resource ->
+			ResourceStack(resource, if (resource.isBlank) 0L else cellAmount(resource, state.ghostOutputAmounts[index].coerceAtLeast(1L)))
 		}
 
-		PatternEncoder.encodeAndConsume(level, state.patternKind, grid, patternOutputs, state.blankPatterns, state.patternOutput)
+		PatternEncoder.encodeAndConsume(level, state.patternKind, inputs, outputs, state.blankPatterns, state.patternOutput)
 	}
+
+	/**
+	 * A ghost cell's stored amount in the unit the [Pattern] itself has to carry.
+	 *
+	 * A fluid cell is authored and displayed in **millibuckets** - the unit a player thinks in and
+	 * the one the terminal's own scroll steps move - while everything downstream (a tank's
+	 * contents, a storage insert/extract) counts in whatever the platform uses, which differs
+	 * between Fabric and NeoForge. Converting here, once, at the boundary where the durable pattern
+	 * is built, keeps every later comparison unit-correct without any of them having to know.
+	 * Item cells are already counts and pass straight through.
+	 */
+	private fun cellAmount(resource: ResourceComponent, authored: Long): Long =
+		if (resource is FluidResource) FluidAmounts.toPlatformAmount(authored) else authored
 }

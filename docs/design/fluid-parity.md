@@ -188,9 +188,28 @@ for every droplet and frame - the same bake-once discipline the debug overlays f
 
 Fluid ghost slots, tank widgets, and fluid rendering in the pipe/hook screens (~14 files under `pipe/gui/` are item-typed). Depends on Stage 3 for the sprite/tint abstraction.
 
-## Stage 5 — Warehouse and crafting (deferred)
+## Stage 5 — Warehouse and crafting
 
-The largest tier by far, and independent of Stages 1–4 shipping. Racks, `WarehouseIndex`, `GantryJob`, `WarehouseDefragPlanner`, patterns, and the crafting CPU are all `ItemResource`-typed end to end. Realistically this is "make the warehouse resource-kind-generic", not "add fluids to the warehouse", and it should not be attempted before Stage 1 proves the generification pattern works on the much smaller hook surface.
+The largest tier by far, and independent of Stages 1–4 shipping. Realistically this is "make the warehouse and crafting layers resource-kind-generic", not "add fluids to them".
+
+### Crafting — **done**
+
+The whole crafting layer is now generic over `ResourceComponent`:
+
+- **`Pattern` holds any kind on either side.** `inputs`/`outputs` are `SResourceStack<SResourceComponent>`, so `1000mB water + 1 clay -> 1 slurry` is one pattern. `CRAFTING` patterns stay item-only and `PatternEncoder` *rejects* a fluid cell rather than dropping it — dropping it would match a different, smaller vanilla recipe and encode a pattern the player never authored.
+- **Amounts are per cell, not per occupancy.** A pattern that wants 64 of something is one entry of 64. The old "count how many of the 9 cells hold it" reading has no meaning for a fluid.
+- **Every per-resource map is keyed by `ResourceIdentity`.** `requiredInputs()`, `stockPulls`, `fedAmounts`, `outstandingStockClaims`. This is not optional: `FluidResource` still has no `equals`, so a raw-resource key silently reports "absent" for a fluid that is plainly present.
+- **`CraftingResolver`, `CraftingBufferJob`, `CraftingRequest`** are generic, and job execution moved out of `CraftingBufferEncasementType` into `CraftingCpuRuntime`, shared by every member kind.
+- **A Crafting Tank** (`CraftingTankEncasementType`) is the fluid-holding CPU member: same cluster, same job queue, contributing tanks instead of item slots. A cluster's leader may be either kind. See below.
+- **Fluid stock claiming** works through provider/interface hooks (`RequestFulfillment.fulfillFluidFromProvider`).
+
+Ghost-slot amounts for a fluid are authored and displayed in **millibuckets** and converted to platform units once, at encode time, in `PatternTerminalHookMenu.cellAmount` — everything downstream then compares in platform units without knowing.
+
+### Still item-only
+
+- **Warehouse retrieval of a fluid.** `claimAndEnqueue`/`enqueueRetrieve` are item-typed, and a fluid retrieve means a gantry job carrying it. A fluid raw material must currently be reachable through a provider or interface hook, or already sit in the CPU's own tanks. This is the one real gap in fluid autocrafting.
+- **The terminal's store/craft grid.** `StoreEntry`, `combineStoreEntries` and the stock rows are item-shaped, so `AbstractTerminalHookMenu.sendCraftableList` deliberately filters to item outputs. A fluid-producing pattern runs perfectly well as a *step* inside a craft; it just isn't independently requestable from the terminal yet. That is Stage 4's job.
+- **Racks, `GantryJob`, `WarehouseDefragPlanner`.**
 
 ## Suggested order
 
@@ -199,4 +218,5 @@ The largest tier by far, and independent of Stages 1–4 shipping. Racks, `Wareh
 3. ~~Stage 3 in-pipe visuals~~ — done
 4. ~~Stage 2 filter conditions~~ — done bar the fluid ghost card, which needs Stage 4's slot
 5. Stage 4 GUI — a tank screen and a terminal listing (the warehouse indexes tanks already; the terminal just can't show them). The fluid ghost slot that would have gated this now exists, so the interface hook's fluid `ghosts` row is unblocked too
-6. Stage 5 only if fluids in storage/autocrafting turn out to be wanted
+6. ~~Stage 5 crafting~~ — done; patterns, the resolver, the job and the CPU are kind-generic, and a Crafting Tank holds the fluid side
+7. Stage 5 warehouse — fluid gantry retrieval, which is what still blocks a fluid raw material coming off a shelf

@@ -18,7 +18,7 @@ import net.minecraft.client.Minecraft
  */
 @Serializable
 data class CraftJobTreeNode(
-	val resource: SItemResource,
+	val resource: SResourceComponent,
 	val amount: Long,
 	val status: String,
 	val done: Boolean,

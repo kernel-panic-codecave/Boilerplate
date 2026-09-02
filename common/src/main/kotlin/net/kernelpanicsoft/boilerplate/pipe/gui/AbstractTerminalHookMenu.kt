@@ -7,6 +7,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.boilerplate.crafting.*
+import net.kernelpanicsoft.boilerplate.network.displayName
 import net.kernelpanicsoft.boilerplate.network.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
@@ -111,10 +112,16 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	/** Server-side: computes and replies with the distinct resources every reachable [net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState]'s own held patterns can produce. */
 	fun sendCraftableList() {
 		val level = level as? ServerLevel ?: return
+		// Item outputs only. A pattern may produce a fluid now, but this list feeds the terminal's
+		// store/craft grid, which is still item-shaped throughout (StoreEntry, combineStoreEntries,
+		// its stock rows) - listing a fluid here would surface a row the grid cannot render or
+		// withdraw. Teaching the terminal to browse fluids is its own piece of work (Stage 4 of
+		// docs/design/fluid-parity.md); until then a fluid-producing pattern still runs perfectly
+		// well as a step inside a craft, it just isn't independently requestable from here.
 		val resources = RequestFulfillment.reachablePatternProviders(level, tile.blockPos)
 			.flatMap { it.state.heldPatterns() }
 			.flatMap { it.outputs }
-			.map { it.resource }
+			.mapNotNull { it.resource as? ItemResource }
 			.distinct()
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, CraftableListPacket(resources))
 	}
@@ -388,8 +395,8 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 				val (leaderPos, buffer) = cpu
 				state.submittedJobs += SubmittedJobRef(leaderPos, buffer.enqueue(result.plan))
 			}
-			is CraftingResolver.Result.Unresolvable -> tile.craftJobStatus = "Cannot craft: missing ${result.resource.cachedStack.hoverName.string}"
-			is CraftingResolver.Result.Cyclic -> tile.craftJobStatus = "Cannot craft: cyclic pattern for ${result.resource.cachedStack.hoverName.string}"
+			is CraftingResolver.Result.Unresolvable -> tile.craftJobStatus = "Cannot craft: missing ${result.resource.displayName().string}"
+			is CraftingResolver.Result.Cyclic -> tile.craftJobStatus = "Cannot craft: cyclic pattern for ${result.resource.displayName().string}"
 		}
 	}
 

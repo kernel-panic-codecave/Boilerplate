@@ -12,6 +12,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.ThemeVariants
 import net.kernelpanicsoft.archie.gui.util.KColor
+import net.kernelpanicsoft.boilerplate.network.displayName
 import net.kernelpanicsoft.boilerplate.network.CraftJobTreeNode
 import net.minecraft.network.chat.Component
 
@@ -197,9 +198,9 @@ private fun CraftStepNode(node: TreeNode<Any, CraftJobTreeNode>, modifier: Modif
 	NodeFrame(modifier = modifier, variant = if (node.parents.isEmpty()) "challenge" else ThemeVariants.DEFAULT) {
 		Column(verticalArrangement = Arrangement.spacedBy(2)) {
 			Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
-				FakeSlot(ResourceStack(node.data.resource, node.data.amount), isHovered = false)
+				ResourceFakeSlot(node.data.resource, node.data.amount)
 				Column {
-					Text(node.data.resource.cachedStack.hoverName, dropShadow = false)
+					Text(node.data.resource.displayName(), dropShadow = false)
 					Text(
 						Component.literal(node.data.status),
 						dropShadow = false,

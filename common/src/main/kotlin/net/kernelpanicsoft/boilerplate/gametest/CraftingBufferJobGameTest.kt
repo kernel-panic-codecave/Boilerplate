@@ -6,6 +6,7 @@ import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob
 import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
@@ -22,8 +23,8 @@ import net.minecraft.world.item.Items
 @Suppress("unused")
 class CraftingBufferJobGameTest {
 	private fun pattern(output: ItemStack, vararg inputs: ItemStack): Pattern = Pattern(
-		inputs = inputs.map { it.resourceStack },
-		outputs = listOf(output.resourceStack),
+		inputs = inputs.map { it.resourceCell },
+		outputs = listOf(output.resourceCell),
 		kind = PatternKind.PROCESSING,
 	)
 

@@ -1,6 +1,8 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.*
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.Slots
@@ -51,13 +53,13 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 		var inputs by remember { mutableStateOf(menu.currentGhostInputs()) }
 		var outputs by remember { mutableStateOf(menu.currentGhostOutputs()) }
 
-		fun setInput(index: Int, resource: ItemResource, amount: Long)
+		fun setInput(index: Int, resource: ResourceComponent, amount: Long)
 		{
 			inputs = inputs.toMutableList().also { it[index] = resource to amount }
 			menu.setGhostInput(index, resource, amount)
 		}
 
-		fun setOutput(index: Int, resource: ItemResource, amount: Long)
+		fun setOutput(index: Int, resource: ResourceComponent, amount: Long)
 		{
 			outputs = outputs.toMutableList().also { it[index] = resource to amount }
 			menu.setGhostOutput(index, resource, amount)
@@ -76,23 +78,39 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 				Row(horizontalArrangement = Arrangement.spacedBy(18)) {
 					Column {
 						Text(Component.literal("Inputs"), dropShadow = false)
-						GhostSlotGrid(
-							resources = inputs.map { it.first },
-							columns = 3,
-							carried = { menu.carried },
-							onPlace = { index, resource -> setInput(index, resource, inputs.getOrNull(index)?.second ?: 1) },
-							onClear = { index -> setInput(index, ItemResource.BLANK, 1) },
-							clickHandler = clickHandler,
-							handleClick = { null },
-							amounts = inputs.map { it.second },
-							// Scrollable only for PROCESSING: a CRAFTING pattern's grid is matched
-							// against a real vanilla recipe and is one-item-per-cell, so a per-cell
-							// count there would be meaningless (and is ignored at encode time).
-							onAmountScroll = if (kind != PatternKind.PROCESSING) null else { index, delta ->
-								val (resource, amount) = inputs.getOrNull(index) ?: return@GhostSlotGrid
-								if (!resource.isBlank) setInput(index, resource, (amount + delta).coerceIn(1, 64))
-							},
-						)
+						// A CRAFTING pattern is matched against a real vanilla recipe, which knows
+						// only items and only one per cell - so that mode keeps the item-only grid,
+						// which simply cannot be handed a fluid, rather than accepting one and
+						// failing at encode time. PROCESSING takes either kind, with a per-cell
+						// count.
+						if (kind == PatternKind.CRAFTING) {
+							GhostSlotGrid(
+								resources = inputs.map { it.first as? ItemResource ?: ItemResource.BLANK },
+								columns = 3,
+								carried = { menu.carried },
+								onPlace = { index, resource -> setInput(index, resource, 1) },
+								onClear = { index -> setInput(index, ItemResource.BLANK, 1) },
+								clickHandler = clickHandler,
+								handleClick = { null },
+								amounts = inputs.map { it.second },
+								onAmountScroll = null,
+							)
+						} else {
+							ResourceGhostSlotGrid(
+								resources = inputs.map { it.first },
+								columns = 3,
+								carried = { menu.carried },
+								onPlace = { index, resource -> setInput(index, resource, defaultCellAmount(resource, inputs.getOrNull(index))) },
+								onClear = { index -> setInput(index, ItemResource.BLANK, 1) },
+								clickHandler = clickHandler,
+								handleClick = { null },
+								amounts = inputs.map { it.second },
+								onAmountScroll = { index, delta ->
+									val (resource, amount) = inputs.getOrNull(index) ?: return@ResourceGhostSlotGrid
+									if (!resource.isBlank) setInput(index, resource, stepCellAmount(resource, amount, delta))
+								},
+							)
+						}
 					}
 					Column {
 						Text(Component.literal("Outputs"), dropShadow = false)
@@ -109,28 +127,18 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 							PatternKind.PROCESSING ->
 							{
 
-								GhostSlotGrid(
+								ResourceGhostSlotGrid(
 									resources = outputs.map { it.first },
 									columns = 3,
 									carried = { menu.carried },
-									onPlace = { index, resource ->
-										setOutput(
-											index,
-											resource,
-											outputs.getOrNull(index)?.second ?: 1
-										)
-									},
+									onPlace = { index, resource -> setOutput(index, resource, defaultCellAmount(resource, outputs.getOrNull(index))) },
 									onClear = { index -> setOutput(index, ItemResource.BLANK, 1) },
 									clickHandler = clickHandler,
 									handleClick = { null },
 									amounts = outputs.map { it.second },
 									onAmountScroll = { index, delta ->
-										val (resource, amount) = outputs.getOrNull(index) ?: return@GhostSlotGrid
-										if (!resource.isBlank) setOutput(
-											index,
-											resource,
-											(amount + delta).coerceIn(1, 64)
-										)
+										val (resource, amount) = outputs.getOrNull(index) ?: return@ResourceGhostSlotGrid
+										if (!resource.isBlank) setOutput(index, resource, stepCellAmount(resource, amount, delta))
 									},
 								)
 							}
@@ -154,5 +162,48 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 	companion object
 	{
 		private const val GRID_PREVIEW_POLL_MILLIS = 150L
+
+		/** How far one scroll notch moves an item cell's count, and its ceiling - a stack. */
+		private const val ITEM_STEP = 1L
+		private const val ITEM_MAX = 64L
+
+		/**
+		 * The same for a fluid cell, in **millibuckets** - the unit the player types and reads, and
+		 * the unit a ghost amount is stored in for a fluid (converted to whatever the platform
+		 * counts in only at encode time, see
+		 * [net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu.encode]).
+		 *
+		 * A 100mB notch reaches every amount real recipes actually use - 100, 250 (as 200/300 in
+		 * two notches from either side is close enough to be worth the coarser step), 500, 1000 -
+		 * in a handful of scrolls, where a 1mB notch would need a thousand of them for one bucket.
+		 */
+		private const val FLUID_STEP_MILLIBUCKETS = 100L
+		private const val FLUID_MAX_MILLIBUCKETS = 64_000L
+
+		/**
+		 * What a cell's amount should become when [resource] is dropped into it - [existing]'s own
+		 * amount if that cell already held the same *kind* (so re-picking a fluid keeps the
+		 * 250mB you dialled in), otherwise the kind's own sensible default: one item, or one
+		 * bucket.
+		 *
+		 * Without the kind check, replacing an item cell with a fluid would inherit `1`, which for
+		 * a fluid means one millibucket - a pattern that looks right and consumes nothing.
+		 */
+		private fun defaultCellAmount(resource: ResourceComponent, existing: Pair<ResourceComponent, Long>?): Long {
+			val sameKind = existing != null && (existing.first is FluidResource) == (resource is FluidResource) && !existing.first.isBlank
+			if (sameKind) return existing!!.second
+			return if (resource is FluidResource) MILLIBUCKETS_PER_BUCKET else 1L
+		}
+
+		/** One bucket, in millibuckets - a fluid cell's own default amount. */
+		private const val MILLIBUCKETS_PER_BUCKET = 1000L
+
+		/** [amount] moved [delta] notches, at whatever step and ceiling [resource]'s own kind uses. */
+		private fun stepCellAmount(resource: ResourceComponent, amount: Long, delta: Int): Long {
+			val isFluid = resource is FluidResource
+			val step = if (isFluid) FLUID_STEP_MILLIBUCKETS else ITEM_STEP
+			val max = if (isFluid) FLUID_MAX_MILLIBUCKETS else ITEM_MAX
+			return (amount + delta * step).coerceIn(step, max)
+		}
 	}
 }

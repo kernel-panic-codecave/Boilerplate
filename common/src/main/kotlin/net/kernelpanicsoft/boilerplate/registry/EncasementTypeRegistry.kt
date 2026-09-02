@@ -4,6 +4,8 @@ import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementState
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType
+import net.kernelpanicsoft.boilerplate.crafting.CraftingTankEncasementState
+import net.kernelpanicsoft.boilerplate.crafting.CraftingTankEncasementType
 import net.kernelpanicsoft.boilerplate.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.boilerplate.pipe.encasement.PipeEncasementType
 import net.kernelpanicsoft.boilerplate.power.CompressorEncasementState
@@ -21,6 +23,7 @@ object EncasementTypeRegistry : ADeferredRegistryHolder<PipeEncasementType<out E
 	Registrars.ENCASEMENT_TYPE.key() as ResourceKey<Registry<PipeEncasementType<out EncasementHolderState>>>,
 ) {
 	val CraftingBuffer: PipeEncasementType<CraftingBufferEncasementState> by register(CraftingBufferEncasementType.ID) { CraftingBufferEncasementType }
+	val CraftingTank: PipeEncasementType<CraftingTankEncasementState> by register(CraftingTankEncasementType.ID) { CraftingTankEncasementType }
 	val Compressor: PipeEncasementType<CompressorEncasementState> by register(CompressorEncasementType.ID) { CompressorEncasementType }
 	val PressureTank: PipeEncasementType<PressureTankEncasementState> by register(PressureTankEncasementType.ID) { PressureTankEncasementType }
 

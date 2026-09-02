@@ -7,6 +7,7 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
@@ -55,8 +56,8 @@ class CraftingBufferMultiStepGameTest {
 		planksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val planksHookState = planksHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() }
 		val planksPattern = Pattern(
-			inputs = listOf(ItemStack(Items.OAK_LOG).resourceStack),
-			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceStack),
+			inputs = listOf(ItemStack(Items.OAK_LOG).resourceCell),
+			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceCell),
 			kind = PatternKind.PROCESSING,
 		)
 		planksHookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = planksPattern })
@@ -66,8 +67,8 @@ class CraftingBufferMultiStepGameTest {
 		sticksHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val sticksHookState = sticksHook.hooks.getOrPut(Direction.WEST.name) { PatternProviderHookType.createState() }
 		val sticksPattern = Pattern(
-			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
-			outputs = listOf(ItemStack(Items.STICK, 4).resourceStack),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceCell, ItemStack(Items.OAK_PLANKS).resourceCell),
+			outputs = listOf(ItemStack(Items.STICK, 4).resourceCell),
 			kind = PatternKind.PROCESSING,
 		)
 		sticksHookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = sticksPattern })

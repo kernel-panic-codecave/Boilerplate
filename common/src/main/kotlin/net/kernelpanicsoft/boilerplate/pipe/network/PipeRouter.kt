@@ -318,9 +318,9 @@ object ItemPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources.
 
 	override fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = ItemNetworkType in networkTypesAt(level, pos)
 
-	/** A Crafting CPU cluster mid-job - see [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.awaitsDelivery]. */
+	/** A Crafting CPU cluster mid-job - see [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery]. */
 	override fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: earth.terrarium.common_storage_lib.resources.item.ItemResource): Boolean =
-		net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType.awaitsDelivery(level, pos, resource)
+		net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery(level, pos, resource)
 }
 
 /** The fluid-pipe router - members are positions carrying the fluid network type; filters through the same cards items do (see [acceptsByFilter]). */
@@ -341,4 +341,13 @@ object FluidPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources
 	override fun managerFor(level: ServerLevel): AbstractPipeNetworkManager<*> = FluidNetworkManager.get(level)
 
 	override fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = FluidNetworkType in networkTypesAt(level, pos)
+
+	/**
+	 * A Crafting CPU cluster mid-job, exactly as on the item side - a step whose output is a fluid
+	 * makes its cluster a push destination for that fluid, so a machine's fluid output routes into
+	 * the cluster's Crafting Tanks rather than being sorted off to storage. See
+	 * [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery].
+	 */
+	override fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: earth.terrarium.common_storage_lib.resources.fluid.FluidResource): Boolean =
+		net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery(level, pos, resource)
 }

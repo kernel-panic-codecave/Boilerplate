@@ -11,6 +11,10 @@ import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.ResourceStack
+import net.kernelpanicsoft.boilerplate.util.resourceCell
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 
 /**
  * GameTest coverage for [PatternEncoder] - a pure query over a plain [ArchieItemStorage] grid/
@@ -27,7 +31,7 @@ class PatternEncoderGameTest {
 		// A single oak log in any grid slot is a real, shapeless vanilla recipe (4 oak planks).
 		grid.get(0).set(ItemStack(Items.OAK_LOG))
 
-		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.CRAFTING, grid, patternOutputs)
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells())
 
 		assertTrue(pattern != null && pattern.kind == PatternKind.CRAFTING) {
 			"Expected a real vanilla recipe match to encode as a CRAFTING pattern, got $pattern"
@@ -46,7 +50,7 @@ class PatternEncoderGameTest {
 		grid.get(0).set(ItemStack(Items.DIAMOND))
 		grid.get(1).set(ItemStack(Items.EMERALD))
 
-		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.CRAFTING, grid, patternOutputs)
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells())
 
 		assertTrue(pattern == null) { "Expected CRAFTING mode to ignore a non-recipe grid entirely, even with nothing in patternOutputs to fall back to, got $pattern" }
 		succeed()
@@ -62,7 +66,7 @@ class PatternEncoderGameTest {
 		patternOutputs.get(0).set(ItemStack(Items.NETHER_STAR))
 		patternOutputs.get(1).set(ItemStack(Items.GLOWSTONE_DUST, 4))
 
-		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid.patternCells(), patternOutputs.patternCells())
 
 		assertTrue(pattern != null && pattern.kind == PatternKind.PROCESSING) {
 			"Expected an explicit PROCESSING request to encode as a PROCESSING pattern even though the grid also matches a CRAFTING shape, got $pattern"
@@ -71,7 +75,7 @@ class PatternEncoderGameTest {
 		assertTrue(pattern.outputs.any { it.resource == ItemResource.of(ItemStack(Items.NETHER_STAR)) && it.amount == 1L }) { "Expected a 1x nether star output, got ${pattern.outputs}" }
 		assertTrue(pattern.outputs.any { it.resource == ItemResource.of(ItemStack(Items.GLOWSTONE_DUST)) && it.amount == 4L }) { "Expected a 4x glowstone dust output, got ${pattern.outputs}" }
 		val required = pattern.requiredInputs()
-		assertTrue(required[ItemResource.of(ItemStack(Items.DIAMOND))] == 1L && required[ItemResource.of(ItemStack(Items.EMERALD))] == 1L) {
+		assertTrue(required[ResourceIdentity.of(ItemResource.of(ItemStack(Items.DIAMOND)))] == 1L && required[ResourceIdentity.of(ItemResource.of(ItemStack(Items.EMERALD)))] == 1L) {
 			"Expected the pattern's required inputs to reflect both grid items, got $required"
 		}
 		succeed()
@@ -83,7 +87,7 @@ class PatternEncoderGameTest {
 		val patternOutputs = ArchieItemStorage(Pattern.GRID_SIZE)
 		grid[0].set(ItemStack(Items.DIAMOND))
 
-		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid.patternCells(), patternOutputs.patternCells())
 
 		assertTrue(pattern == null) { "Expected PROCESSING mode with no outputs placed to be a no-op, got $pattern" }
 		succeed()
@@ -95,7 +99,7 @@ class PatternEncoderGameTest {
 		val patternOutputs = ArchieItemStorage(Pattern.GRID_SIZE)
 		patternOutputs[0].set(ItemStack(Items.NETHER_STAR))
 
-		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid.patternCells(), patternOutputs.patternCells())
 
 		assertTrue(pattern == null) { "Expected an empty grid to be a no-op regardless of outputs, got $pattern" }
 		succeed()
@@ -116,7 +120,7 @@ class PatternEncoderGameTest {
 		grid.get(0).set(ItemStack(Items.SAND, 64))
 		patternOutputs.get(0).set(ItemStack(Items.GLASS, 64))
 
-		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid.patternCells(), patternOutputs.patternCells())
 
 		assertTrue(pattern != null) { "Expected a processing pattern to encode, got null" }
 		assertTrue(pattern!!.inputs.size == 1 && pattern.inputs[0].amount == 64L) {
@@ -125,7 +129,7 @@ class PatternEncoderGameTest {
 		assertTrue(pattern.outputs.size == 1 && pattern.outputs[0].amount == 64L) {
 			"Expected one output of 64 glass, got ${pattern.outputs.map { it.resource to it.amount }}"
 		}
-		assertTrue(pattern.requiredInputs()[ItemResource.of(ItemStack(Items.SAND))] == 64L) {
+		assertTrue(pattern.requiredInputs()[ResourceIdentity.of(ItemResource.of(ItemStack(Items.SAND)))] == 64L) {
 			"Expected one run to require 64 sand, got ${pattern.requiredInputs()}"
 		}
 		succeed()
@@ -143,12 +147,21 @@ class PatternEncoderGameTest {
 		grid.get(1).set(ItemStack(Items.SAND, 32))
 		patternOutputs.get(0).set(ItemStack(Items.GLASS, 64))
 
-		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid, patternOutputs)
+		val pattern = PatternEncoder.encode(level as ServerLevel, PatternKind.PROCESSING, grid.patternCells(), patternOutputs.patternCells())
 
 		assertTrue(pattern != null) { "Expected a processing pattern to encode, got null" }
-		assertTrue(pattern!!.requiredInputs()[ItemResource.of(ItemStack(Items.SAND))] == 64L) {
+		assertTrue(pattern!!.requiredInputs()[ResourceIdentity.of(ItemResource.of(ItemStack(Items.SAND)))] == 64L) {
 			"Expected the two half-stacks to total 64 sand per run, got ${pattern.requiredInputs()}"
 		}
 		succeed()
 	}
 }
+
+/**
+ * Every slot of this storage as [net.kernelpanicsoft.boilerplate.crafting.Pattern] cells, blanks
+ * included - the grid shape [PatternEncoder] takes now that a cell may hold any resource kind.
+ * These tests author item grids, so building the cells from a real item storage keeps them reading
+ * the way a player's grid actually fills.
+ */
+private fun ArchieItemStorage.patternCells(): List<ResourceStack<ResourceComponent>> =
+	(0 until size()).map { i -> get(i).getItem().resourceCell }

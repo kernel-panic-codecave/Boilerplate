@@ -8,7 +8,7 @@ import net.minecraft.client.Minecraft
 @Serializable
 data class CraftingBufferActiveJobView(
 	val id: String,
-	val resource: SItemResource,
+	val resource: SResourceComponent,
 	val targetAmount: Long,
 	val delivered: Long,
 	val status: String,
@@ -17,7 +17,7 @@ data class CraftingBufferActiveJobView(
 
 /** One still-queued [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob] on a cluster's own backlog, waiting its turn - see [CraftingBufferStatusPacket.backlog]. */
 @Serializable
-data class CraftingBufferBacklogEntryView(val id: String, val resource: SItemResource, val amount: Long)
+data class CraftingBufferBacklogEntryView(val id: String, val resource: SResourceComponent, val amount: Long)
 
 /** Server -> client: reply to [RequestCraftingBufferStatusPacket] - the requesting player's currently open [CraftingBufferMenu]'s own cluster's active job (if any) and backlog, in order. */
 @Serializable

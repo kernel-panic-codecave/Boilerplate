@@ -8,6 +8,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
@@ -56,21 +57,21 @@ class CraftingBufferSharedHookGameTest {
 		val hookState = patternHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() }
 
 		val logToPlanks = Pattern(
-			inputs = listOf(ItemStack(Items.OAK_LOG).resourceStack),
-			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceStack),
+			inputs = listOf(ItemStack(Items.OAK_LOG).resourceCell),
+			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceCell),
 			kind = PatternKind.CRAFTING,
 		)
 		val planksToSticks = Pattern(
-			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack),
-			outputs = listOf(ItemStack(Items.STICK, 4).resourceStack),
+			inputs = listOf(ItemStack(Items.OAK_PLANKS).resourceCell, ItemStack(Items.OAK_PLANKS).resourceCell),
+			outputs = listOf(ItemStack(Items.STICK, 4).resourceCell),
 			kind = PatternKind.CRAFTING,
 		)
 		val toPick = Pattern(
 			inputs = listOf(
-				ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack, ItemStack(Items.OAK_PLANKS).resourceStack,
-				ItemStack(Items.STICK).resourceStack, ItemStack(Items.STICK).resourceStack,
+				ItemStack(Items.OAK_PLANKS).resourceCell, ItemStack(Items.OAK_PLANKS).resourceCell, ItemStack(Items.OAK_PLANKS).resourceCell,
+				ItemStack(Items.STICK).resourceCell, ItemStack(Items.STICK).resourceCell,
 			),
-			outputs = listOf(ItemStack(Items.WOODEN_PICKAXE).resourceStack),
+			outputs = listOf(ItemStack(Items.WOODEN_PICKAXE).resourceCell),
 			kind = PatternKind.CRAFTING,
 		)
 		hookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = logToPlanks })

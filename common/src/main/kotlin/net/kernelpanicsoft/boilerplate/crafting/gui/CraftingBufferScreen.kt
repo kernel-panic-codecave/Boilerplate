@@ -25,6 +25,8 @@ import net.kernelpanicsoft.boilerplate.network.CraftingBufferActiveJobView
 import net.kernelpanicsoft.boilerplate.network.CraftingBufferBacklogEntryView
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTreeView
 import net.kernelpanicsoft.boilerplate.pipe.gui.FakeSlot
+import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.pipe.gui.ResourceFakeSlot
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 import kotlin.time.Duration.Companion.milliseconds
@@ -84,9 +86,9 @@ private fun ActiveJobPanel(job: CraftingBufferActiveJobView?, onCancel: (String)
 				Text(Component.literal("Idle"), dropShadow = false, color = LocalTheme.current.darkTextColor)
 			} else {
 				Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
-					FakeSlot(ResourceStack(job.resource, job.targetAmount), isHovered = false)
+					ResourceFakeSlot(job.resource, job.targetAmount)
 					Column {
-						Text(job.resource.cachedStack.hoverName, dropShadow = false)
+						Text(job.resource.displayName(), dropShadow = false)
 						Text(Component.literal(job.status), dropShadow = false)
 					}
 				}
@@ -113,10 +115,10 @@ private fun BacklogPanel(backlog: List<CraftingBufferBacklogEntryView>, height: 
 					Column(verticalArrangement = Arrangement.spacedBy(2)) {
 						for ((index, entry) in backlog.withIndex()) {
 							Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
-								FakeSlot(ResourceStack(entry.resource, entry.amount), isHovered = false)
+								ResourceFakeSlot(entry.resource, entry.amount)
 								Column {
 									Text(Component.literal("Position ${index + 1} of ${backlog.size}"), dropShadow = false)
-									Text(entry.resource.cachedStack.hoverName, dropShadow = false)
+									Text(entry.resource.displayName(), dropShadow = false)
 								}
 								Button(onClick = { onCancel(entry.id) }) { Text(Component.literal("Cancel"), dropShadow = false) }
 							}

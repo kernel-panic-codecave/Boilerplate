@@ -8,6 +8,7 @@ import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.gui.PatternProviderHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType.tickGenericTarget
@@ -90,13 +91,23 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 			val pattern = patternAt(state, index)?.takeIf { it.kind == PatternKind.CRAFTING } ?: continue
 			val buffer = state.bufferFor(index)
 			val output = state.outputBufferFor(index)
-			val requiredInputs = pattern.requiredInputs()
+			// A CRAFTING pattern is item-only by construction (see PatternEncoder), so unwrapping
+			// each side to an ItemResource here is total rather than lossy - a pattern that somehow
+			// named anything else could not have been encoded in this kind at all, and is skipped
+			// rather than half-run.
+			val requiredInputs = pattern.requiredInputs().mapNotNull { (key, perRun) ->
+				(key.resource as? ItemResource)?.let { it to perRun }
+			}
+			if (requiredInputs.size != pattern.requiredInputs().size) continue
+			val outputs = pattern.outputs.mapNotNull { out -> (out.resource as? ItemResource)?.let { it to out.amount } }
+			if (outputs.size != pattern.outputs.size) continue
+
 			while (
 				requiredInputs.all { (resource, perRun) -> amountIn(buffer, resource) >= perRun } &&
-				pattern.outputs.all { output.insert(it.resource, it.amount, true) >= it.amount }
+				outputs.all { (resource, amount) -> output.insert(resource, amount, true) >= amount }
 			) {
 				for ((resource, perRun) in requiredInputs) buffer.extract(resource, perRun, false)
-				for (out in pattern.outputs) output.insert(out.resource, out.amount, false)
+				for ((resource, amount) in outputs) output.insert(resource, amount, false)
 			}
 		}
 	}
@@ -143,14 +154,15 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 	 */
 	private fun inputsPresent(level: ServerLevel, targetPos: BlockPos, direction: Direction, pattern: Pattern): Boolean {
 		val storage = ItemApi.BLOCK.find(level, targetPos, direction) ?: return false
-		val totals = HashMap<ItemResource, Long>()
+		val totals = HashMap<ResourceIdentity, Long>()
 		for (i in 0 until storage.size()) {
 			val slot = storage[i]
 			if (slot.resource.isBlank) continue
-			totals[slot.resource] = (totals[slot.resource] ?: 0L) + slot.amount
+			val key = ResourceIdentity.of(slot.resource)
+			totals[key] = (totals[key] ?: 0L) + slot.amount
 		}
-		for ((resource, amount) in pattern.requiredInputs()) {
-			if ((totals[resource] ?: 0L) < amount) return false
+		for ((key, amount) in pattern.requiredInputs()) {
+			if ((totals[key] ?: 0L) < amount) return false
 		}
 		return true
 	}

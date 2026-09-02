@@ -96,7 +96,7 @@ fun FluidGhostSlotGrid(
  * visible gain.
  */
 @Composable
-private fun FluidSlotFace(resource: FluidResource, isHovered: Boolean) {
+internal fun FluidSlotFace(resource: FluidResource, isHovered: Boolean) {
 	val theme = LocalTheme.current
 	val slotState = theme.getComposableTheme("slot").getState(TextureStates.DEFAULT, theme.mode)
 
@@ -145,7 +145,7 @@ private fun FluidSlotFace(resource: FluidResource, isHovered: Boolean) {
  * in and out of the container - here it is only ever read, so a throwaway one-slot holder around a
  * copy of the stack is enough, and the real carried stack is never touched.
  */
-private fun fluidIn(stack: ItemStack): FluidResource? {
+internal fun fluidIn(stack: ItemStack): FluidResource? {
 	if (stack.isEmpty) return null
 	val holder = ArchieItemStorage(1)
 	holder.insert(ItemResource.of(stack), stack.count.toLong(), false)

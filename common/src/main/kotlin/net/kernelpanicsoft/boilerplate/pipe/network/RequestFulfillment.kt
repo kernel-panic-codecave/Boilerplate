@@ -1,11 +1,13 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
+import earth.terrarium.common_storage_lib.fluid.FluidApi
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.boilerplate.crafting.CraftingCpuManager
-import net.kernelpanicsoft.boilerplate.crafting.craftingBufferAt
+import net.kernelpanicsoft.boilerplate.crafting.craftingCpuMemberAt
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
@@ -146,6 +148,44 @@ object RequestFulfillment {
 		return 0
 	}
 
+	/**
+	 * [fulfillFromProvider]'s exact shape for a **fluid** raw material - first willing reachable
+	 * source, one per call, routed over the fluid network instead of the item one.
+	 *
+	 * A separate method rather than a generified one because the two share no types at any point:
+	 * different storage lookup ([ProviderSource.fluidStorage]), different router
+	 * ([FluidPipeRouter]), different reachability graph. The filter check is deliberately the same
+	 * [SortingHookState.accepts] - see [FluidPipeRouter.acceptsByFilter] for why a fluid is an
+	 * ordinary filter input.
+	 *
+	 * There is deliberately no warehouse counterpart yet: retrieving a fluid from a bound warehouse
+	 * means a gantry job carrying it, which is Stage 5 of `docs/design/fluid-parity.md` and not
+	 * built. A fluid raw material therefore has to be reachable through a provider/interface hook
+	 * (or already sitting in the CPU's own tanks) for a plan needing it to actually run.
+	 */
+	internal fun fulfillFluidFromProvider(
+		level: ServerLevel,
+		sources: List<ProviderSource>,
+		stack: ResourceStack<FluidResource>,
+		deliverTo: BlockPos,
+		deliverFace: Direction? = null,
+	): Long {
+		for (source in sources) {
+			if (!source.hookState.active) continue
+			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
+			val storage = source.fluidStorage(level) ?: continue
+			val available = storage.extract(stack.resource, stack.amount, true)
+			if (available <= 0) continue
+			val route = FluidPipeRouter.findRouteTo(level, source.hookPos, deliverTo) ?: continue
+			val extracted = storage.extract(stack.resource, available, false)
+			if (extracted <= 0) continue
+			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
+			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace, null)
+			return extracted
+		}
+		return 0
+	}
+
 	/** [fulfillFromProvider]'s own KDoc's "first willing source" shape, but over reachable warehouses - skips a controller [WarehouseControllerBlockEntity.hasPressure] says can't move its gantry at all, so this never queues a retrieve job that would just sit hard-gated at `0.0` speed forever. */
 	private fun fulfillFromWarehouse(
 		level: ServerLevel,
@@ -180,7 +220,7 @@ object RequestFulfillment {
 	fun reachableCraftingCpus(level: ServerLevel, from: BlockPos): List<CraftingCpuRef> {
 		val leaders = LinkedHashSet<BlockPos>()
 		for (candidatePos in reachablePipes(level, from)) {
-			if (craftingBufferAt(level, candidatePos) == null) continue
+			if (craftingCpuMemberAt(level, candidatePos) == null) continue
 			val cluster = CraftingCpuManager.get(level).clusterOf(level, candidatePos)
 			if (!cluster.valid) continue
 			leaders += cluster.leader
@@ -269,6 +309,17 @@ object RequestFulfillment {
 			hookState is InterfaceHookState -> hookState.stock
 			hookState is PatternProviderHookState && level.getBlockState(hookPos.relative(direction)).`is`(Blocks.CRAFTING_TABLE) -> PatternOutputIO(hookState)
 			else -> ItemApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
+		}
+
+		/**
+		 * [storage]'s fluid counterpart - what [fulfillFluidFromProvider] pulls a fluid raw material
+		 * out of. The [InterfaceHookState] special case is the same one [storage] documents, against
+		 * that hook's own fluid stock; there is no crafting-table case, since a table has no fluids
+		 * to hold.
+		 */
+		fun fluidStorage(level: ServerLevel): CommonStorage<FluidResource>? = when {
+			hookState is InterfaceHookState -> hookState.fluidStock
+			else -> FluidApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
 		}
 	}
 

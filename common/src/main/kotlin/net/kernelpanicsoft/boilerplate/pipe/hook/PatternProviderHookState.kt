@@ -7,6 +7,7 @@ import net.kernelpanicsoft.archie.serialization.ArchieStorageMap
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 
@@ -115,7 +116,7 @@ class PatternBufferIO(private val state: PatternProviderHookState) : CommonStora
 				if (stack.isEmpty) continue
 				val pattern = PatternItemData(stack).pattern
 				if (pattern == Pattern.EMPTY) continue
-				val perRun = pattern.requiredInputs()[resource] ?: continue
+				val perRun = pattern.requiredInputs()[ResourceIdentity.of(resource)] ?: continue
 				val buffer = state.bufferFor(index)
 				val cap = perRun * PatternProviderHookState.MAX_BUFFERED_RUNS_PER_PATTERN
 				val already = PatternProviderHookType.amountIn(buffer, resource)

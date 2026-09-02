@@ -6,11 +6,14 @@ import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 
 /**
  * GameTest coverage for [CraftingResolver] - pure-function logic, so these don't touch the world at
@@ -20,8 +23,8 @@ import net.minecraft.world.item.Items
 @Suppress("unused")
 class CraftingResolverGameTest {
 	private fun pattern(output: ItemStack, vararg inputs: ItemStack): Pattern = Pattern(
-		inputs = inputs.map { it.resourceStack },
-		outputs = listOf(output.resourceStack),
+		inputs = inputs.map { it.resourceCell },
+		outputs = listOf(output.resourceCell),
 		kind = PatternKind.PROCESSING,
 	)
 
@@ -40,7 +43,7 @@ class CraftingResolverGameTest {
 
 		assertTrue(result is CraftingResolver.Result.Success) { "Expected a resolvable plan, got $result" }
 		val plan = (result as CraftingResolver.Result.Success).plan
-		assertTrue(plan.stockPulls[ironIngot] == 2L) { "Expected 2 iron ingots pulled from stock, got ${plan.stockPulls}" }
+		assertTrue(plan.stockPulls[ResourceIdentity.of(ironIngot)] == 2L) { "Expected 2 iron ingots pulled from stock, got ${plan.stockPulls}" }
 		assertTrue(plan.steps.size == 1 && plan.steps[0].pattern == recipe && plan.steps[0].runs == 1L) {
 			"Expected exactly one craft step running the recipe once, got ${plan.steps}"
 		}
@@ -76,7 +79,7 @@ class CraftingResolverGameTest {
 		val plan = (result as CraftingResolver.Result.Success).plan
 		// Gold needs 2 iron, emerald needs 1 - if iron's demand were double-counted per branch
 		// instead of summed once, this would come out as something other than exactly 3.
-		assertTrue(plan.stockPulls[iron] == 3L) { "Expected iron demand to be deduped/summed to exactly 3 (2 for gold + 1 for emerald), got ${plan.stockPulls}" }
+		assertTrue(plan.stockPulls[ResourceIdentity.of(iron)] == 3L) { "Expected iron demand to be deduped/summed to exactly 3 (2 for gold + 1 for emerald), got ${plan.stockPulls}" }
 		assertTrue(plan.steps.size == 3) { "Expected exactly 3 craft steps (gold, emerald, diamond), got ${plan.steps}" }
 
 		val diamondIndex = plan.steps.indexOfFirst { it.pattern == diamondPattern }
@@ -130,8 +133,8 @@ class CraftingResolverGameTest {
 		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
 		val emerald = ItemResource.of(ItemStack(Items.EMERALD))
 		val recipe = pattern(ItemStack(Items.DIAMOND), ItemStack(Items.EMERALD), ItemStack(Items.EMERALD))
-		val stockOf = { resource: ItemResource -> if (resource == emerald) 5L else 0L }
-		val patternFor = { resource: ItemResource -> if (resource == diamond) recipe else null }
+		val stockOf = { resource: ResourceComponent -> if (resource == emerald) 5L else 0L }
+		val patternFor = { resource: ResourceComponent -> if (resource == diamond) recipe else null }
 
 		// 5 emeralds, 2 per diamond - 3 diamonds would need 6, one more than the emerald stock has.
 		val max = CraftingResolver.maxCraftable(diamond, upperBound = 100, stockOf = stockOf, patternFor = patternFor)
@@ -172,7 +175,7 @@ class CraftingResolverGameTest {
 		assertTrue(plan.steps.size == 1 && plan.steps[0].runs == 64L) {
 			"Expected all 64 to be crafted, got ${plan.steps.map { it.runs }}"
 		}
-		assertTrue(plan.stockPulls[pickaxe] == null) {
+		assertTrue(plan.stockPulls[ResourceIdentity.of(pickaxe)] == null) {
 			"Expected the target itself never to be pulled from stock, got ${plan.stockPulls}"
 		}
 		succeed()
@@ -204,7 +207,7 @@ class CraftingResolverGameTest {
 
 		assertTrue(result is CraftingResolver.Result.Success) { "Expected a resolvable plan, got $result" }
 		val plan = (result as CraftingResolver.Result.Success).plan
-		assertTrue(plan.stockPulls[planks] == 4L) { "Expected the planks to come from stock, got ${plan.stockPulls}" }
+		assertTrue(plan.stockPulls[ResourceIdentity.of(planks)] == 4L) { "Expected the planks to come from stock, got ${plan.stockPulls}" }
 		assertTrue(plan.steps.none { it.resource == planks }) {
 			"Expected no plank sub-craft when stock already covers them, got ${plan.steps.map { it.resource }}"
 		}

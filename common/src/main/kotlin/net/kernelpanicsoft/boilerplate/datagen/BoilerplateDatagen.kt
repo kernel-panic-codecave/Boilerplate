@@ -48,6 +48,7 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 
 				// Same convention - EncasementItem answers as `encasement.<type id>`.
 				addItem("Crafting Buffer") { ItemRegistry.CraftingBufferEncasement }
+				addItem("Crafting Tank") { ItemRegistry.CraftingTankEncasement }
 
 				// FilterCardItem answers as `filter.<condition type id>`.
 				addItem("Item Condition Card") { ItemRegistry.ItemFilterCard }

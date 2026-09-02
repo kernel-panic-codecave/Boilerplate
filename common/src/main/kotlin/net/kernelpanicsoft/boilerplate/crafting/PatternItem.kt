@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
 import net.kernelpanicsoft.archie.serialization.NBTHolder
+import net.kernelpanicsoft.boilerplate.network.displayName
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
@@ -18,7 +19,7 @@ import net.minecraft.world.item.TooltipFlag
 class PatternItem(properties: Properties) : Item(properties) {
 	override fun getName(stack: ItemStack): Component {
 		val output = PatternItemData(stack).pattern.outputs.firstOrNull() ?: return super.getName(stack)
-		return Component.translatable(descriptionId).append(": ").append(output.resource.cachedStack.hoverName)
+		return Component.translatable(descriptionId).append(": ").append(output.resource.displayName())
 	}
 
 	override fun appendHoverText(stack: ItemStack, context: TooltipContext, tooltip: MutableList<Component>, flag: TooltipFlag) {
@@ -28,7 +29,7 @@ class PatternItem(properties: Properties) : Item(properties) {
 			return
 		}
 		tooltip += Component.translatable(descriptionId + ".kind." + pattern.kind.name.lowercase())
-		for (output in pattern.outputs) tooltip += Component.literal("${output.amount}x ").append(output.resource.cachedStack.hoverName)
+		for (output in pattern.outputs) tooltip += Component.literal("${output.amount}x ").append(output.resource.displayName())
 	}
 }
 

@@ -9,6 +9,7 @@ import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.Boilerplate.MOD_ID
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType
+import net.kernelpanicsoft.boilerplate.crafting.CraftingTankEncasementType
 import net.kernelpanicsoft.boilerplate.crafting.Pattern.Companion.EMPTY
 import net.kernelpanicsoft.boilerplate.crafting.PatternItem
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
@@ -125,6 +126,10 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 	/** Named `<encasement type path>_encasement`, mirroring how each [HookItem] above is named `<hook type path>_hook` - the datagen'd item model and [net.kernelpanicsoft.boilerplate.pipe.client.MultipartBlockEntityVisual]'s own model lookup both rely on that convention. */
 	val CraftingBufferEncasement by register("crafting_buffer_encasement") {
 		EncasementItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, encasementId = CraftingBufferEncasementType.ID)
+	}
+
+	val CraftingTankEncasement by register("crafting_tank_encasement") {
+		EncasementItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, encasementId = CraftingTankEncasementType.ID)
 	}
 
 	/** See [PatternItem]'s own KDoc - blank until encoded, one item type for both states. */

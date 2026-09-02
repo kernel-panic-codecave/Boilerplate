@@ -12,6 +12,7 @@ import net.kernelpanicsoft.boilerplate.network.FluidResourceSerializer
 import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
 import net.kernelpanicsoft.boilerplate.network.ResourceKind
 import net.minecraft.core.Registry
+import net.minecraft.network.chat.Component
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceKey
 import net.minecraft.resources.ResourceLocation
@@ -39,6 +40,9 @@ object ResourceKindRegistry : ADeferredRegistryHolder<ResourceKind>(
 			override val kindTag: String get() = "item"
 			override val resourceClass: Class<out ResourceComponent> get() = ItemResource::class.java
 			override val serializer: KSerializer<ResourceComponent> get() = ItemResourceSerializer as KSerializer<ResourceComponent>
+
+			override fun displayName(resource: ResourceComponent): Component =
+				(resource as? ItemResource)?.cachedStack?.hoverName ?: super.displayName(resource)
 
 			override fun registryId(resource: ResourceComponent): ResourceLocation? =
 				(resource as? ItemResource)?.let { BuiltInRegistries.ITEM.getKey(it.item) }

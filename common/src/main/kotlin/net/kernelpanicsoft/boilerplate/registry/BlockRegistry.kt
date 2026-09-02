@@ -89,6 +89,10 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
 	}
 
+	val CraftingTankPart: ConnectingEncasementModelBlock by register("crafting_tank_part") {
+		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
+	}
+
 	val WarehouseController: WarehouseControllerBlock by register("warehouse_controller") {
 		WarehouseControllerBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
 	}

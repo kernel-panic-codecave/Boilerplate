@@ -1,5 +1,7 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
@@ -24,7 +26,7 @@ import net.minecraft.server.level.ServerLevel
  * most, triggered only on an actual player request, not a hot per-tick path.
  */
 object CraftingRequest {
-	fun resolve(level: ServerLevel, from: BlockPos, target: ItemResource, amount: Long): CraftingResolver.Result {
+	fun resolve(level: ServerLevel, from: BlockPos, target: ResourceComponent, amount: Long): CraftingResolver.Result {
 		val warehouses = RequestFulfillment.reachableWarehouses(level, from)
 		val providers = RequestFulfillment.reachableProviders(level, from)
 		val patterns = RequestFulfillment.reachablePatternProviders(level, from).flatMap { it.state.heldPatterns() }
@@ -33,12 +35,12 @@ object CraftingRequest {
 			target = target,
 			amount = amount,
 			stockOf = { resource -> stockOf(level, warehouses, providers, resource) },
-			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.outputs.any { it.resource == resource } } },
+			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.produces(resource) } },
 		)
 	}
 
 	/** [CraftingResolver.maxCraftable] wired the same way [resolve] is - see its own KDoc. */
-	fun maxCraftable(level: ServerLevel, from: BlockPos, target: ItemResource, upperBound: Long): Long {
+	fun maxCraftable(level: ServerLevel, from: BlockPos, target: ResourceComponent, upperBound: Long): Long {
 		val warehouses = RequestFulfillment.reachableWarehouses(level, from)
 		val providers = RequestFulfillment.reachableProviders(level, from)
 		val patterns = RequestFulfillment.reachablePatternProviders(level, from).flatMap { it.state.heldPatterns() }
@@ -47,7 +49,7 @@ object CraftingRequest {
 			target = target,
 			upperBound = upperBound,
 			stockOf = { resource -> stockOf(level, warehouses, providers, resource) },
-			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.outputs.any { it.resource == resource } } },
+			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.produces(resource) } },
 		)
 	}
 
@@ -71,10 +73,16 @@ object CraftingRequest {
 	 * with a full chest behind it). [Int.MAX_VALUE] survives that same truncation as a large positive
 	 * number instead, and no real inventory holds anywhere near that much anyway.
 	 */
-	private fun stockOf(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, providers: List<RequestFulfillment.ProviderSource>, resource: ItemResource): Long =
+	private fun stockOf(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, providers: List<RequestFulfillment.ProviderSource>, resource: ResourceComponent): Long =
 		warehouses.sumOf { warehouse -> warehouse.index.slotsFor(resource).sumOf { it.amount } } +
 			providers.sumOf { source ->
 				if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) 0L
-				else source.storage(level)?.extract(resource, Int.MAX_VALUE.toLong(), true) ?: 0L
+				else when (resource) {
+					// A fluid's stock comes from the same provider sources, read through their fluid
+					// surface instead - see [RequestFulfillment.ProviderSource.fluidStorage].
+					is FluidResource -> source.fluidStorage(level)?.extract(resource, Long.MAX_VALUE, true) ?: 0L
+					is ItemResource -> source.storage(level)?.extract(resource, Int.MAX_VALUE.toLong(), true) ?: 0L
+					else -> 0L
+				}
 			}
 }

@@ -1,9 +1,10 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 
 /** One pattern run planned as part of a [CraftingResolver.Plan], in bottom-up execution order - see [CraftingResolver.Plan.steps]. [resource] is the resource whose demand [runs] was sized against - see [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob], which reports it in job-status text. */
-data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ItemResource)
+data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ResourceComponent)
 
 /**
  * Resolves a crafting request into a **DAG**, not a tree, memoized per-resource within one
@@ -16,6 +17,12 @@ data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ItemRes
  * algorithm itself is testable in isolation - see
  * [net.kernelpanicsoft.boilerplate.crafting.CraftingRequest] for the real warehouse-backed
  * wiring. See `docs/design/m4-crafting-automation.md`.
+ *
+ * Generic over [ResourceComponent] rather than items, since a [Pattern] may hold a fluid (or an
+ * addon kind) on either side. Every map and set here is keyed by [ResourceIdentity] rather than by
+ * the resource itself: `FluidResource` has no value equality of its own, so a raw-resource key
+ * would make each mention of the same fluid a distinct entry and the memoization/cycle guard would
+ * silently stop working for it.
  *
  * Walk order: for each resource, first check [stockOf], then [patternFor] a sub-craft for
  * whatever's still short - except [target] itself, which is always crafted in full (see the
@@ -34,56 +41,59 @@ data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ItemRes
  */
 object CraftingResolver {
 	data class Plan(
-		val target: ItemResource,
+		val target: ResourceComponent,
 		val targetAmount: Long,
 		/** Bottom-up: a leaf ingredient's own crafting step (if any) always precedes whatever consumes its output. */
 		val steps: List<CraftStep>,
 		/** Total pulled directly from stock, per resource, across the whole plan - not just [target]'s own immediate ingredients. */
-		val stockPulls: Map<ItemResource, Long>,
+		val stockPulls: Map<ResourceIdentity, Long>,
 	)
 
 	sealed interface Result {
 		data class Success(val plan: Plan) : Result
 		/** [resource] has neither enough stock nor a pattern producing it. */
-		data class Unresolvable(val resource: ItemResource) : Result
+		data class Unresolvable(val resource: ResourceComponent) : Result
 		/** [resource]'s own pattern chain (directly or transitively) requires itself. */
-		data class Cyclic(val resource: ItemResource) : Result
+		data class Cyclic(val resource: ResourceComponent) : Result
 	}
 
 	fun resolve(
-		target: ItemResource,
+		target: ResourceComponent,
 		amount: Long,
-		stockOf: (ItemResource) -> Long,
-		patternFor: (ItemResource) -> Pattern?,
+		stockOf: (ResourceComponent) -> Long,
+		patternFor: (ResourceComponent) -> Pattern?,
 	): Result {
-		val postOrder = mutableListOf<ItemResource>()
-		val visited = mutableSetOf<ItemResource>()
-		val inProgress = mutableSetOf<ItemResource>()
+		val postOrder = mutableListOf<ResourceIdentity>()
+		val visited = mutableSetOf<ResourceIdentity>()
+		val inProgress = mutableSetOf<ResourceIdentity>()
 
-		fun discover(resource: ItemResource): Result.Cyclic? {
-			if (resource in visited) return null
-			if (resource in inProgress) return Result.Cyclic(resource)
+		fun discover(resource: ResourceComponent): Result.Cyclic? {
+			val key = ResourceIdentity.of(resource)
+			if (key in visited) return null
+			if (key in inProgress) return Result.Cyclic(resource)
 			val pattern = patternFor(resource)
 			if (pattern != null) {
-				inProgress += resource
+				inProgress += key
 				for (input in pattern.requiredInputs().keys) {
-					discover(input)?.let { return it }
+					discover(input.resource)?.let { return it }
 				}
-				inProgress -= resource
+				inProgress -= key
 			}
-			visited += resource
-			postOrder += resource
+			visited += key
+			postOrder += key
 			return null
 		}
 
 		discover(target)?.let { return it }
 
-		val demand = mutableMapOf(target to amount)
-		val stockPulls = mutableMapOf<ItemResource, Long>()
+		val targetKey = ResourceIdentity.of(target)
+		val demand = mutableMapOf(targetKey to amount)
+		val stockPulls = mutableMapOf<ResourceIdentity, Long>()
 		val steps = mutableListOf<CraftStep>()
 
-		for (resource in postOrder.asReversed()) {
-			val totalDemand = demand[resource] ?: 0L
+		for (key in postOrder.asReversed()) {
+			val resource = key.resource
+			val totalDemand = demand[key] ?: 0L
 			if (totalDemand <= 0L) continue
 
 			// The requested [target] is never satisfied out of stock, however much of it is already
@@ -92,19 +102,19 @@ object CraftingResolver {
 			// deduction did when it applied to the target as well as to ingredients. Every *other*
 			// resource still prefers stock: not re-crafting an ingredient you already have is the
 			// whole point of consulting it.
-			val fromStock = if (resource == target) 0L else stockOf(resource).coerceAtLeast(0L).coerceAtMost(totalDemand)
-			if (fromStock > 0) stockPulls[resource] = (stockPulls[resource] ?: 0L) + fromStock
+			val fromStock = if (key == targetKey) 0L else stockOf(resource).coerceAtLeast(0L).coerceAtMost(totalDemand)
+			if (fromStock > 0) stockPulls[key] = (stockPulls[key] ?: 0L) + fromStock
 			val shortfall = totalDemand - fromStock
 			if (shortfall <= 0L) continue
 
 			val pattern = patternFor(resource) ?: return Result.Unresolvable(resource)
-			val outputAmount = pattern.outputs.firstOrNull { it.resource == resource }?.amount
+			val outputAmount = pattern.outputAmount(resource)
 			if (outputAmount == null || outputAmount <= 0L) return Result.Unresolvable(resource)
 
 			val neededRuns = (shortfall + outputAmount - 1) / outputAmount
 			steps += CraftStep(pattern, neededRuns, resource)
-			for ((inputResource, perRun) in pattern.requiredInputs()) {
-				demand[inputResource] = (demand[inputResource] ?: 0L) + perRun * neededRuns
+			for ((inputKey, perRun) in pattern.requiredInputs()) {
+				demand[inputKey] = (demand[inputKey] ?: 0L) + perRun * neededRuns
 			}
 		}
 
@@ -121,10 +131,10 @@ object CraftingResolver {
 	 * read-only wiring.
 	 */
 	fun maxCraftable(
-		target: ItemResource,
+		target: ResourceComponent,
 		upperBound: Long,
-		stockOf: (ItemResource) -> Long,
-		patternFor: (ItemResource) -> Pattern?,
+		stockOf: (ResourceComponent) -> Long,
+		patternFor: (ResourceComponent) -> Pattern?,
 	): Long {
 		if (upperBound <= 0) return 0
 		if (resolve(target, upperBound, stockOf, patternFor) is Result.Success) return upperBound

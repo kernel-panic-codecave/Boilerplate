@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.network
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import kotlinx.serialization.KSerializer
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.tags.TagKey
 
@@ -65,6 +66,16 @@ abstract class ResourceKind {
 	abstract fun registryId(resource: ResourceComponent): ResourceLocation?
 
 	/**
+	 * A human-readable name for [resource] - what job status lines, tooltips and error text show.
+	 *
+	 * Defaults to the path of [registryId] (`water`, `diamond`), which is legible for any kind that
+	 * has not said otherwise; a kind whose resources carry a real translated name should override
+	 * with it - see the item kind's own, which reuses the stack's `hoverName`.
+	 */
+	open fun displayName(resource: ResourceComponent): Component =
+		Component.literal(registryId(resource)?.path ?: resource.toString())
+
+	/**
 	 * Every tag [resource] belongs to, for
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionType].
 	 *
@@ -75,3 +86,12 @@ abstract class ResourceKind {
 	 */
 	abstract fun tagsOf(resource: ResourceComponent): List<TagKey<*>>
 }
+
+/**
+ * [resource]'s own human-readable name via its registered kind (see [ResourceKind.displayName]),
+ * falling back to its `toString` for a resource of no registered kind at all - status text should
+ * degrade to something ugly rather than throw.
+ */
+fun ResourceComponent.displayName(): Component =
+	net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry.forResource(this)?.displayName(this)
+		?: Component.literal(toString())

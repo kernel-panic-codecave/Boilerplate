@@ -5,8 +5,8 @@ import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import net.kernelpanicsoft.boilerplate.crafting.PatternKindSerializer
-import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
-import net.kernelpanicsoft.boilerplate.network.SItemResource
+import net.kernelpanicsoft.boilerplate.network.ResourceComponentSerializer
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
 
 /**
  * A [TerminalHookState] upgraded with a *ghost* 3x3 input grid ([ghostInputs]) plus, depending on
@@ -24,7 +24,15 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
 class PatternTerminalHookState : TerminalHookState(PatternTerminalHookType.ID) {
 	var patternKind: PatternKind by field(PatternKindSerializer) { PatternKind.CRAFTING }
 
-	val ghostInputs: MutableList<SItemResource> by listField(ItemResourceSerializer) { List(GRID_SIZE) { ItemResource.BLANK } }
+	/**
+	 * The pattern's own input cells. [SResourceComponent], not items: a `PROCESSING` pattern may
+	 * name a fluid (or any other registered
+	 * [net.kernelpanicsoft.boilerplate.network.ResourceKind]) in a cell, so `1000mB water + 1 clay`
+	 * is expressible. A `CRAFTING` pattern is still matched against a real vanilla recipe, which
+	 * only knows items - [net.kernelpanicsoft.boilerplate.crafting.PatternEncoder] rejects a
+	 * non-item cell in that mode rather than silently dropping it.
+	 */
+	val ghostInputs: MutableList<SResourceComponent> by listField(ResourceComponentSerializer) { List(GRID_SIZE) { ItemResource.BLANK } }
 
 	/**
 	 * How many of each [ghostInputs] entry one run of the pattern consumes - the input mirror of
@@ -40,7 +48,8 @@ class PatternTerminalHookState : TerminalHookState(PatternTerminalHookType.ID) {
 	 */
 	val ghostInputAmounts: MutableList<Long> by listField(Long.serializer()) { List(GRID_SIZE) { 1L } }
 
-	val ghostOutputs: MutableList<SItemResource> by listField(ItemResourceSerializer) { List(GRID_SIZE) { ItemResource.BLANK } }
+	/** The pattern's own output cells - same any-kind reasoning as [ghostInputs]. */
+	val ghostOutputs: MutableList<SResourceComponent> by listField(ResourceComponentSerializer) { List(GRID_SIZE) { ItemResource.BLANK } }
 	val ghostOutputAmounts: MutableList<Long> by listField(Long.serializer()) { List(GRID_SIZE) { 1L } }
 
 	val blankPatterns: ArchieItemStorage by itemField(1)

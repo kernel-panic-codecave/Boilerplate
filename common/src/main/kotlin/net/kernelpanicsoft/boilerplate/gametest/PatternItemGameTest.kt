@@ -5,6 +5,7 @@ import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
@@ -25,8 +26,8 @@ class PatternItemGameTest {
 	fun GameTestHelper.testEncodedPatternSurvivesACopy() {
 		val stack = ItemStack(ItemRegistry.Pattern)
 		val pattern = Pattern(
-			inputs = listOf(ItemStack(Items.OAK_LOG).resourceStack),
-			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceStack),
+			inputs = listOf(ItemStack(Items.OAK_LOG).resourceCell),
+			outputs = listOf(ItemStack(Items.OAK_PLANKS, 4).resourceCell),
 			kind = PatternKind.PROCESSING,
 		)
 		PatternItemData(stack).pattern = pattern
@@ -39,8 +40,8 @@ class PatternItemGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 5)
 	fun GameTestHelper.testIdenticallyEncodedStacksStackTogether() {
 		val pattern = Pattern(
-			inputs = listOf(ItemStack(Items.IRON_INGOT).resourceStack),
-			outputs = listOf(ItemStack(Items.IRON_NUGGET, 9).resourceStack),
+			inputs = listOf(ItemStack(Items.IRON_INGOT).resourceCell),
+			outputs = listOf(ItemStack(Items.IRON_NUGGET, 9).resourceCell),
 			kind = PatternKind.PROCESSING,
 		)
 		val a = ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern }

@@ -7,6 +7,7 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.util.resourceCell
 import net.kernelpanicsoft.boilerplate.util.resourceStack
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
@@ -98,8 +99,8 @@ class CraftingBufferCancelGameTest {
 		patternHook.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val patternHookState = patternHook.hooks.getOrPut(Direction.EAST.name) { PatternProviderHookType.createState() }
 		val pattern = Pattern(
-			inputs = listOf(ItemStack(Items.IRON_INGOT).resourceStack, ItemStack(Items.IRON_INGOT).resourceStack),
-			outputs = listOf(ItemStack(Items.IRON_BLOCK).resourceStack),
+			inputs = listOf(ItemStack(Items.IRON_INGOT).resourceCell, ItemStack(Items.IRON_INGOT).resourceCell),
+			outputs = listOf(ItemStack(Items.IRON_BLOCK).resourceCell),
 			kind = PatternKind.PROCESSING,
 		)
 		patternHookState.patterns[0].set(ItemStack(ItemRegistry.Pattern).also { PatternItemData(it).pattern = pattern })

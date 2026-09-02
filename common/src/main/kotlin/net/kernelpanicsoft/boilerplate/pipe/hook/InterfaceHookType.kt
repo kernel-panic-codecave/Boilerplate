@@ -159,9 +159,15 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	 * failure mode this avoids: the requester pushing its order in while this hook drained everything
 	 * its own row did not name, forever. Both sides being the same [StockingRow] shape is what makes
 	 * the substitution a one-liner rather than a translation.
+	 *
+	 * Only a requester that is actually *across* a boundary counts. One this interface shares a
+	 * subnet with does nothing at all (see [RequesterHookType]), and standing this hook's own
+	 * stocking down for an inert partner would leave the interface idle for no reason - the second
+	 * half of the same bug.
 	 */
 	private fun externalRow(level: ServerLevel, pos: BlockPos, direction: Direction): StockingRow? =
 		SubnetBoundary.requesterAt(level, pos.relative(direction), direction.opposite)
+			?.takeIf { !RequestFulfillment.sharesSubnet(level, pos.relative(direction), pos) }
 			?.takeIf { row -> row.targets.any { !it.isBlank } }
 
 	/**

@@ -75,6 +75,12 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 		// Which side is being kept supplied differs; what the row asks for does not. An interface
 		// gets stocked in its own `stock` row, anything else in whatever inventory it exposes.
 		val interfaceState = SubnetBoundary.interfaceAt(level, neighborPos, face)
+		// An interface only earns its role here by being a way *out* of this subnet. One that this
+		// requester can already reach through pipe - a run looping around the boundary, say - leads
+		// nowhere new: every request would pull from this network and deliver back into it, churning
+		// items to no effect. Doing nothing is the honest answer, and the GUI says so.
+		if (interfaceState != null && RequestFulfillment.sharesSubnet(level, pos, neighborPos)) return
+
 		val held: (ResourceComponent) -> Long = if (interfaceState != null) {
 			{ resource -> (resource as? ItemResource)?.let { amountHeld(interfaceState, it) } ?: 0L }
 		} else {
@@ -144,6 +150,13 @@ fun requesterStatus(level: ServerLevel, pos: BlockPos, direction: Direction, sta
 
 	val interfaceState = SubnetBoundary.interfaceAt(level, neighborPos, face)
 	val supplying = interfaceState != null
+
+	// The one case where a requester facing an interface does nothing at all - see tryRequest. Worth
+	// saying outright, because the setup looks correct: the hooks face each other, the row is
+	// configured, and nothing moves. The reason is somewhere else entirely, in the pipe run.
+	if (interfaceState != null && RequestFulfillment.sharesSubnet(level, pos, neighborPos)) {
+		return RequesterStatusPacket(true, detail = "This interface is on the same network - nothing to carry across.")
+	}
 
 	// How much of a given resource the destination holds - the interface's own stock row, or the
 	// neighbour's inventory. Null when there is no destination to read at all.

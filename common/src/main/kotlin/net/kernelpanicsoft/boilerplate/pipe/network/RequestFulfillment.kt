@@ -284,6 +284,48 @@ object RequestFulfillment {
 		return sources
 	}
 
+	/**
+	 * Whether [target] sits in the same subnet as [from] - reachable through pipe without crossing a
+	 * [SubnetBoundary] edge.
+	 *
+	 * Not the same question as "is there a boundary edge between them". A boundary severs the flood
+	 * fill *locally*, but a pipe run looping around it rejoins the two sides, and then they are one
+	 * subnet again however many interface hooks sit on the seam. Anything whose whole purpose is to
+	 * move resources *across* a boundary has to ask this rather than checking the edge - see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookType].
+	 *
+	 * Walks its own flood fill rather than reusing [reachablePipes], which cannot answer this: that
+	 * one returns every position it *examined* - adjacent non-pipes and boundary-blocked neighbours
+	 * included - because its callers need the adjacent blocks too (a warehouse controller is not
+	 * itself a pipe). Asking it whether a boundary partner is reachable always says yes, since the
+	 * partner is adjacent by definition. This counts only positions genuinely walked to.
+	 */
+	fun sharesSubnet(level: ServerLevel, from: BlockPos, target: BlockPos): Boolean {
+		if (from == target) return true
+		val walked = hashSetOf(from)
+		val queue = ArrayDeque<BlockPos>()
+		queue += from
+		while (queue.isNotEmpty()) {
+			val current = queue.removeFirst()
+			for (direction in Direction.entries) {
+				val neighborPos = current.relative(direction)
+				if (neighborPos in walked) continue
+				if (SubnetBoundary.isBoundaryEdge(level, current, direction)) continue
+				if (!ItemPipeRouter.isPipe(level, neighborPos)) continue
+				val currentState = level.getBlockState(current)
+				val neighborState = level.getBlockState(neighborPos)
+				if (
+					!currentState.getValue(PipeBlock.propertiesByDirection[direction]!!) ||
+					!neighborState.getValue(PipeBlock.propertiesByDirection[direction.opposite]!!)
+				) continue
+				if (neighborPos == target) return true
+				walked += neighborPos
+				queue += neighborPos
+			}
+		}
+		return false
+	}
+
 	/** Every pipe position reachable from [from], [from] itself included - the search space for both fulfillment sources. */
 	private fun reachablePipes(level: ServerLevel, from: BlockPos): Set<BlockPos> {
 		val visited = hashSetOf(from)

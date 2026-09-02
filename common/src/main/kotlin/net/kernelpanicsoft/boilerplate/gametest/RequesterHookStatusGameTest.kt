@@ -24,6 +24,8 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.hook.ProviderHookState
+import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.minecraft.world.level.block.Block
 
 /**
  * What a requester hook's GUI reports about itself
@@ -48,7 +50,19 @@ class RequesterHookStatusGameTest {
 		setBlock(pos, BlockRegistry.Multipart.defaultBlockState())
 		val tile = getBlockEntity(pos) as MultipartBlockEntity
 		tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-		return tile.hooks.getOrPut(face.name) { RequesterHookType.createState() } as RequesterHookState
+		val state = tile.hooks.getOrPut(face.name) { RequesterHookType.createState() } as RequesterHookState
+		refreshConnections(pos)
+		return state
+	}
+
+	/**
+	 * Recomputes a segment's connection bits after `setBlock` skipped real placement logic - see
+	 * [placeCraftingBuffer]'s own note. Only matters for tests that care about pipe *topology*
+	 * (whether two segments are one subnet), which is exactly what the connection bits encode.
+	 */
+	private fun GameTestHelper.refreshConnections(pos: BlockPos) {
+		val absolute = absolutePos(pos)
+		level.setBlock(absolute, Block.updateFromNeighbourShapes(level.getBlockState(absolute), level, absolute), Block.UPDATE_ALL)
 	}
 
 	@GameTest(template = SMALL, timeoutTicks = 5)
@@ -172,6 +186,70 @@ class RequesterHookStatusGameTest {
 			assertTrue(held == 6L) {
 				"Expected the interface to settle holding exactly the requester's order of 6 diamonds - no fewer (not supplied) and no more (drained back), got $held"
 			}
+		}
+	}
+
+	/**
+	 * A requester facing an interface it can already **reach through pipe** does nothing.
+	 *
+	 * The point of pointing a requester at an interface is to supply the subnet on the *far* side of
+	 * a boundary. A pipe run looping around that boundary rejoins the two sides into one subnet, and
+	 * then there is no far side: every request would pull out of this network and deliver straight
+	 * back into it, churning items to no effect. The hooks facing each other is not enough to
+	 * establish a crossing - a boundary severs the flood fill locally, but a loop reconnects it.
+	 *
+	 * The interface must also keep stocking *itself* here. Standing its own down for a partner that
+	 * turns out to be inert would leave it idle for no reason, which is the same bug seen from the
+	 * other side.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testARequesterDoesNothingForAnInterfaceOnItsOwnNetwork() {
+		val interfacePos = BlockPos(0, 2, 0)
+		val requesterPos = BlockPos(0, 2, 1)
+
+		// The loop around the seam: both segments also meet via (1,2,0)-(1,2,1), so the boundary edge
+		// between them severs nothing and the two are one subnet.
+		setBlock(BlockPos(1, 2, 0), BlockRegistry.Pipe.defaultBlockState())
+		setBlock(BlockPos(1, 2, 1), BlockRegistry.Multipart.defaultBlockState())
+		(getBlockEntity(BlockPos(1, 2, 1)) as MultipartBlockEntity).pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+
+		setBlock(interfacePos, BlockRegistry.Multipart.defaultBlockState())
+		val interfaceTile = getBlockEntity(interfacePos) as MultipartBlockEntity
+		interfaceTile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+
+		val requesterState = placeRequester(requesterPos, Direction.NORTH)
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 6)
+		placeCreativePressureSource(requesterPos.above())
+
+		// A real source on the requester's own network, so "nothing moved" below is a decision rather
+		// than an accident - without the same-subnet guard these diamonds would be shuttled into the
+		// interface, which is exactly the churn being prevented.
+		val sourcePos = BlockPos(1, 2, 2)
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 32))
+		val loopTile = getBlockEntity(BlockPos(1, 2, 1)) as MultipartBlockEntity
+		val provider = loopTile.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		provider.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+
+		// Every segment in the loop, once all of them exist - a connection bit is only right after
+		// both sides of it are placed.
+		for (pos in listOf(interfacePos, requesterPos, BlockPos(1, 2, 0), BlockPos(1, 2, 1))) refreshConnections(pos)
+
+		runAfterDelay(60) {
+			val serverLevel = level as ServerLevel
+			assertTrue(RequestFulfillment.sharesSubnet(serverLevel, absolutePos(requesterPos), absolutePos(interfacePos))) {
+				"This test is only meaningful while the loop actually joins the two sides into one subnet"
+			}
+
+			val status = requesterStatus(serverLevel, absolutePos(requesterPos), Direction.NORTH, requesterState)
+			assertTrue(status.detail.contains("same network")) {
+				"Expected the requester to report that there is nothing to carry across, got $status"
+			}
+			assertTrue(amountHeld(interfaceState, ItemResource.of(ItemStack(Items.DIAMOND))) == 0L) {
+				"Expected nothing to have been shuttled into an interface on the requester's own network"
+			}
+			succeed()
 		}
 	}
 }

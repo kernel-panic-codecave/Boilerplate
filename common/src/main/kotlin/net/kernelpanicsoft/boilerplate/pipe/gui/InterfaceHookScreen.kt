@@ -1,44 +1,78 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
+import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
+import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 
 /**
- * Two rows of 9 - `ghost` targets [Slots] on top, `stock` [Slots] beneath - the whole GUI,
- * chest-simple, matching [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType]'s "stock
- * what the ghost row asks for" role.
+ * Two rows of 9 - the [StockingRowGrid] of targets on top, the real `stock` [Slots] beneath -
+ * matching [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType]'s "stock what the target
+ * row asks for" role.
+ *
+ * The target row is the same editor a requester uses, so a target here can be any amount, ∞ (hold
+ * whatever arrives, never drain it), or a configured filter card standing for a whole class of
+ * resources - none of which the real-stack row it replaced could express.
  *
  * The [Column] is load-bearing, not styling: [ContainerPanel] hands its content to a `Box`, which
- * overlays children rather than stacking them, so two bare [Slots] groups occupy the same space and
- * only the upper one is visible or clickable.
+ * overlays children rather than stacking them, so two bare groups would occupy the same space and
+ * only the upper one would be visible or clickable.
  */
 class InterfaceHookScreen(private val menu: InterfaceHookMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<InterfaceHookMenu>(menu, playerInventory, title) {
+
+	private val clickHandler = ClickHandler(1)
 
 	init {
 		start { content() }
 	}
 
+	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
+	}
+
 	@Composable
 	fun content() {
+		var targets by remember { mutableStateOf(menu.currentStockingTargets()) }
+
+		fun set(index: Int, resource: ResourceComponent, amount: Long) {
+			targets = targets.first.toMutableList().also { it[index] = resource } to
+				targets.second.toMutableList().also { it[index] = amount }
+			menu.setStockingTarget(index, resource, amount)
+		}
+
 		BoilerplateTheme {
 			ContainerPanel {
-				// Explicitly stacked. ContainerPanel places its content inside a Box, which
-				// overlays its children - two bare Slots groups there render on top of each other
-				// and read as a single row, with only the upper one reachable.
 				Column(verticalArrangement = Arrangement.spacedBy(2)) {
 					Text(Component.literal("Targets"), dropShadow = false)
-					Slots("ghost", 9, 1)
+					StockingRowGrid(
+						targets = targets.first,
+						amounts = targets.second,
+						columns = InterfaceHookState.SLOTS,
+						carried = { menu.carried },
+						onSet = ::set,
+						clickHandler = clickHandler,
+					)
+					Text(
+						Component.literal("Scroll a target to set how many to hold; below 1 is ∞"),
+						dropShadow = false,
+						color = LocalTheme.current.darkTextColor,
+					)
 					Text(Component.literal("Stock"), dropShadow = false)
-					Slots("stock", 9, 1)
+					Slots("stock", InterfaceHookState.SLOTS, 1)
 				}
 			}
 		}

@@ -1,8 +1,11 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.gui.InterfaceHookMenu
@@ -10,6 +13,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.drainExcess
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.requisitionStock
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType
@@ -117,15 +121,48 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	 * stocked, rather than waiting for an outside [RequesterHookType] to do it.
 	 */
 	private fun requisitionStock(level: ServerLevel, pos: BlockPos, direction: Direction, state: InterfaceHookState) {
-		for (i in 0 until state.stock.size()) {
-			val ghost = state.ghosts[i]
-			if (ghost.resource.isBlank) continue
-			val current = state.stock[i].takeIf { it.resource == ghost.resource }?.amount ?: 0L
-			val shortfall = ghost.amount - current
+		// A requester facing this interface takes over what it is stocked with (see
+		// RequesterHookType), supplying it from its own network. Self-requisitioning alongside that
+		// would have two networks racing to fill one order.
+		if (externalRow(level, pos, direction) != null) return
+		// Named targets only. A filter-card entry stands for a class of resources, and there is no
+		// way to ask a network for "anything matching this card" - such an entry governs what is
+		// *kept* (see drainExcess) rather than what is fetched.
+		for ((resource, wanted) in state.namedTargets()) {
+			val item = resource as? ItemResource ?: continue
+			// An unbounded target has nothing to requisition toward: it is a "hold whatever turns up"
+			// instruction, not a quantity to reach.
+			if (wanted == UNBOUNDED_STOCK) continue
+			val shortfall = wanted - heldInStock(state, item)
 			if (shortfall <= 0) continue
-			RequestFulfillment.request(level, pos, ResourceStack(ghost.resource, shortfall), pos, direction)
+			RequestFulfillment.request(level, pos, ResourceStack(item as ResourceComponent, shortfall), pos, direction)
 		}
 	}
+
+	/** How much of [resource] this interface's whole [InterfaceHookState.stock] row holds - counted across columns, since a target names a resource and an amount rather than a column. */
+	private fun heldInStock(state: InterfaceHookState, resource: ItemResource): Long {
+		var total = 0L
+		for (i in 0 until state.stock.size()) {
+			val slot = state.stock[i]
+			if (slot.resource == resource) total += slot.amount
+		}
+		return total
+	}
+
+	/**
+	 * The [StockingRow] of a [RequesterHookType] hook facing this interface, if one is there and has
+	 * anything set - the far network's own statement of what it will keep this boundary supplied
+	 * with.
+	 *
+	 * While one exists it **replaces** this interface's own row as the stocking target, for both
+	 * [requisitionStock] and [drainExcess]. Two independent targets over one shared inventory is the
+	 * failure mode this avoids: the requester pushing its order in while this hook drained everything
+	 * its own row did not name, forever. Both sides being the same [StockingRow] shape is what makes
+	 * the substitution a one-liner rather than a translation.
+	 */
+	private fun externalRow(level: ServerLevel, pos: BlockPos, direction: Direction): StockingRow? =
+		SubnetBoundary.requesterAt(level, pos.relative(direction), direction.opposite)
+			?.takeIf { row -> row.targets.any { !it.isBlank } }
 
 	/**
 	 * Pushes everything above each [InterfaceHookState.stock] column's [InterfaceHookState.ghosts]
@@ -135,11 +172,22 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	 * right back into itself.
 	 */
 	private fun drainExcess(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: InterfaceHookState) {
+		// A requester facing this interface replaces its own row as the target - see externalRow.
+		val row = externalRow(level, pos, direction) ?: state
+		// Allowances are counted down across columns: a target is a total for its resource, so two
+		// part-filled columns of the same thing share one rather than each getting the full amount.
+		val allowances = HashMap<ResourceIdentity, Long>()
 		for (i in 0 until state.stock.size()) {
 			val slot = state.stock[i]
 			if (slot.resource.isBlank) continue
 			val resource = slot.resource
-			val target = if (state.ghosts[i].resource == resource) state.ghosts[i].amount else 0L
+			val key = ResourceIdentity.of(resource)
+			val wanted = row.wantedAmount(resource)
+			// Unbounded means never drain it: this column is a holding point, not a transit buffer.
+			if (wanted == UNBOUNDED_STOCK) continue
+			val remaining = allowances.getOrPut(key) { wanted }
+			val target = minOf(slot.amount, remaining).coerceAtLeast(0L)
+			allowances[key] = remaining - target
 			val excess = slot.amount - target
 			if (excess <= 0) continue
 			val route = ItemPipeRouter.findRoute(level, pos, resource, exclude = setOf(pos)) ?: continue

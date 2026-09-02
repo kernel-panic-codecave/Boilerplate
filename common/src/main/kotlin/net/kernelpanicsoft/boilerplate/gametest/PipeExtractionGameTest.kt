@@ -172,7 +172,7 @@ class PipeExtractionGameTest {
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 4)
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -435,7 +435,7 @@ class PipeExtractionGameTest {
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 4)
 
 		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
@@ -473,7 +473,7 @@ class PipeExtractionGameTest {
 		val requester = getBlockEntity(requesterHookPos) as MultipartBlockEntity
 		requester.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
 		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 4, false)
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 4)
 
 		runAfterDelay(100) {
 			val source = getBlockEntity(sourcePos) as ChestBlockEntity

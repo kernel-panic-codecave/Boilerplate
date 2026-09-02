@@ -50,6 +50,10 @@ sealed class FilterCardTarget {
 			val parentState = FilterCardState(parentStack)
 			(parentState.currentState() as? CombinedConditionState)?.children?.set(slot, resource)
 			parentState.touchCurrentState()
+			// Dropping a card into a combined card's own grid configures the parent - see
+			// FilterCardState.configured. Without this the parent stays "blank", and a stocking row
+			// entry holding it would read it as the item rather than as the filter it now is.
+			parentState.configured = true
 			parent.write(level, player, ItemResource.of(parentStack))
 		}
 	}

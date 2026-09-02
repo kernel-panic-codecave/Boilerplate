@@ -40,6 +40,7 @@ fun ResourceGhostSlot(
 	clickHandler: ClickHandler,
 	handleClick: (() -> Unit)? = null,
 	amount: Long = 1,
+	countText: String? = null,
 	onAmountScroll: ((Int) -> Unit)? = null,
 	modifier: Modifier = Modifier,
 ) {
@@ -66,8 +67,8 @@ fun ResourceGhostSlot(
 		}
 		when (resource) {
 			is FluidResource -> FluidSlotFace(resource, isHovered)
-			is ItemResource -> FakeSlot(if (resource.isBlank) null else ResourceStack(resource, amount), isHovered)
-			else -> FakeSlot(null, isHovered)
+			is ItemResource -> FakeSlot(if (resource.isBlank) null else ResourceStack(resource, amount), isHovered, countText)
+			else -> FakeSlot(null, isHovered, countText)
 		}
 	}
 }
@@ -86,6 +87,7 @@ fun ResourceGhostSlotGrid(
 	clickHandler: ClickHandler,
 	handleClick: (Int) -> (() -> Unit)?,
 	amounts: List<Long>? = null,
+	countText: ((Int) -> String?)? = null,
 	onAmountScroll: ((Int, Int) -> Unit)? = null,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(0)) {
@@ -101,6 +103,7 @@ fun ResourceGhostSlotGrid(
 						clickHandler = clickHandler,
 						handleClick = handleClick(index),
 						amount = amounts?.getOrNull(index) ?: 1,
+						countText = countText?.invoke(index),
 						onAmountScroll = onAmountScroll?.let { callback -> { delta: Int -> callback(index, delta) } },
 					)
 				}

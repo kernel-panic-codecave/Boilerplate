@@ -6,8 +6,11 @@ import earth.terrarium.common_storage_lib.resources.fluid.util.FluidAmounts
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.storage.base.StorageSlot
+import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.transfer.ArchieFluidStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.boilerplate.network.ResourceComponentSerializer
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FluidStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter
@@ -27,13 +30,15 @@ private val PASS_THROUGH_IN_FLIGHT = object : ThreadLocal<MutableSet<Long>>() {
 }
 
 /**
- * Self-contained state for one [InterfaceHookType] attachment: a ghost configuration row
- * ([ghosts], the interface's stocking targets - one target stack per column, capped naturally at
- * its stack size, never drained or refilled by the network itself) stacked over an actual small
- * physical buffer ([stock], the row beneath - items *are* held here, but only what a matching
- * [ghosts] column asks for). [InterfaceHookType] keeps each stock column topped up to its own
- * ghost's count, self-requesting the shortfall from the network, and drains only the *excess*
- * above that target outward - `stock` is a reservoir, not a dead end.
+ * Self-contained state for one [InterfaceHookType] attachment: a [StockingRow] of targets
+ * ([targets]/[targetAmounts], what this boundary should hold for the far subnet) over an actual
+ * small physical buffer ([stock], where items *are* held). [InterfaceHookType] keeps the stock
+ * topped up to those targets, self-requesting the shortfall from the network, and drains only the
+ * *excess* above them outward - `stock` is a reservoir, not a dead end.
+ *
+ * The target row is the same system a [RequesterHookState] uses, so an entry may carry any amount
+ * (no longer capped at a stack, and needing no real items to express), [UNBOUNDED_STOCK] to mean
+ * "hold whatever arrives", or a configured filter card to stand for a whole class of resources.
  *
  * The whole exposed surface ([exposedItemStorage]) is pass-through ([InterfacePassThroughStorage]):
  * any insert - a machine, a hopper, or another hook pushing across the subnet boundary this hook
@@ -46,8 +51,10 @@ private val PASS_THROUGH_IN_FLIGHT = object : ThreadLocal<MutableSet<Long>>() {
  * [net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer] - see that
  * interface's own KDoc for why.
  */
-class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExposer, FluidStorageExposer {
-	val ghosts: ArchieItemStorage by itemField(SLOTS)
+class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExposer, FluidStorageExposer, StockingRow {
+	override val targets: MutableList<SResourceComponent> by listField(ResourceComponentSerializer) { List(SLOTS) { ItemResource.BLANK } }
+
+	override val targetAmounts: MutableList<Long> by listField(Long.serializer()) { List(SLOTS) { 1L } }
 
 	val stock: ArchieItemStorage by itemField(SLOTS)
 

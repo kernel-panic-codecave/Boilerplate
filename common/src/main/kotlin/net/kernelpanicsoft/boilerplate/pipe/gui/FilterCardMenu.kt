@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
+import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.gui.item.ComposeItemContainerMenu
 import net.kernelpanicsoft.archie.serialization.NestedNBTHolder
 import net.kernelpanicsoft.archie.serialization.Sync
@@ -39,6 +40,23 @@ class FilterCardMenu(id: Int, inventory: Inventory, val target: FilterCardTarget
 
 	@Sync
 	var mode: FilterMode by holder.field(FilterModeSerializer) { FilterMode.WHITELIST }
+
+	/**
+	 * Mirrors [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState.configured] on the
+	 * same stack, and must stay the same key for the same reason [conditionStates] must stay the same
+	 * shape: this is the write path and that is the read path.
+	 *
+	 * Set by [markConfigured] on every edit rather than derived from the condition's contents. A card
+	 * can be *deliberately* configured to a state that happens to look default - an empty whitelist
+	 * rejecting everything is a real configuration - and deriving the flag would silently reclassify
+	 * that back into a stockable blank item.
+	 */
+	var configured: Boolean by holder.field(Boolean.serializer()) { false }
+
+	/** Records that this card has been configured - see [configured]. Called from every edit path. */
+	fun markConfigured() {
+		if (!configured) configured = true
+	}
 
 	/**
 	 * Must stay the *exact* same nested shape as

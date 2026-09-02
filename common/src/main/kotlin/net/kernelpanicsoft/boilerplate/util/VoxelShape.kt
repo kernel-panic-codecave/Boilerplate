@@ -13,14 +13,25 @@ class VoxelShapeBuilder(private val op: BooleanOp = BooleanOp.OR, private var sh
 {
 	fun or(block: VoxelShapeBuilder.() -> Unit) = join(BooleanOp.OR, block)
 
+	fun or(vararg shapes: VoxelShape) = join(BooleanOp.OR, *shapes)
+
 	fun and(block: VoxelShapeBuilder.() -> Unit) = join(BooleanOp.AND, block)
 
-	fun join(newOp: BooleanOp, block: VoxelShapeBuilder.() -> Unit)
+	fun and(vararg shapes: VoxelShape) = join(BooleanOp.AND, *shapes)
+
+	fun join(newOp: BooleanOp = op, block: VoxelShapeBuilder.() -> Unit)
 	{
 		val newShape = VoxelShapeBuilder(newOp)
 		newShape.block()
-		this.shape = Shapes.join(this.shape, newShape.build(), op)
+		join(op, newShape.build())
 	}
+
+	fun join(newOp: BooleanOp, vararg shapes: VoxelShape)
+	{
+		this.shape = shapes.fold(this.shape) { acc, shape -> Shapes.join(acc, shape, newOp) }
+	}
+
+	fun join(vararg shapes: VoxelShape) = join(op, *shapes)
 
 	fun box(minX: Double, minY: Double, minZ: Double, maxX: Double, maxY: Double, maxZ: Double)
 	{
@@ -72,6 +83,12 @@ private fun rotateCorner(x: Double, y: Double, z: Double, quarterTurnsX: Int, qu
 	return Triple(vx + 0.5, vy + 0.5, vz + 0.5)
 }
 
+operator fun VoxelShape.plus(other: VoxelShape): VoxelShape = this(BooleanOp.OR) { join(other) }
+operator fun VoxelShape.minus(other: VoxelShape): VoxelShape = this(BooleanOp.ONLY_FIRST) { join(other) }
+operator fun VoxelShape.times(other: VoxelShape): VoxelShape = this(BooleanOp.AND) { join(other) }
+operator fun VoxelShape.div(other: VoxelShape): VoxelShape = this(BooleanOp.SAME) { join(other) }
+operator fun VoxelShape.rem(other: VoxelShape): VoxelShape = this(BooleanOp.NOT_SAME) { join(other) }
+
 inline fun voxelShape(op: BooleanOp = BooleanOp.OR, block: VoxelShapeBuilder.() -> Unit): VoxelShape
 {
 	val builder = VoxelShapeBuilder(op)
@@ -79,7 +96,7 @@ inline fun voxelShape(op: BooleanOp = BooleanOp.OR, block: VoxelShapeBuilder.() 
 	return builder.build()
 }
 
-inline fun VoxelShape.modify(op: BooleanOp = BooleanOp.OR, block: VoxelShapeBuilder.() -> Unit): VoxelShape
+inline operator fun VoxelShape.invoke(op: BooleanOp = BooleanOp.OR, block: VoxelShapeBuilder.() -> Unit): VoxelShape
 {
 	val builder = VoxelShapeBuilder(op, this)
 	builder.block()

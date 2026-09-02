@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -36,4 +37,16 @@ object SubnetBoundary {
 	 */
 	fun interfaceAt(level: ServerLevel, pos: BlockPos, direction: Direction): InterfaceHookState? =
 		hookFacing(level, pos, direction) as? InterfaceHookState
+
+	/**
+	 * The [RequesterHookState] attached to [pos]'s [direction] face, if any - [interfaceAt]'s mirror,
+	 * for the interface side of the same partnership.
+	 *
+	 * An interface needs this because a requester facing it *takes over* what that interface is
+	 * stocked with (see [net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookType]): the
+	 * interface has to know its own ghost row is out of play, or it would keep requisitioning
+	 * against it and draining whatever the requester supplied straight back out.
+	 */
+	fun requesterAt(level: ServerLevel, pos: BlockPos, direction: Direction): RequesterHookState? =
+		hookFacing(level, pos, direction) as? RequesterHookState
 }

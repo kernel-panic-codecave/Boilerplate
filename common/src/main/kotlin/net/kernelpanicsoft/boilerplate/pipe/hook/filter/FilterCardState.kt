@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import net.kernelpanicsoft.archie.serialization.NBTHolder
 import net.kernelpanicsoft.archie.serialization.NestedNBTHolder
+import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterModeSerializer
 import net.kernelpanicsoft.boilerplate.registry.FilterConditionTypeRegistry
@@ -26,6 +27,22 @@ class FilterCardState(stack: ItemStack) {
 	val type: ResourceLocation = (stack.item as? FilterCardItem)?.conditionTypeId ?: ItemConditionType.ID
 
 	var mode: FilterMode by holder.field(FilterModeSerializer) { FilterMode.WHITELIST }
+
+	/**
+	 * Whether a player has actually configured this card, as opposed to it being a fresh one straight
+	 * off the crafting grid.
+	 *
+	 * Load-bearing rather than cosmetic: a card sitting in a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.StockingRow] entry means "everything I accept" only
+	 * once configured. Before that it is an ordinary item, and has to stay stockable *as* one - a row
+	 * entry holding a blank card means "keep filter cards here". Without this flag the two are
+	 * indistinguishable, since a blank card's condition state is also what an unconfigured one has.
+	 *
+	 * Set by every edit path in the card editor (see
+	 * [net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu]) and cleared by crafting the card on
+	 * its own, which is what turns a configured card back into a stockable blank.
+	 */
+	var configured: Boolean by holder.field(Boolean.serializer()) { false }
 
 	private val conditionStates: NestedNBTHolder<FilterConditionState> by holder.nestedField { tag ->
 		// tryParse, not parse - see FilterCardMenu.conditionStates' own note: this factory is called

@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_color_filter_card": {
+      "conditions": {
+        "items": [
+          {
+            "items": "boilerplate:color_filter_card"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    },
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "boilerplate:reset_color_filter_card"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    }
+  },
+  "requirements": [
+    [
+      "has_the_recipe",
+      "has_color_filter_card"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "boilerplate:reset_color_filter_card"
+    ]
+  }
+}

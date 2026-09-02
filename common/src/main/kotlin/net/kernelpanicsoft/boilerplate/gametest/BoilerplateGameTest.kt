@@ -15,6 +15,8 @@ import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.level.block.Block
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import net.kernelpanicsoft.boilerplate.pipe.hook.StockingRow
 
 /**
  * ID of a 10x6x10 all-air structure template, for GameTests that place real blocks and need actual
@@ -77,6 +79,16 @@ internal fun GameTestHelper.placeCraftingTank(pos: BlockPos): MultipartBlockEnti
 /** The Crafting Tank encasement on a segment a test already knows carries one - see [placeCraftingTank]. */
 internal val MultipartBlockEntity.craftingTank: CraftingTankEncasementState
 	get() = encasement.value as CraftingTankEncasementState
+
+/**
+ * Sets column [index] of a [StockingRow] to [amount] of [resource] - the one line a test needs to
+ * express "keep this many of this here", now that a target is a ghost entry plus a separate amount
+ * rather than a real stack whose count carried both.
+ */
+internal fun StockingRow.target(resource: ResourceComponent, amount: Long, index: Int = 0) {
+	targets[index] = resource
+	targetAmounts[index] = amount
+}
 
 /**
  * Places a [BlockRegistry.CreativePressureSource] at [pos] - the fixture most hook-carrying
@@ -184,6 +196,8 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<FluidPatternGameTest>()
 		register<WarehouseFluidGameTest>()
 		register<WarehouseIndexSnapshotGameTest>()
+		register<RequesterHookStatusGameTest>()
+		register<StockingRowGameTest>()
 		register<ItemIconGameTest>()
 	}
 }

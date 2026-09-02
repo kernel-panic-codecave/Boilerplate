@@ -16,5 +16,6 @@ data class UpdateFilterCardModePacket(@Serializable(with = FilterModeSerializer:
 	fun handleOnServer(context: IPacketContext) {
 		val menu = context.player.containerMenu as? FilterCardMenu ?: return
 		menu.mode = mode
+		menu.markConfigured()
 	}
 }

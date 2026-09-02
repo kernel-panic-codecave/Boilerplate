@@ -8,7 +8,29 @@ import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.registry.TagsRegistry
 import net.minecraft.data.loot.LootTableProvider
 import net.minecraft.data.loot.LootTableSubProvider
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.data.recipes.RecipeCategory
+import net.minecraft.world.item.Item
+import net.kernelpanicsoft.archie.util.rem
 import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
+
+/**
+ * The filter cards a reset recipe is generated for - every card kind that can actually be
+ * configured. [ItemRegistry.CombinedFilterCard] included: dropping a child card into its grid
+ * configures it (see [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardTarget]), so it
+ * needs the same way back.
+ */
+private val RESETTABLE_FILTER_CARDS: List<Item> by lazy {
+	listOf(
+		ItemRegistry.ItemFilterCard,
+		ItemRegistry.FluidFilterCard,
+		ItemRegistry.ModFilterCard,
+		ItemRegistry.TagFilterCard,
+		ItemRegistry.ColorFilterCard,
+		ItemRegistry.RegexFilterCard,
+		ItemRegistry.CombinedFilterCard,
+	)
+}
 
 /**
  * Registers Boilerplate's datagen providers. Only ever touched from behind
@@ -70,6 +92,22 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 			}
 		}
 		common {
+			// Crafting a configured filter card on its own hands back a fresh one. That is the only
+			// way back across FilterCardState.configured, and it needs to exist: a configured card in
+			// a StockingRow cell means "everything I accept", so without a reset there is no way to
+			// turn one back into an ordinary stockable item (or to clear a card and start over).
+			// Vanilla shapeless crafting builds its result from the item alone, discarding the input
+			// stack's components, which is exactly the reset - no custom recipe type needed.
+			recipes { output ->
+				for (card in RESETTABLE_FILTER_CARDS) {
+					shapeless {
+						category = RecipeCategory.MISC
+						result = card
+						ingredients { 1 of card }
+						group = "boilerplate_filter_card_reset"
+					}.unlockedBy(card).save(output, Boilerplate.MOD % "reset_${BuiltInRegistries.ITEM.getKey(card.asItem()).path}")
+				}
+			}
 			blockTags { _ ->
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.Pipe
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.GlassPipe

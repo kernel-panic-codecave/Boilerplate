@@ -23,5 +23,6 @@ data class UpdateFilterCardFieldPacket(val fieldName: String, val value: BlockEn
 		val menu = context.player.containerMenu as? FilterCardMenu ?: return
 		menu.currentConditionState()?.applyFieldUpdate(fieldName, value)
 		menu.touchCurrentState()
+		menu.markConfigured()
 	}
 }

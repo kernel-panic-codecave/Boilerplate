@@ -18,6 +18,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 			clientbound(CraftGridPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(PatternGridPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftingBufferStatusPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(RequesterStatusPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(PendingDeliveriesPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(DebugNetworkSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(WarehouseDebugSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
@@ -44,6 +45,8 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(RequestPatternGridPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetPatternKindPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftingBufferStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(RequestRequesterStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(SetStockingTargetPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CancelCraftingBufferJobPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestPendingDeliveriesPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound<CancelPendingDeliveryPacket> { packet, context -> packet.handleOnServer(context) }

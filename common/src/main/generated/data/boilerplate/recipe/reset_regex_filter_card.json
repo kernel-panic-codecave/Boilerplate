@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "group": "boilerplate_filter_card_reset",
+  "ingredients": [
+    {
+      "item": "boilerplate:regex_filter_card"
+    }
+  ],
+  "result": {
+    "count": 1,
+    "id": "boilerplate:regex_filter_card"
+  }
+}

@@ -89,7 +89,7 @@ class SubnetBoundaryGameTest {
 
 		val requester = hookAt(requesterPos)
 		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.request.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 5, false)
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 5)
 		placeCreativePressureSource(requesterPos.above())
 
 		val interfaceTile = hookAt(interfacePos)
@@ -189,7 +189,7 @@ class SubnetBoundaryGameTest {
 
 		val requester = hookAt(requesterPos)
 		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.request.insert(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 5, false)
+		requesterState.target(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 5)
 
 		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
 
@@ -282,13 +282,13 @@ class SubnetBoundaryGameTest {
 
 		val requester = hookAt(requesterPos)
 		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.request.insert(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3, false)
+		requesterState.target(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3)
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3, false)
 		// Ghost the gold so the interface neither drains it as excess nor refills it past the order.
-		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3, false)
+		interfaceState.target(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 3)
 		// A separate source, same reasoning as testFilterFacingInterfaceCreatesInsertOnlyBoundary's own.
 		placeCreativePressureSource(interfacePos.above())
 
@@ -336,7 +336,7 @@ class SubnetBoundaryGameTest {
 		// Ghost the emeralds: the interface's own excess-drain would otherwise push them to the same
 		// destination, competing with the extraction hook and making "exactly 8 arrived" a race. A
 		// correct-before-ghost target makes drain a no-op and leaves extraction as the sole mover.
-		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.EMERALD)), 8, false)
+		interfaceState.target(ItemResource.of(ItemStack(Items.EMERALD)), 8)
 
 		val extractor = hookAt(extractorPos)
 		extractor.hooks.getOrPut(Direction.NORTH.name) { ExtractionHookType.createState() }
@@ -361,13 +361,13 @@ class SubnetBoundaryGameTest {
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
-		// A ghost target of 64 sets the stocking bar - see InterfaceHookState's own KDoc; an empty
-		// ghost row asks for nothing, so without this the interface (and its external suppliers)
-		// have no target to top up to.
-		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.NETHERITE_INGOT)), 64, false)
+		// Deliberately left with no targets of its own. A requester facing an interface is what
+		// decides that boundary's contents (see RequesterHookType), and this test is what pins that:
+		// the stocking below happens entirely off the requester's row.
 
 		val requester = hookAt(requesterPos)
-		requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() }
+		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.target(ItemResource.of(ItemStack(Items.NETHERITE_INGOT)), 64)
 		// A provider on the requester's own tile, facing sourcePos, gives RequestFulfillment
 		// something to actually pull the shortfall from - a plain chest by itself isn't a source
 		// until something opts it into being one (`docs/design/m3-warehouse-storage.md`).
@@ -381,7 +381,7 @@ class SubnetBoundaryGameTest {
 				"Expected the requester to have started pulling netherite ingots from its own source to supply the interface, got ${source.getItem(0)}"
 			}
 			assertTrue(interfaceState.stock.getAmount(0) == 64L) {
-				"Expected the interface's netherite slot to have been topped up to its ghost target (64), got ${interfaceState.stock.getAmount(0)}"
+				"Expected the interface's netherite slot to have been topped up to the requester's own target (64), got ${interfaceState.stock.getAmount(0)}"
 			}
 		}
 	}
@@ -636,7 +636,7 @@ class SubnetBoundaryGameTest {
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
-		interfaceState.ghosts.insert(ItemResource.of(ItemStack(Items.RAW_IRON)), 16, false)
+		interfaceState.target(ItemResource.of(ItemStack(Items.RAW_IRON)), 16)
 		placeCreativePressureSource(interfacePos.above())
 
 		val providerPipe = hookAt(providerPipePos)
@@ -652,8 +652,8 @@ class SubnetBoundaryGameTest {
 			assertTrue(stocked == 16L) {
 				"Expected the interface to have self-requisitioned 16 raw iron into its stock, got $stocked"
 			}
-			assertTrue(interfaceState.ghosts.getAmount(0) == 16L) {
-				"Expected the ghost target to have stayed at 16, got ${interfaceState.ghosts.getAmount(0)}"
+			assertTrue(interfaceState.targetAmounts[0] == 16L) {
+				"Expected the target to have stayed at 16, got ${interfaceState.targetAmounts[0]}"
 			}
 		}
 	}

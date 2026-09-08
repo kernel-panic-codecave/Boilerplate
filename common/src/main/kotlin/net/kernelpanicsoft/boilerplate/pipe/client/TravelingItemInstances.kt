@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.client
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import com.mojang.math.Axis
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.model.Mesh
@@ -83,7 +84,7 @@ class TravelingItemInstances(
 				setIdentityTransform()
 				translate(visualPos.x.toFloat(), visualPos.y.toFloat(), visualPos.z.toFloat())
 				translate(at.x.toFloat(), at.y.toFloat(), at.z.toFloat())
-				rotate(Axis.YP.rotationDegrees(gameTime * SPIN_DEGREES_PER_TICK))
+				rotate(Axis.YP.rotationDegrees(gameTime * BoilerplateConfig.Visuals.TravelingResources.spinDegreesPerTick))
 				// A crate keeps its upright and turns about it; a droplet has no upright to keep, so
 				// it goes over on every axis and sloshes with it - see WorldMeshMotion. Each extra
 				// axis runs at a rate that shares no small factor with the others, so the tumble
@@ -95,9 +96,9 @@ class TravelingItemInstances(
 					rotate(Axis.ZP.rotationDegrees(gameTime * TUMBLE_Z_DEGREES_PER_TICK + phase))
 					val wobble = gameTime * WOBBLE_RADIANS_PER_TICK + index * WOBBLE_PHASE_OFFSET
 					scale(
-						1f + WOBBLE_AMPLITUDE * sin(wobble),
-						1f + WOBBLE_AMPLITUDE * sin(wobble + 2f * PI.toFloat() / 3f),
-						1f + WOBBLE_AMPLITUDE * sin(wobble + 4f * PI.toFloat() / 3f),
+						1f + BoilerplateConfig.Visuals.TravelingResources.wobbleAmplitude * sin(wobble),
+						1f + BoilerplateConfig.Visuals.TravelingResources.wobbleAmplitude * sin(wobble + 2f * PI.toFloat() / 3f),
+						1f + BoilerplateConfig.Visuals.TravelingResources.wobbleAmplitude * sin(wobble + 4f * PI.toFloat() / 3f),
 					)
 				}
 				setChanged()
@@ -161,18 +162,13 @@ class TravelingItemInstances(
 
 		private val CENTER = Vec3(0.5, 0.5, 0.5)
 
-		private const val SPIN_DEGREES_PER_TICK = 4f
-
-		/** How far a droplet squashes and stretches, as a fraction of its own size - enough to read as liquid, not enough to look like it is breathing. */
-		private const val WOBBLE_AMPLITUDE = 0.14f
-
-		/** How fast the wobble cycles. Deliberately not a whole fraction of [SPIN_DEGREES_PER_TICK]'s own period, so the squash never lands on the same face twice running. */
+		/** How fast the wobble cycles. Deliberately not a whole fraction of [BoilerplateConfig.Visuals.TravelingResources.spinDegreesPerTick]'s own period, so the squash never lands on the same face twice running. */
 		private const val WOBBLE_RADIANS_PER_TICK = 0.55f
 
 		/** How far apart two droplets in one segment are pushed in the cycle, so they do not pulse in unison. */
 		private const val WOBBLE_PHASE_OFFSET = 1.7f
 
-		/** The two extra tumble axes, in degrees per tick. Deliberately unrelated to each other and to [SPIN_DEGREES_PER_TICK], so the three together never repeat on any short period. */
+		/** The two extra tumble axes, in degrees per tick. Deliberately unrelated to each other and to [BoilerplateConfig.Visuals.TravelingResources.spinDegreesPerTick], so the three together never repeat on any short period. */
 		private const val TUMBLE_X_DEGREES_PER_TICK = 2.7f
 		private const val TUMBLE_Z_DEGREES_PER_TICK = 1.9f
 

@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.entity
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.boilerplate.network.PipeContentsSyncPacket
@@ -109,7 +110,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 		val items = travelingItems
 		if (items.isNotEmpty()) refreshSpeedMultiplier(serverLevel)
-		val segmentSpeed = SEGMENT_SPEED * speedMultiplier
+		val segmentSpeed = (1f / BoilerplateConfig.Gameplay.Pipes.ticksPerSegment) * speedMultiplier
 		var index = 0
 		while (index < items.size) {
 			val item = items[index]
@@ -288,9 +289,10 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			speedMultiplier = 1f
 			return
 		}
-		val available = line.extract(PRESSURE_FOR_MAX_SPEED, true)
-		val fraction = (available.toDouble() / PRESSURE_FOR_MAX_SPEED).coerceIn(0.0, 1.0)
-		speedMultiplier = (1.0 + fraction * (MAX_SPEED_MULTIPLIER - 1.0)).toFloat()
+		val pressureForMaxSpeed = BoilerplateConfig.Gameplay.Pipes.pressureForMaxSpeed
+		val available = line.extract(pressureForMaxSpeed, true)
+		val fraction = (available.toDouble() / pressureForMaxSpeed).coerceIn(0.0, 1.0)
+		speedMultiplier = (1.0 + fraction * (BoilerplateConfig.Gameplay.Pipes.maxSpeedMultiplier - 1.0)).toFloat()
 	}
 
 	private fun jam(level: ServerLevel, pos: BlockPos, item: TravelingItem) {

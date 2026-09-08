@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.crafting.gui
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import earth.terrarium.common_storage_lib.resources.ResourceStack
@@ -50,7 +51,7 @@ class CraftingBufferScreen(private val menu: CraftingBufferMenu, playerInventory
 		LaunchedEffect(Unit) {
 			while (true) {
 				menu.requestStatus()
-				delay(STATUS_POLL_MILLIS.milliseconds)
+				delay(BoilerplateConfig.Visuals.Interface.craftingStatusPollMillis.milliseconds)
 			}
 		}
 		BoilerplateTheme {
@@ -73,7 +74,6 @@ class CraftingBufferScreen(private val menu: CraftingBufferMenu, playerInventory
 		private const val SIDE_COLUMN_WIDTH = 180
 		private const val CONTENT_WIDTH = 54 + 6 + SIDE_COLUMN_WIDTH
 		private const val BACKLOG_HEIGHT = 72
-		private const val STATUS_POLL_MILLIS = 250L
 	}
 }
 

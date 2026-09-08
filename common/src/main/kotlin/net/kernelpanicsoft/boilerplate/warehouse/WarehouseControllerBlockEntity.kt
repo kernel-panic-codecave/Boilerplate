@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import dev.architectury.registry.menu.ExtendedMenuProvider
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
@@ -391,7 +392,7 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 		val speed = effectiveGantrySpeed()
 		if (speed <= 0.0) return FALLBACK_ESTIMATE_TICKS
 		val gantryTicks = retrieveGantryBlocks(slot) / speed
-		val pipeTicks = retrievePipeHops(deliverTo) * (1.0 / PipeBlockEntity.SEGMENT_SPEED)
+		val pipeTicks = retrievePipeHops(deliverTo) * BoilerplateConfig.Gameplay.Pipes.ticksPerSegment.toDouble()
 		return (gantryTicks + pipeTicks).toInt()
 	}
 

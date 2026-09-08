@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.client
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock
@@ -33,7 +34,6 @@ object MultipartHighlightRenderer {
 	private const val RED = 0f
 	private const val GREEN = 0f
 	private const val BLUE = 0f
-	private const val ALPHA = 0.4f
 
 	/** See the class KDoc. Coordinates follow `renderHitOutline`'s own convention: world-space boxes minus the camera position, under the frame's rotation-only pose stack. */
 	@JvmStatic
@@ -56,7 +56,7 @@ object MultipartHighlightRenderer {
 		val part = block.targetedPart(state, level, pos, entity.eyePosition, hit.location) ?: return false
 		val shape = block.outlineShapeFor(part, state, level, pos)
 
-		LevelRenderer.renderShape(poseStack, consumer, shape, pos.x.toDouble() - camX, pos.y.toDouble() - camY, pos.z.toDouble() - camZ, RED, GREEN, BLUE, ALPHA)
+		LevelRenderer.renderShape(poseStack, consumer, shape, pos.x.toDouble() - camX, pos.y.toDouble() - camY, pos.z.toDouble() - camZ, RED, GREEN, BLUE, BoilerplateConfig.Visuals.Interface.highlightAlpha)
 		return true
 	}
 }

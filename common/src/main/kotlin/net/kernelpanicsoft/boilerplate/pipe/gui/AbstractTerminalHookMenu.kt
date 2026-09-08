@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import androidx.compose.runtime.mutableStateOf
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.minecraft.world.inventory.ClickType
@@ -280,7 +281,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * than dividing by zero.
 	 */
 	protected fun estimateTicks(pipeHops: Int, gantryBlocks: Double): Int {
-		val pipeTicks = pipeHops / (PipeBlockEntity.SEGMENT_SPEED * tile.speedMultiplier).toDouble()
+		val pipeTicks = pipeHops / ((1f / BoilerplateConfig.Gameplay.Pipes.ticksPerSegment) * tile.speedMultiplier).toDouble()
 		if (gantryBlocks <= 0.0) return pipeTicks.toInt()
 
 		val level = level as? ServerLevel ?: return pipeTicks.toInt()

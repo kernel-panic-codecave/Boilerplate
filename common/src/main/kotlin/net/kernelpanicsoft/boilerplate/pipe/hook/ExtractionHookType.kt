@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
@@ -62,7 +63,7 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 	 */
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: ExtractionHookState) {
 		state.ticksSinceExtraction++
-		if (state.ticksSinceExtraction < EXTRACTION_INTERVAL_TICKS) return
+		if (state.ticksSinceExtraction < BoilerplateConfig.Gameplay.Hooks.extractionIntervalTicks) return
 		state.ticksSinceExtraction = 0
 		tryExtract(level, pos, direction, tile, state)
 	}

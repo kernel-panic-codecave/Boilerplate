@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
@@ -40,7 +41,7 @@ open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : Hoo
 	 * regardless of which face the last hop approaches from. A finished crafting job never lands
 	 * here - see [advanceTerminalJobs]'s own KDoc.
 	 */
-	val output: ResourceStorage by resourceField(SLOT_COUNT, capacity = FLUID_INBOX_MILLIBUCKETS)
+	val output: ResourceStorage by resourceField(SLOT_COUNT, capacity = BoilerplateConfig.Gameplay.Capacities.terminalInboxMillibuckets)
 
 	/**
 	 * Where a withdrawal of [kind] should be delivered - [output] seen as that one kind, so a

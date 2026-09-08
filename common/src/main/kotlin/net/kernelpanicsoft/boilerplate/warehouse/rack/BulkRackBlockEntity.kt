@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.warehouse.rack
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import dev.architectury.registry.menu.ExtendedMenuProvider
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
@@ -47,7 +48,7 @@ class BulkRackBlockEntity(pos: BlockPos, state: BlockState) :
 	// UncappedItemStorage's own KDoc.
 	val storage: CommonStorage<ItemResource> = UncappedItemStorage(
 		maxRecords = RECORDS,
-		totalCapacity = CAPACITY,
+		totalCapacity = BoilerplateConfig.Gameplay.Capacities.bulkRackCapacity,
 		resources = { resources },
 		amounts = { amounts },
 		filter = { acceptsByFilter(it) }

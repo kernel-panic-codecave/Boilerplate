@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
@@ -35,7 +36,7 @@ class CraftingBufferEncasementState :
 	 * Tank's own tanks used to hold, inherited when that block was removed: a buffer is the only
 	 * place a cluster stages fluid now, so staging capacity should not have shrunk with it.
 	 */
-	val localStorage: ResourceStorage by resourceField(LOCAL_SLOTS, capacity = SLOT_MILLIBUCKETS)
+	val localStorage: ResourceStorage by resourceField(LOCAL_SLOTS, capacity = BoilerplateConfig.Gameplay.Capacities.craftingBufferMillibuckets)
 
 	/** Every registered kind, since this row holds whatever lands in it - see [CraftingCpuMemberState.localStorageFor]. */
 	override fun localStorageFor(kind: ResourceKind): CommonStorage<*>? = localStorage.viewOf(kind)

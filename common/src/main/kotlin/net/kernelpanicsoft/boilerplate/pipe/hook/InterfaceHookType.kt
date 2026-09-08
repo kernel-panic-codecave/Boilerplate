@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
@@ -105,7 +106,7 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: InterfaceHookState) {
 		state.ticksSinceManage++
-		if (state.ticksSinceManage < MANAGE_INTERVAL_TICKS) return
+		if (state.ticksSinceManage < BoilerplateConfig.Gameplay.Hooks.manageIntervalTicks) return
 		state.ticksSinceManage = 0
 		requisitionStock(level, pos, direction, state)
 		drainExcess(level, pos, direction, tile, state)

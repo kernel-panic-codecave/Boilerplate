@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.boilerplate.Boilerplate
@@ -64,7 +65,7 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: RequesterHookState) {
 		state.ticksSinceRequest++
-		if (state.ticksSinceRequest < REQUEST_INTERVAL_TICKS) return
+		if (state.ticksSinceRequest < BoilerplateConfig.Gameplay.Hooks.requestIntervalTicks) return
 		state.ticksSinceRequest = 0
 		tryRequest(level, pos, direction, state)
 	}
@@ -97,7 +98,7 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 		for ((resource, wanted) in state.namedTargets()) {
 			// Unbounded keeps asking for whatever the network will part with, rather than stopping at
 			// a number - the export-bus behaviour. Bounded stops at its own shortfall.
-			val shortfall = if (wanted == UNBOUNDED_STOCK) EXPORT_BATCH else wanted - held(resource)
+			val shortfall = if (wanted == UNBOUNDED_STOCK) BoilerplateConfig.Gameplay.Hooks.exportBatch else wanted - held(resource)
 			if (shortfall <= 0) continue
 			RequestFulfillment.request(level, pos, ResourceStack(resource, shortfall), neighborPos, face)
 		}

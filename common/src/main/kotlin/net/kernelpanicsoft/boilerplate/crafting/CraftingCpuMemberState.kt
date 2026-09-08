@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
@@ -137,10 +138,10 @@ abstract class CraftingCpuMemberState(defaultType: ResourceLocation) : Encasemen
 	}
 
 	/** Nonzero only while [activeJob] is running - an idle leader draining leftovers ([CraftingCpuRuntime.drainEverything]) isn't doing work pressure should scale, so it costs nothing. */
-	override val basePressureCost: Long get() = if (activeJob != null) BASE_PRESSURE_COST else 0
+	override val basePressureCost: Long get() = if (activeJob != null) BoilerplateConfig.Gameplay.Crafting.cpuBasePressureCost else 0
 
 	/** See [basePressureCost]. */
-	override val maxPressureDraw: Long get() = if (activeJob != null) MAX_PRESSURE_DRAW else 0
+	override val maxPressureDraw: Long get() = if (activeJob != null) BoilerplateConfig.Gameplay.Crafting.cpuMaxPressureDraw else 0
 
 	companion object {
 		private const val BASE_PRESSURE_COST = 10L

@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
@@ -89,7 +90,7 @@ class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExp
 	 * [exposedStorage] answers for any kind now, so there was nothing left for them to be dedicated
 	 * *for*.
 	 */
-	val stock: ResourceStorage by resourceField(SLOTS, capacity = FLUID_STOCK_MILLIBUCKETS)
+	val stock: ResourceStorage by resourceField(SLOTS, capacity = BoilerplateConfig.Gameplay.Capacities.interfaceStockMillibuckets)
 
 	@Suppress("UNCHECKED_CAST")
 	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource>? =

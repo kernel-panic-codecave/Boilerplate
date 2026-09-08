@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.client
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import com.mojang.blaze3d.vertex.PoseStack
 import dev.engine_room.flywheel.api.model.IndexSequence
 import dev.engine_room.flywheel.api.model.Mesh
@@ -85,14 +86,14 @@ object InstancedMeshes {
 	 * Applied once here rather than through the instance's transform every frame, because it never
 	 * changes for a given item. The trailing `-0.5` is vanilla's own recentre, which puts the model's
 	 * middle on the origin so a caller positions the item by its centre rather than by a corner; the
-	 * leading [ITEM_SCALE] is the outer scale the immediate-mode renderer used to apply *around*
+	 * leading [BoilerplateConfig.Visuals.TravelingResources.itemScale] is the outer scale the immediate-mode renderer used to apply *around*
 	 * that whole transform, baked in here so every mesh this object hands out is already at its
 	 * final world size and a caller only ever has to place and spin it.
 	 */
 	private fun buildItemMesh(itemStack: ItemStack): Mesh {
 		val model = Minecraft.getInstance().itemRenderer.getModel(itemStack, null, null, 0)
 		val pose = PoseStack()
-		pose.scale(ITEM_SCALE, ITEM_SCALE, ITEM_SCALE)
+		pose.scale(BoilerplateConfig.Visuals.TravelingResources.itemScale, BoilerplateConfig.Visuals.TravelingResources.itemScale, BoilerplateConfig.Visuals.TravelingResources.itemScale)
 		model.transforms.getTransform(ItemDisplayContext.GROUND).apply(false, pose)
 		pose.translate(-0.5, -0.5, -0.5)
 		val matrix = pose.last().pose()
@@ -159,7 +160,7 @@ object InstancedMeshes {
 			for (i in face.indices) {
 				val corner = face[i]
 				val point = MeshPoint(
-					corner.x() * DROPLET_RADIUS, corner.y() * DROPLET_RADIUS, corner.z() * DROPLET_RADIUS,
+					corner.x() * BoilerplateConfig.Visuals.TravelingResources.dropletRadius, corner.y() * BoilerplateConfig.Visuals.TravelingResources.dropletRadius, corner.z() * BoilerplateConfig.Visuals.TravelingResources.dropletRadius,
 					uvs[i].first, uvs[i].second, red, green, blue, alpha,
 				)
 				vertices += MeshVertex(point, normal.x(), normal.y(), normal.z())
@@ -237,12 +238,6 @@ object InstancedMeshes {
 			else corners
 		}.toTypedArray()
 	}
-
-	/** How far down an item model is scaled for transport - small enough to sit inside a pipe's own 6x6x6 core. */
-	private const val ITEM_SCALE = 0.4f
-
-	/** Radius of a fluid droplet in block units - deliberately smaller than an item's own scale, so a fluid reads as a droplet rather than a boulder. */
-	private const val DROPLET_RADIUS = 0.17f
 
 	private const val VERTEX_STRIDE_INTS = 8
 

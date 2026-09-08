@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import com.mojang.logging.LogUtils
 import dev.architectury.event.events.common.PlayerEvent
 import dev.architectury.event.events.common.TickEvent
@@ -55,6 +56,12 @@ object Boilerplate {
 	@JvmStatic
 	fun init() {
 		LOGGER.info("Boilerplate initializing")
+
+		// Before anything that might read a config value. Registers the specs and their load
+		// timings - the server one lands per-world at server start and is pushed to joining
+		// clients, the client one at client setup - and, where Cloth Config is present, the
+		// settings screen for both.
+		BoilerplateConfig.init()
 
 		Registrars.init()
 		TagsRegistry.init()

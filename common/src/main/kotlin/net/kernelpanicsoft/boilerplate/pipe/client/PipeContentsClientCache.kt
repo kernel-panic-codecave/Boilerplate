@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.client
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
@@ -96,7 +97,7 @@ object PipeContentsClientCache {
 	/** How far this entry's items have moved since the tick it was sampled on, at that segment's own speed. */
 	private fun advanceOf(entry: Entry, fractionalTick: Double): Float {
 		val elapsedTicks = (fractionalTick - entry.serverTick).coerceAtLeast(0.0)
-		return (elapsedTicks * PipeBlockEntity.SEGMENT_SPEED * entry.speedMultiplier).toFloat()
+		return (elapsedTicks * (1f / BoilerplateConfig.Gameplay.Pipes.ticksPerSegment) * entry.speedMultiplier).toFloat()
 	}
 
 	/**

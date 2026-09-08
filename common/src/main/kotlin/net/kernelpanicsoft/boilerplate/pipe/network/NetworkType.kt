@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.fluid.FluidApi
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.lookup.BlockLookup
@@ -312,7 +313,7 @@ object ItemNetworkType : ResourceNetworkType<ItemResource>(ItemResource::class.j
 
 	override val api: BlockLookup<CommonStorage<ItemResource>, Direction?> get() = ItemApi.BLOCK
 
-	override val extractionBatch: Long get() = ITEM_EXTRACTION_BATCH
+	override val extractionBatch: Long get() = BoilerplateConfig.Gameplay.Pipes.itemExtractionBatch
 
 	override fun onJam(level: ServerLevel, pos: BlockPos, stack: SResourceStack<ItemResource>) {
 		// Recoverable in principle - but only until it despawns, so it is worth saying out loud

@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
+import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.storage.base.StorageSlot
@@ -165,7 +166,7 @@ class PatternBufferIO(private val state: PatternProviderHookState) : CommonStora
 				if (pattern == Pattern.EMPTY) continue
 				val perRun = pattern.requiredInputs()[ResourceIdentity.of(resource)] ?: continue
 				val buffer = state.bufferFor(index)
-				val cap = perRun * PatternProviderHookState.MAX_BUFFERED_RUNS_PER_PATTERN
+				val cap = perRun * BoilerplateConfig.Gameplay.Hooks.patternBufferedRuns
 				val already = PatternProviderHookType.amountIn(buffer, resource)
 				if (already >= cap) continue
 				val nextRunBoundary = minOf(((already / perRun) + 1) * perRun, cap)

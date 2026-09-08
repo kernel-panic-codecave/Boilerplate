@@ -2,13 +2,13 @@ package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.network.RequesterStatusPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.gui.RequesterHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.boilerplate.crafting.amountIn
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
@@ -22,6 +22,7 @@ import net.minecraft.world.item.Item
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterContext
+import net.kernelpanicsoft.archie.util.rem
 
 /**
  * Periodically checks the attached (non-pipe) inventory against this hook's own [StockingRow] of
@@ -82,23 +83,23 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 		if (interfaceState != null && RequestFulfillment.sharesSubnet(level, pos, neighborPos)) return
 
 		val held: (ResourceComponent) -> Long = if (interfaceState != null) {
-			{ resource -> (resource as? ItemResource)?.let { amountHeld(interfaceState, it) } ?: 0L }
+			{ resource -> amountHeld(interfaceState, resource) }
 		} else {
-			val storage = ItemApi.BLOCK.find(level, neighborPos, face) ?: return
+			// Whatever the neighbour exposes of the resource's own kind - resolved per resource,
+			// since one row may name several kinds.
 			({ resource ->
-				var total = 0L
-				for (i in 0 until storage.size()) if (storage.getResource(i) == resource) total += storage.getAmount(i)
-				total
+				val kind = ResourceKindRegistry.forResource(resource)?.storage
+				val storage = kind?.find(level, neighborPos, face)
+				if (storage == null) 0L else amountIn(storage, resource)
 			})
 		}
 
 		for ((resource, wanted) in state.namedTargets()) {
-			val item = resource as? ItemResource ?: continue
 			// Unbounded keeps asking for whatever the network will part with, rather than stopping at
 			// a number - the export-bus behaviour. Bounded stops at its own shortfall.
-			val shortfall = if (wanted == UNBOUNDED_STOCK) EXPORT_BATCH else wanted - held(item)
+			val shortfall = if (wanted == UNBOUNDED_STOCK) EXPORT_BATCH else wanted - held(resource)
 			if (shortfall <= 0) continue
-			RequestFulfillment.request(level, pos, ResourceStack(item as ResourceComponent, shortfall), neighborPos, face)
+			RequestFulfillment.request(level, pos, ResourceStack(resource, shortfall), neighborPos, face)
 		}
 	}
 
@@ -123,13 +124,10 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
  * part-filled columns of it satisfy an order of their sum. Shared by the requester (deciding what to
  * send) and the interface (deciding what not to drain) so the two read the same number.
  */
-fun amountHeld(interfaceState: InterfaceHookState, resource: ItemResource): Long {
-	var total = 0L
-	for (i in 0 until interfaceState.stock.size()) {
-		val slot = interfaceState.stock[i]
-		if (slot.resource == resource) total += slot.amount
-	}
-	return total
+fun amountHeld(interfaceState: InterfaceHookState, resource: ResourceComponent): Long {
+	val kind = ResourceKindRegistry.forResource(resource) ?: return 0L
+	val stock = interfaceState.stockFor(kind) ?: return 0L
+	return amountIn(stock, resource)
 }
 
 /**

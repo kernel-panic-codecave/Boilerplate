@@ -111,6 +111,9 @@ abstract class PipeRouter<T : ResourceComponent> {
 
 	private val cache = HashMap<CacheKey<T>, List<BlockPos>?>()
 
+	/** The [RoutingDemand] version [cache]'s contents were computed under - see [findRoute]. */
+	private var cachedDemandVersion: Int = RoutingDemand.version
+
 	/**
 	 * Returns the hop path (pipes, ending with the accepting storage position) from [from], or
 	 * null if nothing on the network accepts [resource]. Destination blocks are probed *per face*:
@@ -131,6 +134,15 @@ abstract class PipeRouter<T : ResourceComponent> {
 		val manager = managerFor(level)
 		val networkId = manager.networkIdAt(from) ?: return null
 		val network = manager.network(networkId) ?: return null
+
+		// A cached route describes topology, and an [awaitsDelivery] destination's priority is job
+		// state - so a route cached while nothing was awaiting would otherwise go on being served
+		// after something started to, sending a craft's own output to storage. Dropping the cache
+		// on a demand change is what keeps the priority reachable at all; see [RoutingDemand].
+		if (cachedDemandVersion != RoutingDemand.version) {
+			cache.clear()
+			cachedDemandVersion = RoutingDemand.version
+		}
 
 		val excluded = exclude.toSet().takeIf { it.isNotEmpty() }
 		val key = CacheKey(networkId, network.version, resource, color, excluded)

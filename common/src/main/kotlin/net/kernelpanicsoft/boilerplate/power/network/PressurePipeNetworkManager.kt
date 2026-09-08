@@ -6,11 +6,11 @@ import net.kernelpanicsoft.boilerplate.pipe.network.AbstractPipeNetworkManager
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypesAt
 import net.kernelpanicsoft.boilerplate.power.PressureApi
 import net.kernelpanicsoft.boilerplate.power.block.PressurePipeBlock
+import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager.Companion.EQUALIZE_EPSILON
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
-import java.util.UUID
-import java.util.WeakHashMap
+import java.util.*
 
 /**
  * The pressure-pipe [AbstractPipeNetworkManager] - members are any position whose
@@ -54,9 +54,9 @@ class PressurePipeNetworkManager private constructor() : AbstractPipeNetworkMana
 		for (memberPos in network.members) {
 			// See PressureLine.find's identical note: a tank/compressor encasement is itself a
 			// member, so its own position is checked directly, not just its neighbors.
-			(PressureApi.find(level, memberPos, Direction.NORTH) as? ArchieEnergyStorage)?.let { endpoints += it }
+			(PressureApi.BLOCK.find(level, memberPos, Direction.NORTH) as? ArchieEnergyStorage)?.let { endpoints += it }
 			for (direction in Direction.entries) {
-				val storage = PressureApi.find(level, memberPos.relative(direction), direction.opposite) as? ArchieEnergyStorage ?: continue
+				val storage = PressureApi.BLOCK.find(level, memberPos.relative(direction), direction.opposite) as? ArchieEnergyStorage ?: continue
 				endpoints += storage
 			}
 		}

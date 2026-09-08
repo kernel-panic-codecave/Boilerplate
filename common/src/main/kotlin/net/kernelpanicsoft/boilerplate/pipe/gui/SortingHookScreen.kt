@@ -3,7 +3,7 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import androidx.compose.runtime.*
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import net.kernelpanicsoft.archie.gui.composables.basic.Label
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
 import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
@@ -19,6 +19,7 @@ import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.SimpleThemeState
 import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import net.kernelpanicsoft.boilerplate.network.UpdateFilterBatchPacket
 import net.kernelpanicsoft.boilerplate.network.UpdateSortingRoutingPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
@@ -59,6 +60,12 @@ class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inve
 	@Composable
 	fun content() {
 		var module by remember { mutableStateOf(menu.currentRouting()) }
+		var batch by remember { mutableStateOf(menu.batchSize()) }
+
+		fun updateBatch(next: Long) {
+			batch = next
+			BoilerplateNetworkChannel.toServer(UpdateFilterBatchPacket(menu.pos, menu.direction, next))
+		}
 
 		fun update(next: RoutingModule) {
 			module = next
@@ -68,10 +75,10 @@ class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inve
 		BoilerplateTheme {
 			ContainerPanel(contentWidth = contentWidth) {
 				Column(verticalArrangement = Arrangement.spacedBy(6)) {
-					Text(Component.literal("Filter"), dropShadow = false)
+					Label(Component.literal("Filter"))
 					Slots("filter")
 
-					Text(Component.literal("Mode"), dropShadow = false)
+					Label(Component.literal("Mode"))
 					RadioGroup(
 						options = listOf(
 							RadioOption(FilterMode.WHITELIST, Component.literal("Whitelist")),
@@ -82,7 +89,7 @@ class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inve
 					)
 
 					val priorityLabel = if (module.priority == RoutingModule.DEFAULT_ROUTE_PRIORITY) "Default Route" else module.priority.toString()
-					Text(Component.literal("Priority: $priorityLabel"), dropShadow = false)
+					Label(Component.literal("Priority: $priorityLabel"))
 					Slider(
 						value = (module.priority - PRIORITY_MIN).toFloat() / PRIORITY_RANGE,
 						onValueChange = { update(module.copy(priority = PRIORITY_MIN + (it * PRIORITY_RANGE).roundToInt())) },
@@ -90,7 +97,20 @@ class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inve
 						modifier = Modifier.width(contentWidth),
 					)
 
-					Text(Component.literal("Color"), dropShadow = false)
+					if (menu.supportsBatching()) {
+						// The filter already says *what* may pass; this says *how many at a time*, so a
+						// destination that consumes in fixed multiples is never handed a partial batch it
+						// cannot use. Dragging it below what is already buffered returns the surplus.
+						Label(Component.literal(if (batch <= 0L) "Batch: off" else "Batch: $batch"))
+						Slider(
+							value = batch.toFloat() / MAX_BATCH,
+							onValueChange = { updateBatch((it * MAX_BATCH).roundToInt().toLong()) },
+							steps = MAX_BATCH,
+							modifier = Modifier.width(contentWidth),
+						)
+					}
+
+					Label(Component.literal("Color"))
 					val theme = LocalTheme.current
 					val composableTheme = theme.getComposableTheme("radio")
 					val default = composableTheme.states[TextureStates.DEFAULT] as SimpleThemeState
@@ -113,6 +133,9 @@ class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inve
 	}
 
 	companion object {
+		/** Ceiling on the batch size; past a stack a buffer stops being a batch and becomes storage. */
+		private const val MAX_BATCH = 64
+
 		private const val PRIORITY_MIN = RoutingModule.DEFAULT_ROUTE_PRIORITY
 		private const val PRIORITY_MAX = 10
 		private const val PRIORITY_RANGE = PRIORITY_MAX - PRIORITY_MIN

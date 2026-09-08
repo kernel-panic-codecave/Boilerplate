@@ -21,6 +21,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ModConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionState
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.pipe.network.FluidNetworkManager
 import net.kernelpanicsoft.boilerplate.pipe.network.FluidNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemNetworkType
@@ -387,9 +388,9 @@ class FluidPipeNetworkGameTest {
 		// registered this position into the fluid network, and setBlock runs no placement logic.
 		runAfterDelay(5) {
 			// Inserted the way a machine or another mod's pipe would - through the exposed face.
-			val accepted = state.exposedFluidStorage(tile).insert(water, poured, false)
+			val accepted = state.exposedFluidStorage(tile)!!.insert(water, poured, false)
 			assertTrue(accepted == poured) { "Expected the interface to accept the whole insert for routing, got $accepted" }
-			assertTrue(state.fluidStock.getAmount(0) == 0L) {
+			assertTrue(fluidHeld(state) == 0L) {
 				"Expected nothing to be staged in the interface's own buffer - a pass-through routes, it does not hold"
 			}
 		}
@@ -416,10 +417,23 @@ class FluidPipeNetworkGameTest {
 		// Ticked first for the same reason as the routing test above, so this genuinely exercises
 		// "the network has nowhere to put it" rather than "the segment isn't in a network yet".
 		runAfterDelay(5) {
-			val accepted = state.exposedFluidStorage(tile).insert(water, FluidAmounts.toPlatformAmount(1_000L), false)
+			val accepted = state.exposedFluidStorage(tile)!!.insert(water, FluidAmounts.toPlatformAmount(1_000L), false)
 			assertTrue(accepted == 0L) { "Expected an unroutable insert to be refused outright, got $accepted" }
-			assertTrue(state.fluidStock.getAmount(0) == 0L) { "Expected a refused insert to stage nothing" }
+			assertTrue(fluidHeld(state) == 0L) { "Expected a refused insert to stage nothing" }
 			succeed()
 		}
 	}
 }
+
+/**
+ * Total fluid sitting in [state]'s own stock row, across every column.
+ *
+ * By column rather than by slot 0: an interface's stock is one mixed row now
+ * ([InterfaceHookState.stock]), so which column a fluid lands in depends on what else is already
+ * there - the assertion these tests want is "nothing at all was staged".
+ */
+private fun fluidHeld(state: InterfaceHookState): Long {
+	val fluids = state.stockFor(ResourceKindRegistry.Fluid) ?: return 0L
+	return (0 until fluids.size()).sumOf { if (fluids.getResource(it).isBlank) 0L else fluids.getAmount(it) }
+}
+

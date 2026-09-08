@@ -23,16 +23,16 @@ import org.joml.Quaternionf
 import java.util.function.Consumer
 
 /**
- * Renders a [MultipartBlockEntity]'s pipe body and attached hooks through Flywheel instead of
- * [MultipartTravelingItemRenderer]'s immediate-mode `tesselateBlock` calls - the point being
- * translucency: a [PipeBlock.isTranslucent] pipe type's body (a hook promoted from
- * [net.kernelpanicsoft.boilerplate.pipe.block.GlassPipeBlock]) submitted through the ordinary
- * block-entity buffer never gets the same reliable back-to-front sorting a ordinary chunk's own
- * translucent mesh does, which is exactly the kind of instanced-translucency problem Flywheel's
- * own engine is built to handle correctly. [MultipartTravelingItemRenderer] still runs alongside this
- * (registered with `neverSkipVanillaRender()`) for the one thing Flywheel isn't a good fit for
- * here - the traveling-item overlay, an arbitrary, frequently-changing floating icon per in-flight
- * item, not a good match for an instancing engine built around comparatively stable geometry.
+ * Renders a [MultipartBlockEntity]'s pipe body, its attached hooks, and whatever it is currently
+ * carrying - everything about the block, since there is no vanilla block entity renderer for any of
+ * it any more.
+ *
+ * Instancing matters most for translucency: a [PipeBlock.isTranslucent] pipe type's body (a hook
+ * promoted from [net.kernelpanicsoft.boilerplate.pipe.block.GlassPipeBlock]) submitted through the
+ * ordinary block-entity buffer never gets the same reliable back-to-front sorting an ordinary
+ * chunk's own translucent mesh does, which is exactly the kind of instanced-translucency problem
+ * Flywheel's engine is built to handle correctly. The cargo rides along in [TravelingItemInstances],
+ * shared with [GlassPipeVisual].
  *
  * [tile.blockState][net.minecraft.world.level.block.entity.BlockEntity.getBlockState] (read live
  * each check, not the copy [AbstractBlockEntityVisual] itself captured at construction) is what
@@ -72,14 +72,41 @@ class MultipartBlockEntityVisual(
 	private var encasementInstance: TransformedInstance? = null
 	private var lastEncasementSignature: BlockState? = null
 
+	/** What this pipe is currently carrying - see [TravelingItemInstances], shared with [GlassPipeVisual]. */
+	private val cargo = TravelingItemInstances(visualizationContext, pos, visualPos)
+
 	init {
 		updateInstances()
+		updateCargo(partialTick)
 		updateLight(partialTick)
 	}
 
 	override fun update(partialTick: Float) {
 		updateInstances()
+		updateCargo(partialTick)
 		updateLight(partialTick)
+	}
+
+	/**
+	 * Contents come from [PipeContentsClientCache] rather than the block entity's own list, so cargo
+	 * interpolates smoothly between the server's periodic syncs instead of stepping once per packet.
+	 */
+	private fun updateCargo(partialTick: Float) {
+		val level = blockEntity.level ?: return
+		if (!showsTravelingItems()) {
+			cargo.delete()
+			return
+		}
+		val gameTime = level.gameTime + partialTick
+		cargo.update(PipeContentsClientCache.get(pos, gameTime.toDouble()), gameTime)
+	}
+
+	/** Whether this multipart's own promoted pipe type shows what it carries - a solid pipe hides it. */
+	private fun showsTravelingItems(): Boolean {
+		val pipeBlockId = blockEntity.pipeBlockId
+		if (pipeBlockId == MultipartBlockEntity.NONE) return false
+		val pipeBlock = BuiltInRegistries.BLOCK.get(pipeBlockId) as? PipeBlock ?: BlockRegistry.Pipe
+		return pipeBlock.showsTravelingItems
 	}
 
 	private fun updateInstances() {
@@ -182,6 +209,7 @@ class MultipartBlockEntityVisual(
 		pipeInstance?.let { relight(it) }
 		encasementInstance?.let { relight(it) }
 		hookInstances.values.forEach { relight(it) }
+		cargo.active.forEach { relight(it) }
 	}
 
 	override fun _delete() {
@@ -191,6 +219,7 @@ class MultipartBlockEntityVisual(
 		encasementInstance = null
 		hookInstances.values.forEach(Instance::delete)
 		hookInstances.clear()
+		cargo.delete()
 	}
 
 	override fun collectCrumblingInstances(consumer: Consumer<Instance?>) {
@@ -201,6 +230,7 @@ class MultipartBlockEntityVisual(
 
 	private fun beginFrame(context: DynamicVisual.Context) {
 		updateInstances()
+		updateCargo(context.partialTick())
 		updateLight(context.partialTick())
 	}
 

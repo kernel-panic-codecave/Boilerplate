@@ -32,6 +32,7 @@ loom {
 			name = "Minecraft Client"
 			source(sourceSets.main.get())
 			vmArg("-XX:+AllowEnhancedClassRedefinition")
+			property("devauth.enabled", "true")
 		}
 		getByName("server") {
 			name = "Minecraft Server"
@@ -83,15 +84,20 @@ dependencies {
 	modLocalRuntime(libs.archie.gametest.fabric)
 
 	modCompileOnly(libs.archie.datagen.fabric)
+
+	// JEI's fluid ingredient type is loader-specific, so the converter that names it has to be
+	// compiled here - see JeiResourceStacks.
+	modCompileOnly(libs.jei.fabric)
 	modLocalRuntime(libs.archie.datagen.fabric)
 
 	when (rootProject.property("recipe_viewer") as? String)
 	{
 		"jei" -> modLocalRuntime(libs.jei.fabric)
 		"rei" -> modLocalRuntime(libs.rei.fabric)
-		"emi" -> {modLocalRuntime(libs.emi.fabric); modLocalRuntime(libs.jei.fabric)}
+		"emi" -> modLocalRuntime(libs.emi.fabric)
 	}
 
+	modLocalRuntime(libs.devauth.fabric)
 
 	modLocalRuntime("curse.maven:nbtedit-678133:6125442")
 

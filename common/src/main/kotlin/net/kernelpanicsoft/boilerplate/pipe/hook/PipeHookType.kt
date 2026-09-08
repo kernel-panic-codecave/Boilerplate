@@ -63,7 +63,7 @@ abstract class PipeHookType<S : HookHolderState> : PipeAttachmentType<S>() {
 
 	/**
 	 * This hook's own collision shape, one entry per face it could be attached to - independent of
-	 * [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.armShapes] (the pipe body's own,
+	 * [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock.ARM_SHAPES] (the pipe body's own,
 	 * separately-sized cross-section) since a hook's physical model doesn't necessarily match the
 	 * pipe it's attached to. Defaults to [makeShape]'s Blockbench-exported north-facing box cluster,
 	 * carried onto every other face by [rotatedShape] - the shape every hook used before any of them

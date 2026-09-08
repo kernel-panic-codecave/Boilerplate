@@ -21,6 +21,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.minecraft.core.BlockPos
@@ -159,8 +160,8 @@ class SubnetBoundaryGameTest {
 			val sources = RequestFulfillment.reachableProviders(level as ServerLevel, absolutePos(providerPos))
 			val interfaceSource = sources.firstOrNull { it.hookState === interfaceState }
 			assertTrue(interfaceSource != null) { "Expected the interface's own hook to register as a reachable provider source, got $sources" }
-			assertTrue(interfaceSource!!.storage(level as ServerLevel)?.getAmount(0) == 7L) {
-				"Expected the interface source's own storage() to read its stock directly, got ${interfaceSource.storage(level as ServerLevel)}"
+			assertTrue(interfaceSource!!.storage(level as ServerLevel, ResourceKindRegistry.Item)?.getAmount(0) == 7L) {
+				"Expected the interface source's own storage() to read its stock directly, got ${interfaceSource.storage(level as ServerLevel, ResourceKindRegistry.Item)}"
 			}
 		}
 	}
@@ -406,11 +407,11 @@ class SubnetBoundaryGameTest {
 			// until it is actually accepted makes the test robust to registration timing instead of
 			// freezing a single runAfterDelay insert at a rejected 0.
 			if (accepted == 0L) {
-				accepted = interfaceState.exposedItemStorage(interfaceTile)
+				accepted = interfaceState.exposedItemStorage(interfaceTile)!!
 					.insert(ItemResource.of(ItemStack(Items.EMERALD)), 5, false)
 			}
 			if (slotAccepted == 0L) {
-				slotAccepted = interfaceState.exposedItemStorage(interfaceTile)
+				slotAccepted = interfaceState.exposedItemStorage(interfaceTile)!!
 					.get(0).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 7, false)
 			}
 			assertTrue(accepted == 5L) { "Expected the machine's storage insert to have been fully accepted, got $accepted" }
@@ -440,7 +441,7 @@ class SubnetBoundaryGameTest {
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 
-		val storage = interfaceState.exposedItemStorage(interfaceTile)
+		val storage = interfaceState.exposedItemStorage(interfaceTile)!!
 		val accepted = storage.insert(ItemResource.of(ItemStack(Items.EMERALD)), 5, false)
 		val slotAccepted = storage.get(0).insert(ItemResource.of(ItemStack(Items.DIAMOND)), 7, false)
 

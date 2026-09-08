@@ -42,7 +42,7 @@ object WarehouseDefragPlanner {
 			for (source in sorted.drop(1)) {
 				if (!level.hasChunk(source.pos.x shr 4, source.pos.z shr 4)) continue
 				val absorberStorage = storageKind.find(level, absorber.pos, absorber.direction) ?: continue
-				val room = storageKind.insert(absorberStorage, resource, source.amount, true)
+				val room = storageKind.roomFor(absorberStorage, resource, source.amount)
 				if (room <= 0) continue
 				jobs += GantryJob.Move(source, absorber.pos, absorber.direction, ResourceStack(resource, room))
 			}

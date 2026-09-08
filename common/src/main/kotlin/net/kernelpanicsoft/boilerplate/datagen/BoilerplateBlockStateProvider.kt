@@ -36,7 +36,7 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
  * [net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock]'s own connection-driven
  * `"multipart"` body (a real, player-visible block auto-placed as the gantry frame), and the
  * placeholder `gantry_head` model
- * [net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerBlockEntityRenderer]
+ * [net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual]
  * looks up directly (registered as an [net.kernelpanicsoft.boilerplate.registry.ItemRegistry]
  * item purely so it bakes, not because it's player-obtainable - the gantry head is always a
  * dynamic render, never a placed block), the three plain-cube rack block types

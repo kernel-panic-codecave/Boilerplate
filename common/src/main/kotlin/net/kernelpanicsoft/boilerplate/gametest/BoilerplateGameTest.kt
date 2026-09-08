@@ -5,8 +5,6 @@ import net.kernelpanicsoft.archie.gametest.AGameTestEventObject
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementState
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType
-import net.kernelpanicsoft.boilerplate.crafting.CraftingTankEncasementType
-import net.kernelpanicsoft.boilerplate.crafting.CraftingTankEncasementState
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.pipe.hook.ExtractionHookType
@@ -55,30 +53,6 @@ internal fun GameTestHelper.placeCraftingBuffer(pos: BlockPos): MultipartBlockEn
 /** The Crafting Buffer encasement on a segment a test already knows carries one - see [placeCraftingBuffer]. */
 internal val MultipartBlockEntity.craftingBuffer: CraftingBufferEncasementState
 	get() = encasement.value as CraftingBufferEncasementState
-
-/**
- * Places a pipe segment at [pos] wrapped in a Crafting Tank encasement - the fluid-holding member of
- * a Crafting CPU cluster ([net.kernelpanicsoft.boilerplate.crafting.CraftingTankEncasementType]).
- * The exact counterpart of [placeCraftingBuffer], and carries the same `setBlock` caveats it
- * documents.
- *
- * The same plain [BlockRegistry.Pipe] a buffer sits on: one pipe kind serves both the item and the
- * fluid network, so a mixed cluster is an ordinary run of pipe, not two parallel ones.
- */
-internal fun GameTestHelper.placeCraftingTank(pos: BlockPos): MultipartBlockEntity {
-	setBlock(pos, BlockRegistry.Multipart.defaultBlockState())
-	val tile = getBlockEntity(pos) as MultipartBlockEntity
-	tile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
-	val state = CraftingTankEncasementType.createState()
-	tile.encasement.value = state
-	CraftingTankEncasementType.onAttached(level, tile.blockPos, tile, state)
-	level.setBlock(tile.blockPos, Block.updateFromNeighbourShapes(level.getBlockState(tile.blockPos), level, tile.blockPos), Block.UPDATE_ALL)
-	return tile
-}
-
-/** The Crafting Tank encasement on a segment a test already knows carries one - see [placeCraftingTank]. */
-internal val MultipartBlockEntity.craftingTank: CraftingTankEncasementState
-	get() = encasement.value as CraftingTankEncasementState
 
 /**
  * Sets column [index] of a [StockingRow] to [amount] of [resource] - the one line a test needs to
@@ -153,6 +127,7 @@ internal object BoilerplateGameTest : AGameTestEventObject(Boilerplate.MOD) {
 internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 	server {
 		register<PipeNetworkGameTest>()
+		register<PipePassThroughGameTest>()
 		register<FluidPipeNetworkGameTest>()
 		register<PipeContentsHandoffGameTest>()
 		register<SpectatorMenuGameTest>()
@@ -178,6 +153,10 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<CraftingCpuManagerGameTest>()
 		register<CraftingBufferGameTest>()
 		register<CraftingBufferMultiStepGameTest>()
+		register<CraftingCpuRoutePriorityGameTest>()
+		register<CraftingTableMultiRunGameTest>()
+		register<CraftingStockedIntermediateGameTest>()
+		register<TerminalContainerTransferGameTest>()
 		register<CraftingBufferVanillaTableGameTest>()
 		register<CraftingBufferSharedHookGameTest>()
 		register<CraftingBufferBacklogGameTest>()
@@ -192,12 +171,14 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<PatternTerminalHookGameTest>()
 		register<CraftingBufferJobGameTest>()
 		register<CraftingCpuPushTargetGameTest>()
-		register<CraftingTankGameTest>()
+		register<CraftingFluidStagingGameTest>()
 		register<FluidPatternGameTest>()
 		register<WarehouseFluidGameTest>()
 		register<WarehouseIndexSnapshotGameTest>()
 		register<RequesterHookStatusGameTest>()
 		register<StockingRowGameTest>()
+		register<InterfaceCapacityGameTest>()
+		register<FilterBatchGameTest>()
 		register<ItemIconGameTest>()
 	}
 }

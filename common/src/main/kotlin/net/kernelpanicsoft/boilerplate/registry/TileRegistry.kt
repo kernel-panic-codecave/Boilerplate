@@ -1,32 +1,39 @@
 package net.kernelpanicsoft.boilerplate.registry
 
-import dev.architectury.registry.client.rendering.BlockEntityRendererRegistry
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.transfer.exposeEnergyStorage
 import net.kernelpanicsoft.archie.transfer.exposeFluidStorage
 import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.archie.util.blockEntityType
+import net.kernelpanicsoft.archie.util.onClient
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
+import net.kernelpanicsoft.boilerplate.network.ResourceKind
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackFluidStorageExposer
+import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FluidStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer
+import net.kernelpanicsoft.boilerplate.pipe.client.GlassPipeVisual
 import net.kernelpanicsoft.boilerplate.pipe.client.MultipartBlockEntityVisual
-import net.kernelpanicsoft.boilerplate.pipe.client.MultipartTravelingItemRenderer
-import net.kernelpanicsoft.boilerplate.pipe.client.TravelingItemBlockEntityRenderer
 import net.kernelpanicsoft.boilerplate.pipe.entity.GlassPipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.power.*
 import net.kernelpanicsoft.boilerplate.power.entity.CreativePressureSourceBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerBlockEntityRenderer
 import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual
 import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
+import net.kernelpanicsoft.boilerplate.network.exposeResourceStorage
+import net.kernelpanicsoft.boilerplate.pipe.attachment.exposedStorageFor
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import net.minecraft.core.Direction
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
 
@@ -38,63 +45,9 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 		}
 	}
 
-	/**
-	 * One [MultipartBlockEntity] can carry up to six independent hooks, so a query with a real
-	 * [direction] (the caller knows exactly which face it means - see
-	 * [net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem.targetFace]'s own KDoc for how
-	 * that survives delivery) always checks that specific face's own hook first - any
-	 * [net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer] hook or encasement
-	 * state answers here without this selector needing to know its concrete type; see that
-	 * interface's own KDoc for how a new exposing type opts in. A face-less match falls through to
-	 * the whole tile's own encasement, then to any
-	 * [net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer] hook on any
-	 * face (first match) - the direction [exposeCommonItemStorage] passes is ordinarily whichever
-	 * neighboring pipe segment an item is arriving *from* (pipe topology, unrelated to which face
-	 * actually carries the hook in question), so most callers still don't have a specific face to
-	 * offer; the fallback keeps those working. Only
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState] opts out of the fallback -
-	 * see [FallbackItemStorageExposer]'s own KDoc for why (guessing wrong there means silently
-	 * crossing a subnet boundary meant to stay isolated).
-	 *
-	 * The encasement check sits between those two hook tiers deliberately: after a hook matched on
-	 * the query's own [direction], but ahead of the face-less hook fallback. An encasement has no
-	 * face to mismatch on, so it's the one unambiguous answer for a direction-less query, and (for
-	 * the Crafting CPU case specifically) a job's own pull-back must not be diverted into a pattern
-	 * buffer that merely happens to share the segment.
-	 *
-	 * [exposePressureStorage] is the equivalent lookup for
-	 * [net.kernelpanicsoft.boilerplate.power.PressureStorageExposer] encasements (the tank/
-	 * compressor) - simpler, since only the whole-segment encasement can ever expose pressure, no
-	 * per-hook/fallback tiers needed.
-	 */
-	val Multipart: BlockEntityType<MultipartBlockEntity> by register("hook") {
+	val Multipart: BlockEntityType<MultipartBlockEntity> by register("multipart") {
 		blockEntityType(::MultipartBlockEntity) {
 			add(BlockRegistry.Multipart)
-		}
-	}.apply {
-		exposeItemStorage { tile, direction ->
-			val hookAtFace = direction?.let { tile.hooks[it.name] }
-			(hookAtFace as? ItemStorageExposer)?.exposedItemStorage(tile)
-				?: (tile.encasement.value as? ItemStorageExposer)?.exposedItemStorage(tile)
-				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackItemStorageExposer)?.exposedItemStorage(tile) }
-		}
-		exposeFluidStorage { tile, direction ->
-			val hookAtFace = direction?.let { tile.hooks[it.name] }
-			(hookAtFace as? FluidStorageExposer)?.exposedFluidStorage(tile)
-				?: (tile.encasement.value as? FluidStorageExposer)?.exposedFluidStorage(tile)
-				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackFluidStorageExposer)?.exposedFluidStorage(tile) }
-		}
-		exposePressureStorage { tile, direction ->
-			val hookAtFace = direction?.let { tile.hooks[it.name] }
-			(hookAtFace as? PressureStorageExposer)?.exposedPressureStorage(tile)
-				?: (tile.encasement.value as? PressureStorageExposer)?.exposedPressureStorage(tile)
-				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackPressureStorageExposer)?.exposedPressureStorage(tile) }
-		}
-		exposeEnergyStorage { tile, direction ->
-			val hookAtFace = direction?.let { tile.hooks[it.name] }
-			(hookAtFace as? EnergyStorageExposer)?.exposedEnergyStorage(tile)
-				?: (tile.encasement.value as? EnergyStorageExposer)?.exposedEnergyStorage(tile)
-				?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackEnergyStorageExposer)?.exposedEnergyStorage(tile) }
 		}
 	}
 
@@ -104,54 +57,30 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 		}
 	}
 
-	/**
-	 * [exposeItemStorage] is chained here, on the raw `RegistrySupplier` [register] returns, rather
-	 * than on this property once resolved - unlike Fabric, NeoForge's `RegistrySupplier.get()`
-	 * throws if called before the entry is actually bound, which [Boilerplate.init] calling
-	 * straight after [init] (still inside `FMLConstructModEvent`) is too early for. Chaining on the
-	 * supplier instead defers via `RegistrySupplier.listen(...)`, which waits for the entry to
-	 * actually register - confirmed the hard way via a `runGametest` crash on NeoForge specifically.
-	 */
 	val WarehouseController: BlockEntityType<WarehouseControllerBlockEntity> by register("warehouse_controller") {
 		blockEntityType(::WarehouseControllerBlockEntity) {
 			add(BlockRegistry.WarehouseController)
 		}
-	}.apply {
-		exposeItemStorage(WarehouseControllerBlockEntity::inboundBuffer)
-		// The fluid twin. A warehouse indexes and moves fluids like anything else now, so it has to
-		// be *reachable* by the fluid network too - without this the controller exposed no fluid
-		// capability at all and the router could never see it as a destination.
-		exposeFluidStorage { tile, _ -> tile.inboundFluidBuffer }
 	}
 
 	val GeneralRack: BlockEntityType<GeneralRackBlockEntity> by register("general_rack") {
 		blockEntityType(::GeneralRackBlockEntity) {
 			add(BlockRegistry.GeneralRack)
 		}
-	}.apply { exposeItemStorage(GeneralRackBlockEntity::storage) }
+	}
 
-	/** Custom [net.kernelpanicsoft.boilerplate.warehouse.rack.UncappedItemStorage], not an [net.kernelpanicsoft.archie.transfer.ArchieItemStorage] - exposed via [exposeCommonItemStorage] rather than Archie's own `exposeItemStorage`, which is fixed to that one concrete type. */
 	val BulkRack: BlockEntityType<BulkRackBlockEntity> by register("bulk_rack") {
 		blockEntityType(::BulkRackBlockEntity) {
 			add(BlockRegistry.BulkRack)
 		}
-	}.apply { exposeItemStorage(BulkRackBlockEntity::storage) }
+	}
 
-	/** See [BulkRack]'s identical [exposeCommonItemStorage] note. */
 	val UnstackableRack: BlockEntityType<UnstackableRackBlockEntity> by register("unstackable_rack") {
 		blockEntityType(::UnstackableRackBlockEntity) {
 			add(BlockRegistry.UnstackableRack)
 		}
-	}.apply { exposeItemStorage(UnstackableRackBlockEntity::storage) }
+	}
 
-	/**
-	 * Its own [BlockEntityType] registration (rather than reusing [Pipe]'s), even though both
-	 * instantiate the same [PipeBlockEntity] class - vanilla's "valid blocks" set is per-
-	 * [BlockEntityType], not per-class, and this keeps the two pipe kinds independently
-	 * queryable/addressable. An explicit factory lambda rather than a bare `::PipeBlockEntity`
-	 * reference: that resolves to [PipeBlockEntity]'s own 2-arg secondary constructor, which is
-	 * hardcoded to [Pipe] - this type needs the 3-arg primary constructor instead, naming itself.
-	 */
 	val PressurePipe: BlockEntityType<PipeBlockEntity> by register("pressure_pipe") {
 		blockEntityType({ pos, state -> PipeBlockEntity(PressurePipe, pos, state) }) {
 			add(BlockRegistry.PressurePipe)
@@ -162,28 +91,94 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 		blockEntityType(::FluidTankBlockEntity) {
 			add(BlockRegistry.FluidTank)
 		}
-	}.apply {
-		exposeFluidStorage { tile -> tile.storage }
 	}
 
 	val CreativePressureSource: BlockEntityType<CreativePressureSourceBlockEntity> by register("creative_pressure_source") {
 		blockEntityType(::CreativePressureSourceBlockEntity) {
 			add(BlockRegistry.CreativePressureSource)
 		}
-	}.apply {
-		exposePressureStorage { tile -> tile.pressure }
 	}
 
-	override fun initClient() {
-		SimpleBlockEntityVisualizer.builder(Multipart)
-			.factory(::MultipartBlockEntityVisual)
-			.neverSkipVanillaRender()
-			.apply()
-		BlockEntityRendererRegistry.register(Multipart, ::MultipartTravelingItemRenderer)
-		BlockEntityRendererRegistry.register(GlassPipe, ::TravelingItemBlockEntityRenderer)
-		SimpleBlockEntityVisualizer.builder(WarehouseController)
-			.factory(::WarehouseControllerVisual)
-			.apply()
-		BlockEntityRendererRegistry.register(WarehouseController, ::WarehouseControllerBlockEntityRenderer)
+	override fun init() {
+		super.init()
+		listen {
+			Multipart.apply {
+				// Every registered kind at once, through the one resolution they all share - not a
+				// hand-written lambda per kind. That is what makes a kind registered by a *loader*
+				// (chemicals, on NeoForge) reachable from the outside without a registration of its
+				// own: it used to need one, and the two it did not have were exactly the two bugs
+				// that followed. Safe to enumerate the registry here because `listen` runs after
+				// every kind has registered, which is not true of `init` itself.
+				exposeResourceStorage { tile, direction, kind -> tile.exposedStorageFor<ResourceComponent>(kind, direction) }
+				exposePressureStorage { tile, direction ->
+					val hookAtFace = direction?.let { tile.hooks[it.name] }
+					(hookAtFace as? PressureStorageExposer)?.exposedPressureStorage(tile)
+						?: (tile.encasement.value as? PressureStorageExposer)?.exposedPressureStorage(tile)
+						?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackPressureStorageExposer)?.exposedPressureStorage(tile) }
+				}
+				exposeEnergyStorage { tile, direction ->
+					val hookAtFace = direction?.let { tile.hooks[it.name] }
+					(hookAtFace as? EnergyStorageExposer)?.exposedEnergyStorage(tile)
+						?: (tile.encasement.value as? EnergyStorageExposer)?.exposedEnergyStorage(tile)
+						?: tile.hooks.firstNotNullOfOrNull { (it.value as? FallbackEnergyStorageExposer)?.exposedEnergyStorage(tile) }
+				}
+			}
+
+			// A controller's staging buffer for every kind it can hold, on every face - the twin of
+			// the Multipart registration above, and the reason a chemical delivery can find one.
+			WarehouseController.exposeResourceStorage { tile, _, kind -> tile.inboundFor<ResourceComponent>(kind) }
+
+			// A plain pipe has no hooks to consult - every face of it is a pass-through, which is the
+			// whole point: a machine's own auto-output should reach the network by being pointed at
+			// a pipe, with no hook in between. See PassThroughStorage.
+			@Suppress("UNCHECKED_CAST")
+			Pipe.apply {
+				exposeItemStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Item) as CommonStorage<ItemResource>? }
+				exposeFluidStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Fluid) as CommonStorage<FluidResource>? }
+			}
+			@Suppress("UNCHECKED_CAST")
+			GlassPipe.apply {
+				exposeItemStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Item) as CommonStorage<ItemResource>? }
+				exposeFluidStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Fluid) as CommonStorage<FluidResource>? }
+			}
+
+			GeneralRack.exposeItemStorage(GeneralRackBlockEntity::storage)
+			BulkRack.exposeItemStorage(BulkRackBlockEntity::storage)
+			UnstackableRack.exposeItemStorage(UnstackableRackBlockEntity::storage)
+			FluidTank.exposeFluidStorage(FluidTankBlockEntity::storage)
+
+			CreativePressureSource.exposePressureStorage(CreativePressureSourceBlockEntity::pressure)
+
+			onClient {
+				SimpleBlockEntityVisualizer.builder(Multipart)
+					.factory(::MultipartBlockEntityVisual)
+					.apply()
+				SimpleBlockEntityVisualizer.builder(GlassPipe)
+					.factory(::GlassPipeVisual)
+					.apply()
+				SimpleBlockEntityVisualizer.builder(WarehouseController)
+					.factory(::WarehouseControllerVisual)
+					.apply()
+			}
+		}
 	}
+}
+
+/**
+ * The pass-through [kind] sees on [direction] of [tile] - what a face with nothing more specific to
+ * offer presents, so a machine pushing at a pipe reaches the network.
+ *
+ * A hook that exposes a storage of its own answers *instead* of this, and so is responsible for
+ * presenting a pass-through itself if a machine should be able to push at its face - see
+ * [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState] and
+ * [net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState], which both do.
+ *
+ * `null` for a direction-less query. A pass-through has to know which side it was pushed from, both
+ * to keep the resource from bouncing straight back into the pusher and to start the delivery
+ * travelling the right way; "some face, unspecified" cannot answer either. Every real push names a
+ * side.
+ */
+private fun passThroughFace(tile: PipeBlockEntity, direction: Direction?, kind: ResourceKind): CommonStorage<*>? {
+	val face = direction ?: return null
+	return PassThroughStorage.of(tile, face, kind)
 }

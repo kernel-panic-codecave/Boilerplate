@@ -7,6 +7,7 @@ import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
 import net.kernelpanicsoft.boilerplate.power.PressureApi
 import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
 import net.kernelpanicsoft.boilerplate.registry.TileRegistry
+import net.kernelpanicsoft.boilerplate.util.byDirection
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.world.level.Level
@@ -35,6 +36,8 @@ class PressurePipeBlock(properties: Properties) : PipeBlock(properties) {
 
 	override val primaryNetworkTypes: Set<NetworkType> get() = setOf(NetworkTypeRegistry.Pressure)
 
+	override val secondaryNetworkTypes: Set<NetworkType> get() = emptySet()
+
 	/**
 	 * A slimmer 4x4 cross-section - deliberately narrower than item pipes' own 6x6 core (see
 	 * [PipeBlock.coreShape]), the whole reason a
@@ -43,10 +46,7 @@ class PressurePipeBlock(properties: Properties) : PipeBlock(properties) {
 	 */
 	override val coreShape: VoxelShape get() = CORE_SHAPE
 
-	override val armShapesByDirection: Map<Direction, VoxelShape> get() = armShapes
-
-	override fun externalConnectionExists(level: Level, pos: BlockPos, direction: Direction): Boolean =
-		PressureApi.find(level, pos, direction) != null
+	override val armShapes: Map<Direction, VoxelShape> get() = ARM_SHAPES
 
 	/** [PipeBlock]'s own overrides both hardcode [TileRegistry.Pipe] - this pipe type registers under [TileRegistry.PressurePipe] instead, so both need re-overriding here rather than inheriting. */
 	override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity? = TileRegistry.PressurePipe.create(pos, state)
@@ -59,13 +59,6 @@ class PressurePipeBlock(properties: Properties) : PipeBlock(properties) {
 
 		val CORE_SHAPE: VoxelShape = Shapes.box(0.375, 0.375, 0.375, 0.625, 0.625, 0.625)
 
-		val armShapes: Map<Direction, VoxelShape> = mapOf(
-			Direction.NORTH to Shapes.box(0.375, 0.375, 0.0, 0.625, 0.625, 0.375),
-			Direction.SOUTH to Shapes.box(0.375, 0.375, 0.625, 0.625, 0.625, 1.0),
-			Direction.WEST to Shapes.box(0.0, 0.375, 0.375, 0.375, 0.625, 0.625),
-			Direction.EAST to Shapes.box(0.625, 0.375, 0.375, 1.0, 0.625, 0.625),
-			Direction.DOWN to Shapes.box(0.375, 0.0, 0.375, 0.625, 0.375, 0.625),
-			Direction.UP to Shapes.box(0.375, 0.625, 0.375, 0.625, 1.0, 0.625),
-		)
+		val ARM_SHAPES: Map<Direction, VoxelShape> = Shapes.box(0.375, 0.375, 0.0, 0.625, 0.625, 0.375).byDirection
 	}
 }

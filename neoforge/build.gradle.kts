@@ -39,6 +39,7 @@ loom {
 			name = "Minecraft Client"
 			source(sourceSets.main.get())
 			vmArgs("-XX:+AllowEnhancedClassRedefinition")
+			property("devauth.enabled", "true")
 		}
 		getByName("server") {
 			name = "Minecraft Server"
@@ -91,12 +92,18 @@ dependencies {
 
 	modCompileOnly("${libs.emi.neoforge.get()}:api")
 
+	// JEI's fluid ingredient type is loader-specific, so the converter that names it has to be
+	// compiled here - see JeiResourceStacks.
+	modCompileOnly(libs.jei.neoforge)
+
 	when (rootProject.property("recipe_viewer") as? String)
 	{
 		"jei" -> modLocalRuntime(libs.jei.neoforge)
 		"rei" -> modLocalRuntime(libs.rei.neoforge)
 		"emi" -> modLocalRuntime(libs.emi.neoforge)
 	}
+
+	modLocalRuntime(libs.devauth.neoforge)
 
 	// Compose runtime pulls these in transitively, but they have to reach NeoForge as *libraries*,
 	// not as remapped mod jars. Archie nests them under `META-INF/jars/` (the Fabric layout) with no
@@ -111,7 +118,8 @@ dependencies {
 	runtimeLibrary(libs.androidx.collection)
 
 	modLocalRuntime("curse.maven:nbtedit-678133:6125444")
-	modLocalRuntime("curse.maven:mekanism-268560:7904058")
+	modCompileOnly(libs.mekanism)
+	modLocalRuntime(libs.mekanism)
 
 	"common"(project(":boilerplate-common", "namedElements")) { isTransitive = false }
 	"shadowCommon"(project(":boilerplate-common", "transformProductionNeoForge")) { isTransitive = false }

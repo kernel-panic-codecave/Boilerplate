@@ -12,6 +12,7 @@ import net.kernelpanicsoft.archie.gui.nodes.UINode
 import net.kernelpanicsoft.archie.gui.util.extension.invoke
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.CancelPendingDeliveryPacket
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
@@ -55,8 +56,12 @@ fun PendingDeliveryOverlay(delivery: PendingDelivery) {
 				) = guiGraphics {
 					val itemX = x + 1
 					val itemY = y + 1
-					val stack = delivery.resource.toStack(delivery.amount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
-					renderItem(stack, itemX, itemY)
+					// A delivery may be of any kind now, and only an item has a stack to fake-render
+					// here; a fluid-like one is drawn by the row's own face underneath this overlay
+					// (see AbstractTerminalHookScreen), leaving just the progress arc to draw here.
+					(delivery.resource as? ItemResource)?.let {
+						renderItem(it.toStack(delivery.amount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()), itemX, itemY)
+					}
 
 					val gameTime = Minecraft.getInstance().level?.gameTime ?: delivery.startTick
 					val elapsed = (gameTime - delivery.startTick).toFloat() + partialTick

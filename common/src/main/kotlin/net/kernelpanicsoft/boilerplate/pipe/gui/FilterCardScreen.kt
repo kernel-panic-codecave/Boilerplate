@@ -1,76 +1,40 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
-import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
-import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
-import net.kernelpanicsoft.archie.gui.layout.Arrangement
-import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
-import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
-import net.kernelpanicsoft.boilerplate.network.UpdateFilterCardModePacket
-import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
-import net.kernelpanicsoft.boilerplate.registry.FilterConditionTypeRegistry
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FILTER_CARD_CONTENT_WIDTH
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardEditor
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 
 /**
- * Editor for one [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem] stack: its
- * whitelist/blacklist mode, plus whichever fields the selected
- * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType] itself renders via its
- * own [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType.content] - this
- * screen dispatches to it generically via [FilterCardMenu.type], the same reasoning
- * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState.matches] already dispatches
- * through the registry instead of a hardcoded `when`, and doesn't otherwise know or care what
- * fields a given condition kind edits - each `Content` pushes its own edits directly via
- * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.pushFieldUpdate]. [type] itself is fixed by
- * which item this is (see [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem]'s
- * own KDoc) - not shown as an editable control. [mode] stays local "optimistic edit + resend"
- * state (via [UpdateFilterCardModePacket]), the same pattern [SortingHookScreen] already uses for
- * the identical reason (a nested holder's fields aren't wired into live `@Sync` push).
+ * The standalone host for the card editor - what right-clicking a card **in hand** opens, where
+ * there is no screen to layer over.
+ *
+ * Everything it draws is [FilterCardEditorContent], the same composable the editor layer shows
+ * anywhere else, so the two can never drift. The menu behind it ([FilterCardMenu]) exists only to be
+ * a screen: the editing itself goes through [FilterCardEditor] against a
+ * [FilterCardTarget.PlayerSlot], not through the menu's own fields.
  */
 class FilterCardScreen(private val menu: FilterCardMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<FilterCardMenu>(menu, playerInventory, title) {
-
-	private val contentWidth = 18 * 9
-	private val clickHandler = ClickHandler(1)
 
 	init {
 		start { content() }
 	}
 
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
-	}
-
 	@Composable
 	fun content() {
-		var mode by remember { mutableStateOf(menu.mode) }
-
 		BoilerplateTheme {
-			ContainerPanel(contentWidth = contentWidth) {
-				Column(verticalArrangement = Arrangement.spacedBy(6)) {
-					Text(Component.literal("Mode"), dropShadow = false)
-					RadioGroup(
-						options = listOf(
-							RadioOption(FilterMode.WHITELIST, Component.literal("Whitelist")),
-							RadioOption(FilterMode.BLACKLIST, Component.literal("Blacklist")),
-						),
-						selected = mode,
-						onSelected = {
-							mode = it
-							BoilerplateNetworkChannel.toServer(UpdateFilterCardModePacket(it))
-						},
-					)
-
-					val conditionType = FilterConditionTypeRegistry.byId(menu.type)
-					val state = menu.currentConditionState()
-					if (conditionType != null && state != null) {
-						conditionType.content(menu, state, clickHandler)
-					}
-				}
+			// ContainerPanel, not the Panel-plus-PlayerSlots a layer assembles by hand: nothing is
+			// hosting this one, so it is free to take the standard container layout - title label,
+			// contents, player inventory - wholesale.
+			ContainerPanel(contentWidth = FILTER_CARD_CONTENT_WIDTH) {
+				FilterCardEditorContent(
+					editor = FilterCardEditor(menu.target) { menu.carried },
+				)
 			}
 		}
 	}

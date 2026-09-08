@@ -1,13 +1,14 @@
 package net.kernelpanicsoft.boilerplate.power
 
 import dev.architectury.registry.registries.RegistrySupplier
+import earth.terrarium.common_storage_lib.context.ItemContext
+import earth.terrarium.common_storage_lib.lookup.BlockLookup
+import earth.terrarium.common_storage_lib.lookup.ItemLookup
 import earth.terrarium.common_storage_lib.storage.base.ValueStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
-import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
 
@@ -22,55 +23,59 @@ import net.minecraft.world.level.block.entity.BlockEntityType
  * Fabric's `BlockApiLookup`, NeoForge's `BlockCapability` - rather than any pre-built generic energy
  * bridge, so only code that specifically knows to look up `boilerplate:pressure` ever finds it.
  *
- * [init] is called once, by each loader's own thin entrypoint glue (`FabricPressureLookup` from
- * `BoilerplateFabric`, `NeoForgePressureLookup` from `BoilerplateNeoForge`) - there's no
- * existing cross-platform capability primitive in this project's dependencies to build directly on
- * top of the way [earth.terrarium.common_storage_lib.item.ItemApi]'s own lookups already are, so
- * this is the one place Boilerplate itself, rather than a library, does that per-platform
- * bridging.
+ * Shaped exactly as Common Storage Lib's own API objects are - [earth.terrarium.common_storage_lib.item.ItemApi]'s
+ * `BLOCK`/`ITEM`/`ENTITY`, [earth.terrarium.common_storage_lib.fluid.FluidApi]'s the same: a bare
+ * lookup constant per place a pressure storage can live, called through directly
+ * (`PressureApi.BLOCK.find(...)`) rather than wrapped in this object's own forwarding methods. That
+ * keeps the whole [BlockLookup] contract reachable - `find`'s four overloads, `isPresent`,
+ * `registerSelf`, `registerFallback` - instead of only the two calls that happened to get wrapped,
+ * and it reads the same as every other capability this mod queries.
+ *
+ * `BlockLookup.create` resolves to Fabric's `BlockApiLookup` and NeoForge's `BlockCapability` per
+ * platform, and its NeoForge side is already a `RegistryEventListener`, so deferral until
+ * `RegisterCapabilitiesEvent` is handled for us. This mod previously carried its own
+ * `PressureLookup` interface and a hand-written implementation per loader to do all of that; they
+ * said what this says, only in triplicate.
  */
 object PressureApi {
 	val ID: ResourceLocation = Boilerplate.MOD % "pressure"
 
-	private lateinit var lookup: PressureLookup
+	/**
+	 * A pressure storage on a block, from whichever face the query names - under this mod's own [ID]
+	 * rather than any shared energy one, see this object's KDoc for why.
+	 */
+	@JvmField
+	val BLOCK: BlockLookup<ValueStorage, Direction?> = BlockLookup.create(ID, ValueStorage::class.java)
 
 	/**
-	 * Wires in each loader's own [PressureLookup] - call exactly once, from that loader's own init
-	 * glue (see the class KDoc), before anything else in this file runs. A plain function rather
-	 * than a settable property: `internal set` can't reach across the `common`/`fabric`/`neoforge`
-	 * module boundary (Kotlin's `internal` only spans one compilation unit), and this at least keeps
-	 * the intent explicit and lets [init] guard against a second, accidental call.
+	 * A pressure storage inside an item - a pressurised canister, say. Context-free: unlike an item
+	 * *storage*, which needs an [earth.terrarium.common_storage_lib.context.ItemContext] to write
+	 * the modified stack back into whatever holds it, a pressure reading needs nothing but the stack.
+	 *
+	 * The context class is passed explicitly rather than through [ItemLookup.create]'s two-argument
+	 * overload: that one forwards a literal `null` context class, which both platforms reject
+	 * (NeoForge's `ItemCapability.create` and Fabric's `ItemApiLookup.get` each null-check it), so
+	 * it throws during registration rather than at the call site.
 	 */
-	fun init(lookup: PressureLookup) {
-		check(!this::lookup.isInitialized) { "PressureApi.init() called more than once" }
-		this.lookup = lookup
-	}
-
-	/** [pos]'s own pressure storage from whichever face [direction] names, or `null` if it exposes none. */
-	fun find(level: Level, pos: BlockPos, direction: Direction?): ValueStorage? = lookup.find(level, pos, direction)
-
-	/** See [exposePressureStorage] - the actual registration, once [lookup] is set. */
-	fun <T : BlockEntity> registerBlockEntity(type: BlockEntityType<T>, selector: (T, Direction?) -> ValueStorage?) =
-		lookup.registerBlockEntity(type, selector)
+	@JvmField
+	val ITEM: ItemLookup<ValueStorage, ItemContext> = ItemLookup.create(ID, ValueStorage::class.java, ItemContext::class.java)
 }
 
 /**
- * What each loader implements to back [PressureApi] - the pressure-only analogue of
- * [earth.terrarium.common_storage_lib.lookup.BlockLookup], scoped down to just the two operations
- * Boilerplate itself actually needs: querying, and exposing a block entity type's own storage.
- */
-interface PressureLookup {
-	fun find(level: Level, pos: BlockPos, direction: Direction?): ValueStorage?
-	fun <T : BlockEntity> registerBlockEntity(type: BlockEntityType<T>, selector: (T, Direction?) -> ValueStorage?)
-}
-
-/**
- * [PressureApi]-registration convenience mirroring
+ * [PressureApi.BLOCK]-registration convenience mirroring
  * [net.kernelpanicsoft.archie.transfer.exposeEnergyStorage]'s own shape - see [PressureApi]'s KDoc
  * for why this registers against Boilerplate's own capability instead of reusing that one.
+ *
+ * Registration is deferred by the lookup itself, so this may be called at any point during mod
+ * construction - which matters on NeoForge, where capability providers are only accepted from
+ * inside `RegisterCapabilitiesEvent`, long after
+ * [net.kernelpanicsoft.boilerplate.registry.TileRegistry] has run.
  */
 fun <T : BlockEntity> BlockEntityType<T>.exposePressureStorage(selector: (T, Direction?) -> ValueStorage?) {
-	PressureApi.registerBlockEntity(this, selector)
+	@Suppress("UNCHECKED_CAST")
+	PressureApi.BLOCK.onRegister { registrar ->
+		registrar.registerBlockEntities({ entity, direction -> selector(entity as T, direction) }, this)
+	}
 }
 
 /** [exposePressureStorage] overload for a selector that doesn't need the query direction. */

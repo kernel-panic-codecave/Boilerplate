@@ -24,6 +24,11 @@ import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.world.item.ItemStack
+import net.kernelpanicsoft.boilerplate.compat.ViewerResourceStacks
+import me.shedaniel.rei.api.common.entry.EntryStack
+import dev.architectury.fluid.FluidStack
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 /**
  * REI's own api artifact (`me.shedaniel:RoughlyEnoughItems-api`) is loader-agnostic, unlike
@@ -292,7 +297,9 @@ class BoilerplateREIPlugin : REIClientPlugin {
 		registry.registerFocusedStack { screen, _ ->
 			val terminal = screen as? AbstractTerminalHookScreen<*> ?: return@registerFocusedStack CompoundEventResult.pass()
 			val stack = terminal.hoveredStack ?: return@registerFocusedStack CompoundEventResult.pass()
-			CompoundEventResult.interruptTrue(EntryStacks.of(stack.itemStack))
+			val entry = ReiResourceStacks.of(stack.resource as ResourceComponent, stack.amount)
+				?: return@registerFocusedStack CompoundEventResult.pass()
+			CompoundEventResult.interruptTrue(entry)
 		}
 	}
 
@@ -306,5 +313,21 @@ class BoilerplateREIPlugin : REIClientPlugin {
 		private const val COLOR_REQUESTABLE = 0x40FFA500
 		/** Not local and not reachable, but a known pattern could produce it somewhere reachable. */
 		private const val COLOR_CRAFTABLE = 0x400080FF
+	}
+}
+
+/**
+ * How each resource kind is shown to REI - see [ViewerResourceStacks], and the EMI plugin's own
+ * twin for why there is one of these per viewer rather than one shared bridge.
+ *
+ * REI's fluid entries are built from Architectury's own cross-loader `FluidStack`, so unlike JEI's
+ * this needs no platform seam.
+ */
+val ReiResourceStacks = ViewerResourceStacks<EntryStack<*>>().apply {
+	register("item") { resource, amount ->
+		(resource as? ItemResource)?.takeIf { !it.isBlank }?.let { EntryStacks.of(it.toStack(amount.toInt().coerceAtLeast(1))) }
+	}
+	register("fluid") { resource, amount ->
+		(resource as? FluidResource)?.takeIf { !it.isBlank }?.let { EntryStacks.of(FluidStack.create(it.type, amount)) }
 	}
 }

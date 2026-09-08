@@ -65,7 +65,7 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 	/**
 	 * Which pipe type this hook block is standing in for, visually - the registry id of a
 	 * [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock] whose own baked model
-	 * [net.kernelpanicsoft.boilerplate.pipe.client.MultipartTravelingItemRenderer] draws for the
+	 * [net.kernelpanicsoft.boilerplate.pipe.client.MultipartBlockEntityVisual] draws for the
 	 * pipe body. Defaults to [NONE] (no pipe placed here yet - see
 	 * [net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock]'s KDoc); set to whatever block was
 	 * actually placed/promoted, so a future second pipe type (e.g. a glass tier) keeps its own

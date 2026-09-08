@@ -18,7 +18,7 @@ import net.minecraft.client.Minecraft
  * [AbstractTerminalHookMenu.sendSearchResults].
  */
 @Serializable
-data class TerminalSearchResultsPacket(val results: List<SResourceStack<SItemResource>>, val hasPressure: Boolean) {
+data class TerminalSearchResultsPacket(val results: List<SResourceStack<*>>, val hasPressure: Boolean) {
 	fun handleOnClient() {
 		val menu = Minecraft.getInstance().player?.containerMenu as? AbstractTerminalHookMenu<*> ?: return
 		menu.updateResults(results, hasPressure)

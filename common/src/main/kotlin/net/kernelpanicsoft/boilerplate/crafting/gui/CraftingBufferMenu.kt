@@ -4,7 +4,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementState
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.crafting.CraftingCpuManager
 import net.kernelpanicsoft.boilerplate.crafting.craftingBufferAt
 import net.kernelpanicsoft.boilerplate.network.CancelCraftingBufferJobPacket
@@ -32,7 +35,12 @@ class CraftingBufferMenu(id: Int, inventory: Inventory, tile: MultipartBlockEnti
 
 	override fun registerSlotHandlers() {
 		val state = tile.encasement.value as? CraftingBufferEncasementState ?: return
-		handler("buffer", state.localStorage)
+		// The item layer of a row that now holds any kind. A slot some other kind has claimed reads
+		// as empty here and refuses placement; drawing what is really in it wants the kind-aware
+		// face and client sync the terminal's own inbox row has.
+		@Suppress("UNCHECKED_CAST")
+		val items = state.localStorage.viewOf(ResourceKindRegistry.Item) as? CommonStorage<ItemResource> ?: return
+		handler("buffer", items)
 	}
 
 	/** This cluster's own currently active job, `null` if idle - Compose state, so [CraftingBufferScreen] recomposes whenever [applyStatus] applies a fresh [CraftingBufferStatusPacket]. */

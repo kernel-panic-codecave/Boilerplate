@@ -10,24 +10,30 @@ import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.network.RoutingDemand
+import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.BlockGetter
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 
 /**
- * One member of a Crafting CPU multiblock, whichever kind it is - a
- * [CraftingBufferEncasementState] contributing item slots, or a [CraftingTankEncasementState]
- * contributing fluid tanks. Both cluster together through the same [CraftingCpuManager], because a
- * [Pattern] may now name a fluid on either side and a CPU that could only hold items would have
- * nowhere to stage one.
+ * One member of a Crafting CPU multiblock - today always a [CraftingBufferEncasementState], whose
+ * slots take any registered kind.
  *
- * The job queue lives here rather than on the item member specifically: the cluster's own leader is
+ * Still an abstraction over "a member" rather than being folded into that class, because it is what
+ * a second member type would extend. There was one - a Crafting Tank, back when a buffer could hold
+ * only items and a [Pattern] naming a fluid had nowhere to stage it - and it stopped earning its
+ * keep the moment a buffer could hold anything.
+ *
+ * The job queue lives here rather than on the buffer specifically: the cluster's own leader is
  * simply its lowest [BlockPos], which may perfectly well be a tank, and job execution
- * ([CraftingCpuRuntime]) is identical either way. What differs between the kinds is only which pool
- * a member contributes to - see [localItemStorage]/[localFluidStorage], both `null` by default so a
- * future third kind adds a pool without touching either existing one.
+ * ([CraftingCpuRuntime]) is identical either way. What differs between the member kinds is only
+ * what each contributes to the cluster's pools - see [localStorageFor], which answers `null` by
+ * default so a future member type adds a pool without touching either existing one.
  *
  * Backlog and active job are deliberately not persisted, the same runtime-only tradeoff
  * [CraftingBufferJob] itself has: the pools' real contents are what survives a reload, and a job
@@ -35,28 +41,55 @@ import net.minecraft.world.level.BlockGetter
  */
 abstract class CraftingCpuMemberState(defaultType: ResourceLocation) : EncasementHolderState(defaultType), PressureConsumer {
 
-	/** This member's own contribution to the cluster's **item** pool, or `null` if it contributes none (a tank). */
-	open val localItemStorage: ArchieItemStorage? get() = null
-
-	/** This member's own contribution to the cluster's **fluid** pool, or `null` if it contributes none (a buffer). */
-	open val localFluidStorage: ArchieFluidStorage? get() = null
+	/**
+	 * This member's own contribution to its cluster's pool of [kind], or `null` if it contributes
+	 * none.
+	 *
+	 * A question rather than a declared `pooledKind` and one pool, because a member may pool *many*
+	 * kinds: a Crafting Buffer holds whatever a pattern names now, so it answers for every
+	 * registered kind at once. A member that pools exactly one - a Crafting Tank, which holds a lot
+	 * of one fluid-like thing rather than a little of anything - simply answers for that one and
+	 * `null` otherwise.
+	 *
+	 * This is all a newly registered kind needs to have a Crafting CPU stage it.
+	 */
+	open fun localStorageFor(kind: ResourceKind): CommonStorage<*>? = null
 
 	internal val backlog: ArrayDeque<CraftingBufferJob> = ArrayDeque()
+	/** Assigning this starts or stops the cluster awaiting its job's own outputs, so it bumps [RoutingDemand] - see there for what routing does with that. */
 	internal var activeJob: CraftingBufferJob? = null
+		set(value) {
+			if (field === value) return
+			field = value
+			RoutingDemand.changed()
+		}
 	private var nextJobId: Int = 0
 
 	/**
-	 * This member's own cluster's combined **item** pool - every buffer member's own
-	 * [localItemStorage] concatenated, in cluster order. Falls back to just this member's own if
+	 * This member's own cluster's combined **item** pool - every member's own item contribution
+	 * concatenated, in cluster order. Falls back to just this member's own if
 	 * [tile] isn't in a real [ServerLevel] yet, or the cluster's arrangement isn't a valid cuboid
 	 * (see [CraftingCpuManager]) - a CPU that didn't form has no pool to concatenate.
 	 */
+	@Suppress("UNCHECKED_CAST")
 	fun combinedStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> =
-		CraftingCpuStorage(membersOf(tile) { it.localItemStorage })
+		combinedFor(tile, ResourceKindRegistry.Item) as CommonStorage<ItemResource>
 
-	/** [combinedStorage]'s fluid counterpart - every tank member's own [localFluidStorage] concatenated. Empty (accepting nothing) on a cluster with no tank in it at all. */
+	/** [combinedStorage]'s fluid counterpart - every member's own fluid contribution concatenated. Empty (accepting nothing) on a cluster that can hold no fluid at all. */
+	@Suppress("UNCHECKED_CAST")
 	fun combinedFluidStorage(tile: MultipartBlockEntity): CommonStorage<FluidResource> =
-		CraftingCpuFluidStorage(membersOf(tile) { it.localFluidStorage })
+		combinedFor(tile, ResourceKindRegistry.Fluid) as CommonStorage<FluidResource>
+
+	/**
+	 * This member's own cluster's combined pool of [kind] - every member pooling that kind
+	 * concatenated, in cluster order. Empty (accepting nothing) on a cluster with no such member in
+	 * it at all, and `null` only for a kind that cannot be stored.
+	 *
+	 * The kind-agnostic form the two typed accessors above are now written in terms of, and what
+	 * makes a newly registered kind poolable here with no edit to this class.
+	 */
+	fun combinedFor(tile: MultipartBlockEntity, kind: ResourceKind): CommonStorage<*>? =
+		kind.storage?.combine(membersOf(tile) { it.localStorageFor(kind) })
 
 	/** Every member's own [select]ed storage across this member's cluster, in cluster order, skipping members that contribute none - see [combinedStorage]. */
 	private fun <S> membersOf(tile: MultipartBlockEntity, select: (CraftingCpuMemberState) -> S?): List<S> {
@@ -71,8 +104,12 @@ abstract class CraftingCpuMemberState(defaultType: ResourceLocation) : Encasemen
 	fun enqueue(plan: CraftingResolver.Plan): String {
 		val id = (nextJobId++).toString()
 		val job = CraftingBufferJob(id, plan.target, plan.targetAmount, plan.steps)
-		for ((resource, amount) in plan.stockPulls) job.outstandingStockClaims[resource] = amount
+		for ((resource, amount) in plan.stockPulls) {
+			job.outstandingStockClaims[resource] = amount
+			job.stockPlanned[resource] = amount
+		}
 		if (activeJob == null) activeJob = job else backlog += job
+		ResourceTrace.job("queued", job, "steps" to job.steps.size, "backlog" to backlog.size)
 		return id
 	}
 
@@ -118,73 +155,6 @@ fun craftingCpuMemberAt(level: BlockGetter, pos: BlockPos): CraftingCpuMemberSta
 /** The Crafting Buffer encasement wrapping the pipe segment at [pos], or `null` if that segment carries none (a Crafting Tank included - it is a member, but not a buffer). */
 fun craftingBufferAt(level: BlockGetter, pos: BlockPos): CraftingBufferEncasementState? =
 	(level.getBlockEntity(pos) as? MultipartBlockEntity)?.encasement?.value as? CraftingBufferEncasementState
-
-/**
- * Concatenates every buffer member's own [ArchieItemStorage] into one [CommonStorage] - a Crafting
- * CPU cluster's combined item pool, sized by however many encased segments currently belong to it.
- */
-class CraftingCpuStorage(private val members: List<ArchieItemStorage>) : CommonStorage<ItemResource> {
-	override fun size(): Int = members.sumOf { it.size() }
-
-	override fun get(index: Int): StorageSlot<ItemResource> {
-		var remaining = index
-		for (member in members) {
-			if (remaining < member.size()) return member.get(remaining)
-			remaining -= member.size()
-		}
-		throw IndexOutOfBoundsException("index $index out of bounds for a combined storage of size ${size()}")
-	}
-
-	override fun insert(resource: ItemResource, amount: Long, simulate: Boolean): Long {
-		var remaining = amount
-		for (member in members) {
-			if (remaining <= 0) break
-			remaining -= member.insert(resource, remaining, simulate)
-		}
-		return amount - remaining
-	}
-
-	override fun extract(resource: ItemResource, amount: Long, simulate: Boolean): Long {
-		var remaining = amount
-		for (member in members) {
-			if (remaining <= 0) break
-			remaining -= member.extract(resource, remaining, simulate)
-		}
-		return amount - remaining
-	}
-}
-
-/** [CraftingCpuStorage]'s fluid counterpart - every Crafting Tank member's own [ArchieFluidStorage] concatenated into the cluster's combined fluid pool. */
-class CraftingCpuFluidStorage(private val members: List<ArchieFluidStorage>) : CommonStorage<FluidResource> {
-	override fun size(): Int = members.sumOf { it.size() }
-
-	override fun get(index: Int): StorageSlot<FluidResource> {
-		var remaining = index
-		for (member in members) {
-			if (remaining < member.size()) return member.get(remaining)
-			remaining -= member.size()
-		}
-		throw IndexOutOfBoundsException("index $index out of bounds for a combined storage of size ${size()}")
-	}
-
-	override fun insert(resource: FluidResource, amount: Long, simulate: Boolean): Long {
-		var remaining = amount
-		for (member in members) {
-			if (remaining <= 0) break
-			remaining -= member.insert(resource, remaining, simulate)
-		}
-		return amount - remaining
-	}
-
-	override fun extract(resource: FluidResource, amount: Long, simulate: Boolean): Long {
-		var remaining = amount
-		for (member in members) {
-			if (remaining <= 0) break
-			remaining -= member.extract(resource, remaining, simulate)
-		}
-		return amount - remaining
-	}
-}
 
 /**
  * Total amount of [resource] currently sitting across every slot of [storage] - a generic

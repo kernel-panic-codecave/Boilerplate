@@ -19,7 +19,7 @@ import net.minecraft.world.level.BlockGetter
  *
  * Also used by [PipeBlock.canConnect][net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock]'s own
  * connection logic - a promoted [MultipartBlock] never overrides [PipeBlock.primaryNetworkType]/
- * [PipeBlock.externalConnectionExists]/[PipeBlock.armShapesByDirection] itself (those are per-
+ * [PipeBlock.externalConnectionExists]/[PipeBlock.armShapes] itself (those are per-
  * instance-of-block-class properties, not per-position), so a segment's own connection/collision
  * geometry has to resolve through here too, the same way [networkTypesAt]/[primaryNetworkTypeAt]
  * already do - not through `this` on whatever block is actually placed at the position.

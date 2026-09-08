@@ -1,23 +1,19 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import net.kernelpanicsoft.archie.gui.composables.basic.Label
 import net.kernelpanicsoft.archie.gui.composables.input.Checkbox
+import net.kernelpanicsoft.archie.gui.layout.Alignment
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlotGrid
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
+import net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlotGrid
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -52,36 +48,36 @@ object ItemConditionType : FilterConditionType<ItemConditionState>() {
 	}
 
 	@Composable
-	override fun content(menu: FilterCardMenu, state: ItemConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: ItemConditionState, clickHandler: ClickHandler) {
 		var itemMatches by remember { mutableStateOf(state.itemMatches.toList()) }
 		var matchComponents by remember { mutableStateOf(state.matchComponents) }
 
-		Row(horizontalArrangement = Arrangement.spacedBy(4)) {
+		Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
 			Checkbox(
 				checked = matchComponents,
 				onCheckedChange = {
 					matchComponents = it
 					state.matchComponents = it
-					pushFieldUpdate(state::matchComponents, it, Boolean.serializer())
+					editor.push(state::matchComponents, it, Boolean.serializer())
 				},
 			)
-			Text(Component.literal("Match components (enchantments, name, durability, ...)"), dropShadow = false)
+			Label(Component.literal("Match components"))
 		}
 
-		Text(Component.literal("Items"), dropShadow = false)
+		Label(Component.literal("Items"))
 		GhostSlotGrid(
 			resources = itemMatches,
 			columns = 3,
-			carried = { menu.carried },
+			carried = { editor.carried() },
 			onPlace = { index, resource ->
 				itemMatches = itemMatches.toMutableList().also { it[index] = resource }
 				state.itemMatches[index] = resource
-				pushFieldUpdate(state::itemMatches, itemMatches, ListSerializer(ItemResourceSerializer))
+				editor.push(state::itemMatches, itemMatches, ListSerializer(ItemResourceSerializer))
 			},
 			onClear = { index ->
 				itemMatches = itemMatches.toMutableList().also { it[index] = ItemResource.BLANK }
 				state.itemMatches[index] = ItemResource.BLANK
-				pushFieldUpdate(state::itemMatches, itemMatches, ListSerializer(ItemResourceSerializer))
+				editor.push(state::itemMatches, itemMatches, ListSerializer(ItemResourceSerializer))
 			},
 			clickHandler = clickHandler,
 			handleClick = { null },

@@ -122,8 +122,67 @@ class CraftingResolverGameTest {
 			patternFor = { if (it == target) recipe else null },
 		)
 
-		assertTrue(result == CraftingResolver.Result.Unresolvable(missing)) {
+		assertTrue(result == CraftingResolver.Result.Unresolvable(listOf(CraftingResolver.Shortfall(missing, 1)))) {
 			"Expected the missing, unpatterned, out-of-stock ingredient to be reported unresolvable, got $result"
+		}
+		succeed()
+	}
+
+	/**
+	 * Every independently missing ingredient is reported, not just the first one hit.
+	 *
+	 * Reporting one at a time made fixing a plan an iterative game: supply the named ingredient,
+	 * resubmit, learn the next name. A pattern needing two things it cannot get should say so once.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testEveryMissingIngredientIsReportedAtOnce() {
+		val target = ItemResource.of(ItemStack(Items.DIAMOND))
+		val firstMissing = ItemResource.of(ItemStack(Items.EMERALD))
+		val secondMissing = ItemResource.of(ItemStack(Items.GOLD_INGOT))
+		val recipe = pattern(ItemStack(Items.DIAMOND), ItemStack(Items.EMERALD), ItemStack(Items.GOLD_INGOT))
+
+		val result = CraftingResolver.resolve(
+			target = target,
+			amount = 1,
+			stockOf = { 0 },
+			patternFor = { if (it == target) recipe else null },
+		)
+
+		val reported = (result as? CraftingResolver.Result.Unresolvable)?.shortfalls
+		assertTrue(reported != null && reported.map { it.resource }.toSet() == setOf(firstMissing, secondMissing)) {
+			"Expected both unobtainable ingredients to be reported together, got $result"
+		}
+		assertTrue(reported != null && reported.all { it.amount == 1L }) {
+			"Expected each shortfall to carry the amount actually wanted, got $reported"
+		}
+		succeed()
+	}
+
+	/** A resource blocked in two separate branches is one problem, not two lines saying the same thing. */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testARepeatedMissingIngredientIsReportedOnce() {
+		val target = ItemResource.of(ItemStack(Items.DIAMOND))
+		val intermediate = ItemResource.of(ItemStack(Items.IRON_BLOCK))
+		val missing = ItemResource.of(ItemStack(Items.EMERALD))
+		// Both the target and the intermediate it needs want the same unobtainable ingredient.
+		val targetRecipe = pattern(ItemStack(Items.DIAMOND), ItemStack(Items.IRON_BLOCK), ItemStack(Items.EMERALD))
+		val intermediateRecipe = pattern(ItemStack(Items.IRON_BLOCK), ItemStack(Items.EMERALD))
+
+		val result = CraftingResolver.resolve(
+			target = target,
+			amount = 1,
+			stockOf = { 0 },
+			patternFor = { if (it == target) targetRecipe else if (it == intermediate) intermediateRecipe else null },
+		)
+
+		val reported = (result as? CraftingResolver.Result.Unresolvable)?.shortfalls
+		assertTrue(reported?.map { it.resource } == listOf(missing)) {
+			"Expected the shared missing ingredient to be reported exactly once, got $result"
+		}
+		// Both consumers counted before the walk reaches it: one for the target, one for the
+		// intermediate - a per-branch report would have said 1.
+		assertTrue(reported?.singleOrNull()?.amount == 2L) {
+			"Expected the shortfall to total every consumer's demand, got $reported"
 		}
 		succeed()
 	}

@@ -3,17 +3,16 @@ package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.builtins.ListSerializer
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import net.kernelpanicsoft.archie.gui.composables.basic.Label
 import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
 import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
+import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
-import net.kernelpanicsoft.boilerplate.network.OpenFilterCardEditorPacket
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlotGrid
+import net.kernelpanicsoft.boilerplate.pipe.gui.filterCardEditor
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -40,43 +39,42 @@ object CombinedConditionType : FilterConditionType<CombinedConditionState>() {
 	}
 
 	@Composable
-	override fun content(menu: FilterCardMenu, state: CombinedConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: CombinedConditionState, clickHandler: ClickHandler) {
+		val layers = LocalLayerManager.current
 		var operator by remember { mutableStateOf(state.operator) }
 		var children by remember { mutableStateOf(state.children.toList()) }
 
-		Text(Component.literal("Operator"), dropShadow = false)
+		Label(Component.literal("Operator"))
 		RadioGroup(
 			options = listOf(
 				RadioOption(BooleanOperator.AND, Component.literal("AND")),
 				RadioOption(BooleanOperator.OR, Component.literal("OR")),
 			),
 			selected = operator,
-			onSelected = { operator = it; state.operator = it; pushFieldUpdate(state::operator, it, BooleanOperatorSerializer) },
+			onSelected = { operator = it; state.operator = it; editor.push(state::operator, it, BooleanOperatorSerializer) },
 		)
 
-		Text(Component.literal("Children"), dropShadow = false)
+		Label(Component.literal("Children"))
 		GhostSlotGrid(
 			resources = children,
 			columns = 3,
-			carried = { menu.carried },
+			carried = { editor.carried() },
 			onPlace = { index, resource ->
 				children = children.toMutableList().also { it[index] = resource }
 				state.children[index] = resource
-				pushFieldUpdate(state::children, children, ListSerializer(ItemResourceSerializer))
+				editor.push(state::children, children, ListSerializer(ItemResourceSerializer))
 			},
 			onClear = { index ->
 				children = children.toMutableList().also { it[index] = ItemResource.BLANK }
 				state.children[index] = ItemResource.BLANK
-				pushFieldUpdate(state::children, children, ListSerializer(ItemResourceSerializer))
+				editor.push(state::children, children, ListSerializer(ItemResourceSerializer))
 			},
 			clickHandler = clickHandler,
+			// A child card opens *on top of* this editor rather than replacing it - which is the
+			// whole reason the editor is a layer. Nest as deep as the cards do.
 			handleClick = { index ->
 				if (children[index].item !is FilterCardItem) null
-				else ({
-					BoilerplateNetworkChannel.toServer(
-						OpenFilterCardEditorPacket(FilterCardTarget.ChildSlot(menu.target, index)),
-					)
-				})
+				else ({ layers.filterCardEditor(FilterCardTarget.ChildSlot(editor.target, index), editor.carried) })
 			},
 			// Only another filter card is meaningful here - evaluateGhostSlot's plain-item
 			// identity fallback would silently "work" but defeats the point of a *combined*

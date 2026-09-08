@@ -16,7 +16,7 @@ import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseDebugCache
  * [net.kernelpanicsoft.boilerplate.warehouse.GantryClientCache] already dead-reckons it smoothly
  * from [GantrySyncPacket]. [SWarehouse.headPos]/[SWarehouse.path] are only the fallback for a
  * controller that has never sent one of those (nothing has moved since it loaded), the same
- * fallback [net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerBlockEntityRenderer]
+ * [net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual]
  * already makes.
  *
  * Broadcast a few ticks apart rather than per-tick, and only while somebody has the overlay on

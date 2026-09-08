@@ -13,6 +13,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 			clientbound(GantrySyncPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(TerminalSearchResultsPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(CraftPlanPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftableListPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftJobTreePacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(CraftGridPreviewPacket::class) { packet, _ -> packet.handleOnClient() }
@@ -24,6 +25,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 			clientbound(WarehouseDebugSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(UpdateFilterBatchPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestTerminalSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestWarehouseDefragPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(TerminalItemWithdrawRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
@@ -33,6 +35,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(UpdateFilterCardFieldPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(UpdateFilterCardModePacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(RequestCraftPlanPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CraftingRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftableListPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CraftGridRequestPacket::class) { packet, context -> packet.handleOnServer(context) }

@@ -2,15 +2,12 @@ package net.kernelpanicsoft.boilerplate.crafting
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.boilerplate.network.displayName
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
-import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
@@ -21,15 +18,16 @@ import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 
 /**
  * Job execution for a Crafting CPU cluster - everything a cluster's own leader does per tick, for
  * whichever member kind happens to lead it.
  *
- * Split out of [CraftingBufferEncasementType] once a cluster could contain a
- * [CraftingTankEncasementState] as well as a buffer: the leader is deterministically the cluster's
- * lowest [BlockPos] (see [CraftingCpuManager]), which may be a tank, and the job it runs is
- * identical either way. Both encasement types' own `tick` therefore delegates straight here.
+ * Split out of [CraftingBufferEncasementType] because the leader is deterministically the cluster's
+ * lowest [BlockPos] (see [CraftingCpuManager]) rather than the member whose tick happened to run,
+ * and the job is identical whichever member leads. An encasement type's own `tick` therefore
+ * delegates straight here.
  *
  * A job ([CraftingBufferJob]) claims its whole plan's own raw-material stock up front
  * ([claimOutstandingStock]) rather than requesting ingredients incrementally, then steps through
@@ -98,7 +96,11 @@ object CraftingCpuRuntime {
 
 	/** One cluster leader's own per-tick job work - see this object's KDoc. Called from each member kind's own encasement `tick`, already gated on "this position leads a valid cluster". */
 	fun advanceJob(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingCpuMemberState) {
-		val job = state.activeJob ?: state.backlog.removeFirstOrNull()?.also { state.activeJob = it }
+		val job = state.activeJob
+			?: state.backlog.removeFirstOrNull()?.also {
+				state.activeJob = it
+				ResourceTrace.job(pos, "activated", it, "backlog" to state.backlog.size)
+			}
 		if (job == null) {
 			// A delivery that stalled against a full cluster lands its remainder whenever space next
 			// exists - possibly long after its own job completed, drained, and cleared itself. With
@@ -127,7 +129,10 @@ object CraftingCpuRuntime {
 			}
 		}
 
-		if (job.done && drainEverything(level, pos, tile, state)) state.activeJob = null
+		if (job.done && drainEverything(level, pos, tile, state)) {
+			ResourceTrace.job(pos, "cleared", job, "delivered" to job.delivered)
+			state.activeJob = null
+		}
 	}
 
 	/**
@@ -155,24 +160,23 @@ object CraftingCpuRuntime {
 			var remaining = amount
 			val resource = key.resource
 
-			// Providers are reached per kind - different capability, different router, so this is the
-			// one place the two still split.
 			while (remaining > 0) {
-				val pulled = when (resource) {
-					is FluidResource -> RequestFulfillment.fulfillFluidFromProvider(level, providers, ResourceStack(resource, remaining), pos)
-					is ItemResource -> RequestFulfillment.fulfillFromProvider(level, providers, ResourceStack(resource, remaining), pos)
-					else -> 0L
-				}
+				val pulled = RequestFulfillment.fulfillFromProvider(level, providers, ResourceStack(resource, remaining), pos)
 				if (pulled <= 0) break
 				remaining -= pulled
 			}
+			ResourceTrace.moved(pos, "claim.providers", resource, amount, amount - remaining, "sources" to providers.size)
 
-			// The warehouse half needs no split at all: its index and its gantry work in bare
+			// The warehouse half works the same way: its index and its gantry work in bare
 			// resources, so a bucket of lava is claimed off a tank exactly as an ingot is claimed off
 			// a rack.
+			val beforeWarehouse = remaining
 			for (warehouse in warehouses) {
 				if (remaining <= 0) break
 				remaining -= warehouse.claimAndEnqueue(resource, remaining, DeliveryTarget.Pipe(pos))
+			}
+			if (beforeWarehouse > 0) {
+				ResourceTrace.moved(pos, "claim.warehouse", resource, beforeWarehouse, beforeWarehouse - remaining, "warehouses" to warehouses.size)
 			}
 			job.outstandingStockClaims[key] = remaining
 		}
@@ -194,7 +198,39 @@ object CraftingCpuRuntime {
 				val provider = RequestFulfillment.reachablePatternProviders(level, pos)
 					.firstOrNull { it.state.heldPatterns().contains(step.pattern) }
 				if (provider == null) {
-					job.status = "No free pattern provider for ${step.resource.displayName().string}"
+					// Previously the one branch in the whole flow with no trace at all, and the one
+					// that looks most like items vanishing: the step simply never runs, so nothing
+					// it would have produced is ever asked for or made.
+					//
+					// Traced in enough detail to tell the two causes apart on one line, because they
+					// look identical from the GUI and have nothing in common as fixes. Either this
+					// CPU reaches no provider holding the pattern at all - a plan is resolved
+					// against the *terminal*'s reachable set, so a provider this CPU cannot reach
+					// stalls exactly here - or it reaches one and the pattern did not compare equal,
+					// which is a bug in [Pattern.equals] or in what a pattern round-trips through
+					// NBT as. `holds` is what settles it: the step is stuck despite a reachable
+					// provider plainly offering what it is looking for.
+					val reachable = RequestFulfillment.reachablePatternProviders(level, pos)
+					val connected = RequestFulfillment.connectedPipes(level, pos).size
+					ResourceTrace.at(
+						pos, "step.noProvider",
+						"step" to index, "makes" to step.resource,
+						"connected" to connected, "reachable" to reachable.size,
+						"offering" to reachable.count { source -> source.state.heldPatterns().any { it.produces(step.resource) } },
+						"holds" to reachable.joinToString(";") { source ->
+							"${source.hookPos.toShortString()}[" +
+								source.state.heldPatterns().joinToString(",") { held ->
+									held.outputs.joinToString("+") { out -> "${out.amount}x${out.resource.displayName().string}" }
+								} + "]"
+						},
+					)
+					// A CPU that reaches no pipe but its own is not short of a *pattern*, and saying
+					// so sends the player looking in the wrong place entirely - as it did once. That
+					// state should now be unreachable through the terminal ([reachableCraftingCpus]
+					// refuses to submit to it), so this is the message for a network taken apart
+					// under a job that was already running.
+					job.status = if (connected <= 1) "Crafting CPU is not connected to the network"
+						else "No free pattern provider for ${step.resource.displayName().string}"
 					continue
 				}
 				tablePos = provider.targetPos
@@ -202,6 +238,18 @@ object CraftingCpuRuntime {
 				job.hookPosForStep[index] = provider.hookPos
 				job.hookFaceForStep[index] = provider.direction
 				provider.state.indexOfPattern(step.pattern)?.let { job.patternIndexForStep[index] = it }
+				// Once per step per job: the whole plan-to-world mapping in one place. Without it a
+				// step is only ever identifiable by the inputs it happens to ask for, which is
+				// ambiguous exactly when it matters - two steps feeding one machine.
+				ResourceTrace.at(
+					pos, "step.assigned",
+					"step" to index, "makes" to step.resource, "runs" to step.runs,
+					"target" to tablePos, "hook" to provider.hookPos,
+					"patternIndex" to job.patternIndexForStep[index],
+					"inputs" to step.pattern.requiredInputs().entries.joinToString("+") {
+						(key, perRun) -> "${perRun}x${key.resource.displayName().string}"
+					},
+				)
 			}
 
 			val isCraftingTable = level.getBlockState(tablePos).`is`(Blocks.CRAFTING_TABLE)
@@ -212,12 +260,13 @@ object CraftingCpuRuntime {
 				val already = job.fedAmounts[index to key] ?: 0L
 				val remaining = needed - already
 				if (remaining <= 0) continue
-				// The direct-to-buffer path is only ever a vanilla crafting table's, and those are
-				// item-only - a fluid input to one cannot exist, so it always takes the network path.
+				// The direct-to-buffer path is only ever a vanilla crafting table's, so it is open
+				// only to kinds a vanilla grid can hold - anything else always takes the network path.
 				val input = key.resource
-				val fed = if (isCraftingTable && input is ItemResource)
-					feedPatternBufferDirectly(level, pos, tile, state, job, index, input, remaining)
-				else pushToNetwork(level, pos, tile, state, input, remaining, tablePos)
+				val craftable = ResourceKindRegistry.forResource(input)?.vanillaCraftable == true
+				val fed = if (isCraftingTable && craftable)
+					feedPatternBufferDirectly(level, pos, tile, state, job, index, input, remaining, tablePos)
+				else pushToNetwork(level, pos, tile, state, input, remaining, tablePos, "feed.network", index)
 				if (fed > 0) job.fedAmounts[index to key] = already + fed
 			}
 		}
@@ -246,12 +295,16 @@ object CraftingCpuRuntime {
 			for ((index, step) in job.steps.withIndex()) {
 				val tablePos = job.tableForStep[index] ?: continue
 				if (!level.getBlockState(tablePos).`is`(Blocks.CRAFTING_TABLE)) continue
-				val resource = step.resource as? ItemResource ?: continue
-				var remaining = job.outstandingOutput(resource, amountIn(poolFor(state, tile, resource), resource))
+				val resource = step.resource
+				val outstanding = job.outstandingOutput(resource, amountIn(poolFor(state, tile, resource), resource))
+				var remaining = outstanding
 				while (remaining > 0) {
 					val pulled = RequestFulfillment.fulfillFromProvider(level, providers, ResourceStack(resource, remaining), pos)
 					if (pulled <= 0) break
 					remaining -= pulled
+				}
+				if (outstanding > 0) {
+					ResourceTrace.moved(pos, "pull.output", resource, outstanding, outstanding - remaining, "step" to index, "table" to tablePos)
 				}
 			}
 		}
@@ -293,16 +346,36 @@ object CraftingCpuRuntime {
 		val job = leader.activeJob ?: return false
 		if (job.done) return false
 		val leaderTile = level.getBlockEntity(cluster.leader) as? MultipartBlockEntity ?: return false
-		return job.outstandingOutput(resource, amountIn(poolFor(leader, leaderTile, resource), resource)) > 0L
+		val held = amountIn(poolFor(leader, leaderTile, resource), resource)
+		val outstanding = job.outstandingOutput(resource, held)
+		// Only for something this job actually needs - every other resource answers `0` for the
+		// boring reason that nothing wants it, and logging those would be every resource on the
+		// network on every route search. Identical lines collapse, so a steady state is one line.
+		if (job.needsAnyOf(resource)) {
+			ResourceTrace.at(
+				pos, "cpu.awaits",
+				"resource" to resource, "held" to held, "outstanding" to outstanding,
+				"attracts" to (outstanding > 0L),
+			)
+		}
+		return outstanding > 0L
 	}
 
 	/** Pushes [amount] of [resource] out of this cluster's own pool toward [deliverTo] as a real pipe delivery leaving this segment. Returns how much actually shipped. */
-	private fun pushToNetwork(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingCpuMemberState, resource: ResourceComponent, amount: Long, deliverTo: BlockPos): Long {
+	private fun pushToNetwork(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingCpuMemberState, resource: ResourceComponent, amount: Long, deliverTo: BlockPos, site: String = "push", step: Int = -1): Long {
 		if (amount <= 0) return 0
-		val route = routeTo(level, pos, deliverTo, resource) ?: return 0
+		val route = routeTo(level, pos, deliverTo, resource)
+		if (route == null) {
+			ResourceTrace.moved(pos, "push.route", resource, amount, 0L, "to" to deliverTo, "reason" to "no route")
+			return 0
+		}
 		val extracted = extractFrom(poolFor(state, tile, resource), resource, amount)
-		if (extracted <= 0) return 0
+		if (extracted <= 0) {
+			ResourceTrace.at(pos, "feed.wait", "step" to step, "needs" to resource, "want" to amount, "target" to deliverTo)
+			return 0
+		}
 		tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), entryFaceFor(pos, route), 0f, route, null)
+		ResourceTrace.moved(pos, site, resource, amount, extracted, "step" to step, "target" to deliverTo)
 		return extracted
 	}
 
@@ -322,19 +395,31 @@ object CraftingCpuRuntime {
 	 * that didn't fit back into this cluster's own storage - not merely how much left this cluster's
 	 * storage, so [CraftingBufferJob.fedAmounts] only ever reflects delivery that genuinely arrived.
 	 */
-	private fun feedPatternBufferDirectly(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingCpuMemberState, job: CraftingBufferJob, index: Int, resource: ItemResource, amount: Long): Long {
+	private fun feedPatternBufferDirectly(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingCpuMemberState, job: CraftingBufferJob, index: Int, resource: ResourceComponent, amount: Long, tablePos: BlockPos): Long {
 		val hookPos = job.hookPosForStep[index] ?: return 0
 		val face = job.hookFaceForStep[index] ?: return 0
 		val patternIndex = job.patternIndexForStep[index] ?: return 0
-		if (ItemPipeRouter.findRouteTo(level, pos, hookPos) == null) return 0
+		val kind = ResourceKindRegistry.forResource(resource) ?: return 0
+		val storageKind = kind.storage ?: return 0
+		val networkType = networkTypeForResource(resource) ?: return 0
+		if (networkType.routeTo(level, pos, hookPos) == null) return 0
 		val hookTile = level.getBlockEntity(hookPos) as? MultipartBlockEntity ?: return 0
 		val hookState = hookTile.hooks[face.name] as? PatternProviderHookState ?: return 0
 
-		val storage = state.combinedStorage(tile)
-		val extracted = storage.extract(resource, amount, false)
-		if (extracted <= 0) return 0
-		val inserted = hookState.bufferFor(patternIndex).insert(resource, extracted, false)
-		if (inserted < extracted) storage.insert(resource, extracted - inserted, false)
+		val storage = state.combinedFor(tile, kind) ?: return 0
+		val extracted = storageKind.extract(storage, resource, amount, false)
+		if (extracted <= 0) {
+			// Nothing in the pool yet. Ordinary waiting, not a failure - reported at INFO so the
+			// genuine problems below stay the only warnings in a trace.
+			ResourceTrace.at(pos, "feed.wait", "step" to index, "needs" to resource, "want" to amount, "target" to tablePos)
+			return 0
+		}
+		val inserted = storageKind.insert(hookState.bufferFor(patternIndex), resource, extracted, false)
+		ResourceTrace.moved(pos, "feed.buffer", resource, extracted, inserted, "step" to index, "target" to tablePos)
+		val returned = if (inserted < extracted) storageKind.insert(storage, resource, extracted - inserted, false) else 0L
+		// Out of the pool, into the pattern's buffer, and whatever the buffer refused goes back.
+		// Anything that fails to go back is genuinely gone: it has already left the pool.
+		ResourceTrace.lost(pos, "feed.buffer", resource, extracted - inserted - returned, "pool refused its own returned surplus")
 		return inserted
 	}
 
@@ -343,14 +428,14 @@ object CraftingCpuRuntime {
 	 * destination - a finished job's own leftovers (the target itself, plus any byproduct) getting
 	 * sorted back into the network, one resource per tick, rather than delivered anywhere in
 	 * particular. Excludes routing back into this same member's own position, though not every other
-	 * member of the same cluster. Returns whether **both** pools are now fully empty.
+	 * member of the same cluster. Returns whether every pool is now fully empty.
 	 *
-	 * Walks the item pool first and the fluid pool second purely for determinism; each tick ships at
-	 * most one resource from whichever pool offers the first routable one.
+	 * Walks every registered kind's pool in registry order, purely for determinism; each tick ships
+	 * at most one resource from whichever pool offers the first routable one.
 	 */
 	private fun drainEverything(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingCpuMemberState): Boolean {
 		var anythingLeft = false
-		for (storage in listOf<CommonStorage<*>>(state.combinedStorage(tile), state.combinedFluidStorage(tile))) {
+		for (storage in ResourceKindRegistry.storageKinds().mapNotNull { state.combinedFor(tile, it) }) {
 			for (i in 0 until storage.size()) {
 				// Captured up front - a StorageSlot is a live view, and re-reading it after the real
 				// extract() below (which empties the underlying slot in place) would hand TravelingItem
@@ -359,19 +444,24 @@ object CraftingCpuRuntime {
 				val amount = storage.get(i).amount
 				if (resource.isBlank || amount <= 0) continue
 				anythingLeft = true
-				val route = routeAnywhere(level, pos, resource, exclude = setOf(pos)) ?: continue
+				val route = routeAnywhere(level, pos, resource, exclude = setOf(pos))
+				if (route == null) {
+					ResourceTrace.moved(pos, "drain.route", resource, amount, 0L, "reason" to "nothing accepts it")
+					continue
+				}
 				val extracted = extractFrom(storage, resource, amount)
 				if (extracted <= 0) continue
 				tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), entryFaceFor(pos, route), 0f, route, null)
+				ResourceTrace.moved(pos, "drain.ship", resource, amount, extracted, "to" to route.last())
 				return false
 			}
 		}
 		return !anythingLeft
 	}
 
-	/** Whichever of this cluster's pools holds [resource]'s own kind - the item pool for an item, the fluid pool for a fluid. */
+	/** This cluster's pool of [resource]'s own kind - empty for a kind the cluster has no member for, and for one that cannot be stored at all. */
 	private fun poolFor(state: CraftingCpuMemberState, tile: MultipartBlockEntity, resource: ResourceComponent): CommonStorage<*> =
-		if (resource is FluidResource) state.combinedFluidStorage(tile) else state.combinedStorage(tile)
+		ResourceKindRegistry.forResource(resource)?.let { state.combinedFor(tile, it) } ?: state.combinedStorage(tile)
 
 	/** A route from [from] to [to] over whichever network carries [resource]'s own kind. */
 	private fun routeTo(level: ServerLevel, from: BlockPos, to: BlockPos, resource: ResourceComponent): List<BlockPos>? =

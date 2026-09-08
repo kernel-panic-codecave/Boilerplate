@@ -11,7 +11,6 @@ import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.Panel
 import net.kernelpanicsoft.archie.gui.composables.containers.Surface
 import net.kernelpanicsoft.archie.gui.composables.input.Button
-import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
 import net.kernelpanicsoft.archie.gui.layer.LayerStackManager
 import net.kernelpanicsoft.archie.gui.layout.Alignment
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
@@ -20,21 +19,25 @@ import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.position.padding
 import net.kernelpanicsoft.archie.gui.modifiers.sizeIn
-import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
 import kotlin.math.min
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
+import net.kernelpanicsoft.boilerplate.network.displayName
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 /**
- * Pushes a modal onto [this] asking how many of [stack] to request - a digit-only quantity field,
- * live-clamped to `1..stack.count` ([ItemStack.getCount] being the aggregated total available at
- * this terminal, which can exceed a single stack's usual max size - see
- * `docs/design/m3-warehouse-storage.md`), with `-`/`+` stepper buttons either side, rather than a
- * bare click-to-withdraw-a-stack choice. [onConfirm] fires once with the chosen amount; the modal
- * dismisses itself either way.
+ * Pushes a modal onto [this] asking how much of [stack] to request - a digit-only quantity field,
+ * live-clamped to `1..`however much this terminal can currently reach (which can exceed a single
+ * stack's usual max size - see `docs/design/m3-warehouse-storage.md`), with `-`/`+` stepper buttons
+ * either side, rather than a bare click-to-withdraw-a-stack choice.
+ *
+ * Reads and edits in the resource's own **authored** unit - items, or millibuckets for a fluid -
+ * and hands [onConfirm] the platform amount, so a caller downstream never has to know which kind it
+ * was. The modal dismisses itself either way.
  */
-fun LayerStackManager.requestQuantityDialog(stack: ResourceStack<ItemResource>, onConfirm: (Long) -> Unit) {
+fun LayerStackManager.requestQuantityDialog(stack: ResourceStack<ResourceComponent>, onConfirm: (Long) -> Unit) {
 	modal {
 		RequestQuantityDialogContent(
 			stack = stack,
@@ -45,36 +48,30 @@ fun LayerStackManager.requestQuantityDialog(stack: ResourceStack<ItemResource>, 
 }
 
 @Composable
-private fun RequestQuantityDialogContent(stack: ResourceStack<ItemResource>, onConfirm: (Long) -> Unit, onCancel: () -> Unit) {
-	val max = stack.amount.coerceAtLeast(1)
-	var amount by remember(stack) { mutableStateOf(min(max, stack.resource.item.defaultMaxStackSize.toLong())) }
-	var text by remember(stack) { mutableStateOf(amount.toString()) }
-
-	fun setAmount(new: Long) {
-		amount = new.coerceIn(1, max)
-		text = amount.toString()
-	}
+private fun RequestQuantityDialogContent(stack: ResourceStack<ResourceComponent>, onConfirm: (Long) -> Unit, onCancel: () -> Unit) {
+	// Everything here is in the unit a *player* authors and reads - items, and millibuckets rather
+	// than the droplets Fabric counts fluids in. Asking for "162000" of water in a field that steps
+	// by one droplet is not a thing anyone can use; the conversion back to whatever the platform
+	// counts in happens once, at [onConfirm].
+	val kind = ResourceKindRegistry.forResource(stack.resource)
+	val max = (kind?.toAuthored(stack.amount) ?: stack.amount).coerceAtLeast(1)
+	// One "unit" of whatever this is - a stack for an item, a bucket for a fluid - so the dialog
+	// opens on a sensible default for any kind rather than on an item-only stack size.
+	val defaultAmount = kind?.defaultAuthored ?: 1L
+	// A kind's own notch, and two coarser multiples of it: 1/10/64 for items, 100mB/1000mB/6400mB
+	// for fluids, so the buttons move by amounts that mean something for the kind in hand.
+	val step = kind?.authoredStep ?: 1L
+	val steps = listOf(step, step * 10L, step * 64L)
+	var amount by remember(stack) { mutableStateOf(min(max, defaultAmount)) }
 
 	Panel(modifier = Modifier.sizeIn(minWidth = 150), contentAlignment = Alignment.Center) {
 		Column(verticalArrangement = Arrangement.spacedBy(4), horizontalAlignment = Alignment.CenterHorizontally) {
 			Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
 				TerminalSlot(stack)
-				Text(stack.resource.cachedStack.hoverName, dropShadow = false, color = LocalTheme.current.darkTextColor)
+				Text(stack.resource.displayName(), dropShadow = false, color = LocalTheme.current.darkTextColor)
 			}
 			Text(Component.literal("Quantity (max $max):"), dropShadow = false, color = LocalTheme.current.darkTextColor)
-			Row(horizontalArrangement = Arrangement.spacedBy(2), verticalAlignment = Alignment.CenterVertically) {
-				Button(onClick = { setAmount(amount - 1) }) { Text(Component.literal("-"), dropShadow = false) }
-				BasicTextField(
-					value = text,
-					onValueChange = { raw ->
-						val digits = raw.filter { it.isDigit() }
-						text = digits
-						digits.toLongOrNull()?.let { setAmount(it) }
-					},
-					modifier = Modifier.width(60),
-				)
-				Button(onClick = { setAmount(amount + 1) }) { Text(Component.literal("+"), dropShadow = false) }
-			}
+			QuantityStepper(amount = amount, range = 1..max, onAmountChange = { amount = it }, steps = steps)
 			Row(
 				horizontalArrangement = Arrangement.spacedBy(4),
 				verticalAlignment = Alignment.CenterVertically,
@@ -82,8 +79,9 @@ private fun RequestQuantityDialogContent(stack: ResourceStack<ItemResource>, onC
 			) {
 				Button(onClick = { onCancel() }) { Text(Component.literal("Cancel"), dropShadow = false) }
 				Button(
-					enabled = text.toLongOrNull()?.let { it in 1..max } == true,
-					onClick = { onConfirm(amount) },
+					// Back into whatever the platform counts in, once, here - everything above this
+					// point is the authored unit.
+					onClick = { onConfirm(kind?.toPlatform(amount) ?: amount) },
 				) { Text(Component.literal("Request"), dropShadow = false) }
 			}
 		}

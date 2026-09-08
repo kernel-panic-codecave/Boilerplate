@@ -3,9 +3,7 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.archie.gui.composables.input.Clickable
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
@@ -52,11 +50,14 @@ fun ResourceGhostSlot(
 	}
 	Clickable(
 		onClick = {
+			// What the player is carrying, read as whichever registered kind claims it - a bucket
+			// of water names the water, not the bucket. Kinds are asked in [displayKinds] order,
+			// which puts the item kind last precisely because it claims any stack at all.
 			val held = carried()
-			val heldFluid = fluidIn(held)
+			val claimed = ResourceKindRegistry.displayKinds()
+				.firstNotNullOfOrNull { kind -> kind.display?.carriedIn(held) }
 			when {
-				heldFluid != null -> onPlace(heldFluid)
-				!held.isEmpty -> onPlace(ItemResource.of(held))
+				claimed != null -> onPlace(claimed)
 				!resource.isBlank -> onClear()
 			}
 		},
@@ -65,11 +66,9 @@ fun ResourceGhostSlot(
 		LaunchedEffect(isHovered, resource, handleClick) {
 			clickHandler.setHovered(if (isHovered) handleClick else null)
 		}
-		when (resource) {
-			is FluidResource -> FluidSlotFace(resource, isHovered)
-			is ItemResource -> FakeSlot(if (resource.isBlank) null else ResourceStack(resource, amount), isHovered, countText)
-			else -> FakeSlot(null, isHovered, countText)
-		}
+		val display = ResourceKindRegistry.forResource(resource)?.display
+		if (display == null) FakeSlot(null, isHovered, countText)
+		else display.SlotFace(resource, amount, isHovered, countText, enabled = true)
 	}
 }
 

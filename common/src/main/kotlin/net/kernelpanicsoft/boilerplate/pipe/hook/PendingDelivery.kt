@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import kotlinx.serialization.Serializable
-import net.kernelpanicsoft.boilerplate.network.SItemResource
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
 
 /**
  * A request/withdrawal [TerminalHookState.output] doesn't have the real item for yet - dispatched,
@@ -40,7 +40,7 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
 data class PendingDelivery(
 	val id: Long,
 	val slot: Int,
-	val resource: SItemResource,
+	val resource: SResourceComponent,
 	val amount: Long,
 	val startTick: Long,
 	val totalTicks: Int,

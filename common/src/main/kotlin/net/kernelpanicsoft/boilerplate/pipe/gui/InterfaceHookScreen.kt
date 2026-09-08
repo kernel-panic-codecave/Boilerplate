@@ -1,18 +1,13 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import net.kernelpanicsoft.archie.gui.composables.basic.Label
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
-import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
 import net.minecraft.network.chat.Component
@@ -57,7 +52,7 @@ class InterfaceHookScreen(private val menu: InterfaceHookMenu, playerInventory: 
 		BoilerplateTheme {
 			ContainerPanel {
 				Column(verticalArrangement = Arrangement.spacedBy(2)) {
-					Text(Component.literal("Targets"), dropShadow = false)
+					Label(Component.literal("Targets"))
 					StockingRowGrid(
 						targets = targets.first,
 						amounts = targets.second,
@@ -66,12 +61,7 @@ class InterfaceHookScreen(private val menu: InterfaceHookMenu, playerInventory: 
 						onSet = ::set,
 						clickHandler = clickHandler,
 					)
-					Text(
-						Component.literal("Scroll a target to set how many to hold; below 1 is ∞"),
-						dropShadow = false,
-						color = LocalTheme.current.darkTextColor,
-					)
-					Text(Component.literal("Stock"), dropShadow = false)
+					Label(Component.literal("Stock"))
 					Slots("stock", InterfaceHookState.SLOTS, 1)
 				}
 			}

@@ -24,6 +24,7 @@ neoforge = "21.1.238"
 neoforge-range = "21.1.80"
 
 flywheel = "1.0.6"
+flywheel-range = "1.0"
 
 cloth-config = "15.0.140"
 cloth-config-range = "10.0"
@@ -31,6 +32,10 @@ cloth-config-range = "10.0"
 rei = "16.0.788"
 emi = "1.1.24+1.21.1"
 jei = "19.44.0.413"
+
+devauth = "1.2.2"
+
+mekanism = "1.21.1-10.7.9.72"
 
 compose = "1.7.1"
 # Compose runtime's own transitive libraries. Declared explicitly because they have to reach the
@@ -90,6 +95,11 @@ emi-xplat = { module = "dev.emi:emi-xplat-intermediary", version.ref = "emi" }
 jei-common-api = { module = "mezz.jei:jei-1.21.1-common-api", version.ref = "jei" }
 jei-fabric = { module = "mezz.jei:jei-1.21.1-fabric", version.ref = "jei" }
 jei-neoforge = { module = "mezz.jei:jei-1.21.1-neoforge", version.ref = "jei" }
+
+devauth-fabric = { module = "me.djtheredstoner:DevAuth-fabric", version.ref = "devauth" }
+devauth-neoforge = { module = "me.djtheredstoner:DevAuth-neoforge", version.ref = "devauth" }
+
+mekanism = { module = "mekanism:Mekanism", version.ref = "mekanism" }
 
 androidx-annotation = { module = "androidx.annotation:annotation-jvm", version.ref = "androidx-annotation" }
 androidx-collection = { module = "androidx.collection:collection-jvm", version.ref = "androidx-collection" }

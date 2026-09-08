@@ -21,8 +21,10 @@ import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.util.extension.drawThemeState
 import net.kernelpanicsoft.archie.gui.util.extension.invoke
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
+import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.world.item.ItemStack
 
 /** The inset, in pixels, of a slot's fluid fill inside its 18x18 frame - one pixel of border all round, matching the slot texture. */
@@ -96,12 +98,42 @@ fun FluidGhostSlotGrid(
  * visible gain.
  */
 @Composable
-internal fun FluidSlotFace(resource: FluidResource, isHovered: Boolean) {
+internal fun FluidSlotFace(resource: FluidResource, isHovered: Boolean, countText: String? = null) {
+	if (resource.isBlank) {
+		SpriteSlotFace(null, 0, isHovered, countText)
+		return
+	}
+	SpriteSlotFace(
+		AFluidRenderPlatform.getStillSprite(resource.type),
+		AFluidRenderPlatform.getTintColor(resource.type),
+		isHovered,
+		countText,
+	)
+}
+
+/**
+ * The slot frame with [sprite] painted inside it, tinted by [tint]'s own ARGB - the drawing half of
+ * [FluidSlotFace], with nothing fluid about it.
+ *
+ * Public, unlike [FluidSlotFace], because a fluid is not the only kind whose face is "an atlas
+ * sprite in a frame":
+ * Mekanism's chemicals are drawn exactly this way too, from
+ * [net.kernelpanicsoft.boilerplate.compat.mekanism.ChemicalDisplayKind], which lives in the NeoForge
+ * module and cannot be reached from here. A `null` [sprite] draws the empty frame alone.
+ *
+ * An alpha of `0` is read as fully opaque rather than invisible: Mekanism writes plain `0xRRGGBB`
+ * tints for several of its own chemicals, and honouring that literally would draw nothing at all.
+ *
+ * [countText] is drawn in the corner exactly as [ItemIcon] draws a stack's own count, and has to be
+ * drawn *here*: an item stack writes its count itself and a sprite has nothing that would.
+ */
+@Composable
+fun SpriteSlotFace(sprite: TextureAtlasSprite?, tint: Int, isHovered: Boolean, countText: String? = null) {
 	val theme = LocalTheme.current
 	val slotState = theme.getComposableTheme("slot").getState(TextureStates.DEFAULT, theme.mode)
 
 	Layout(
-		name = "FluidGhostSlot",
+		name = "SpriteSlotFace",
 		measurePolicy = { _, _, constraints -> MeasureResult(constraints.minWidth, constraints.minHeight) {} },
 		modifier = Modifier.size(18, 18),
 		renderer = object : Renderer {
@@ -110,20 +142,23 @@ internal fun FluidSlotFace(resource: FluidResource, isHovered: Boolean) {
 				guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float,
 			) = guiGraphics {
 				drawThemeState(slotState, x, y, node.width, node.height)
-				if (resource.isBlank) return@guiGraphics
+				if (sprite == null) return@guiGraphics
 
-				val sprite = AFluidRenderPlatform.getStillSprite(resource.type) ?: return@guiGraphics
-				val tint = AFluidRenderPlatform.getTintColor(resource.type)
-				val alpha = ((tint ushr 24) and 0xFF) / 255f
+				val rawAlpha = (tint ushr 24) and 0xFF
+				val alpha = (if (rawAlpha == 0) 0xFF else rawAlpha) / 255f
 				val red = ((tint ushr 16) and 0xFF) / 255f
 				val green = ((tint ushr 8) and 0xFF) / 255f
 				val blue = (tint and 0xFF) / 255f
 
+				// Vanilla's order is (x, y, blitOffset, width, height, sprite, ...) - the same
+				// transposition that made the tank gauge draw nothing, since a `height` of 0 trips
+				// its own `width != 0 && height != 0` guard.
 				blit(
-					x + FLUID_INSET, y + FLUID_INSET,
+					x + FLUID_INSET, y + FLUID_INSET, 0,
 					node.width - FLUID_INSET * 2, node.height - FLUID_INSET * 2,
-					0, sprite, red, green, blue, alpha,
+					sprite, red, green, blue, alpha,
 				)
+				if (countText != null) drawCount(Minecraft.getInstance().font, countText, x + FLUID_INSET, y + FLUID_INSET)
 			}
 
 			override fun renderAfterChildren(

@@ -7,11 +7,15 @@ import net.kernelpanicsoft.boilerplate.network.WarehouseDebugSnapshotPacket.JobK
 import net.kernelpanicsoft.boilerplate.network.WarehouseDebugSnapshotPacket.JobStage
 import net.kernelpanicsoft.boilerplate.warehouse.GantryClientCache
 import net.kernelpanicsoft.boilerplate.warehouse.GantryVisualState
+import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseDebugRenderer.bakedKey
+import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseDebugRenderer.staticLines
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.VoxelShape
 
 /**
  * Draws the warehouse overlay into the world frame: every bound warehouse's volume, the racks its
@@ -21,11 +25,10 @@ import net.minecraft.world.phys.Vec3
  *
  * That last part is the warehouse's *status* indicator, which used to be a coloured cage drawn
  * around the head unconditionally by both
- * [WarehouseControllerBlockEntityRenderer] and its Flywheel twin [WarehouseControllerVisual] - two
- * copies of one [GantryVisualState] -> colour mapping that had to be kept in step by hand. It lives
- * here now, once, for both render paths: the overlay draws over whichever of the two actually drew
- * the gantry, so the indicator no longer depends on which is in use. The cost is that it is now
- * behind the debug toggle with everything else rather than always on.
+ * two separate gantry renderers - two copies of one [GantryVisualState] -> colour mapping that had
+ * to be kept in step by hand. It lives here now, once: the overlay draws over
+ * [WarehouseControllerVisual]'s gantry rather than duplicating its state mapping. The cost is that
+ * it is now behind the debug toggle with everything else rather than always on.
  *
  * Everything except the head and its path is baked once per snapshot into a [DebugLineBatch] - the
  * server sends one every 10 ticks and a mature warehouse runs to thousands of racks, so rebuilding
@@ -83,13 +86,8 @@ object WarehouseDebugRenderer {
 		GantryVisualState.IDLE to DebugColor.rgb(0x8a8a8a, 0.5f),
 	)
 
-	/** Half the head model's own extent (it spans `[3,3,3]`..`[13,13,13]`), plus a hair, so the cage sits just proud of the head's real surface rather than around a full block - see [WarehouseControllerBlockEntityRenderer]'s own note on sizing to the model. */
+	/** Half the head model's own extent (it spans `[3,3,3]`..`[13,13,13]`), plus a hair, so the cage sits just proud of the head's real surface rather than around a full block - sized to the model rather than to a full block cell. */
 	private const val HEAD_RADIUS = 5.0 / 16.0 + 0.02
-
-	/** Racks are drawn slightly inside their block so a rack sitting flush against the volume's own wall doesn't z-fight the bounds box. */
-	private const val RACK_INSET = 0.08
-
-	private const val CONTROLLER_INSET = 0.15
 
 	fun renderFrame(poseStack: PoseStack, bufferSource: MultiBufferSource.BufferSource) {
 		val minecraft = Minecraft.getInstance()
@@ -100,7 +98,7 @@ object WarehouseDebugRenderer {
 		val warehouses = WarehouseDebugCache.snapshot()
 		if (warehouses.isEmpty()) return
 
-		bakeStatic(warehouses)
+		bakeStatic(level, warehouses)
 
 		val gameTime = level.gameTime + minecraft.timer.getGameTimeDeltaPartialTick(false).toDouble()
 		dynamicLines.clear()
@@ -117,26 +115,26 @@ object WarehouseDebugRenderer {
 	}
 
 	/** Rebuilds [staticLines] only when a fresh snapshot replaces the warehouse list (see [bakedKey]). */
-	private fun bakeStatic(warehouses: List<WarehouseDebugCache.Warehouse>) {
+	private fun bakeStatic(level: BlockGetter, warehouses: List<WarehouseDebugCache.Warehouse>) {
 		if (warehouses === bakedKey) return
 		bakedKey = warehouses
 
 		staticLines.clear()
-		for (warehouse in warehouses) {
+		for ((controller, min, max, _, _, rescanning, _, _, racks, jobs) in warehouses) {
 			staticLines.addBox(
-				warehouse.min.x.toDouble(), warehouse.min.y.toDouble(), warehouse.min.z.toDouble(),
-				warehouse.max.x + 1.0, warehouse.max.y + 1.0, warehouse.max.z + 1.0,
-				if (warehouse.rescanning) BOUNDS_RESCAN_COLOR else BOUNDS_COLOR,
+				min.x.toDouble(), min.y.toDouble(), min.z.toDouble(),
+				max.x + 1.0, max.y + 1.0, max.z + 1.0,
+				if (rescanning) BOUNDS_RESCAN_COLOR else BOUNDS_COLOR,
 			)
-			blockBox(warehouse.controller, CONTROLLER_INSET, CONTROLLER_COLOR)
+			blockOutline(level, controller, CONTROLLER_COLOR)
 
-			for (rack in warehouse.racks) {
-				blockBox(rack.pos, RACK_INSET, rackColor(rack))
+			for (rack in racks) {
+				blockOutline(level, rack.pos, rackColor(rack))
 			}
-			for (job in warehouse.jobs) {
-				val color = JOB_COLORS[JobKind.entries.getOrNull(job.kind) ?: JobKind.RETRIEVE] ?: continue
-				val alpha = STAGE_ALPHA[JobStage.entries.getOrNull(job.stage) ?: JobStage.PENDING] ?: continue
-				staticLines.add(Vec3.atCenterOf(job.from), Vec3.atCenterOf(job.to), color.alpha(alpha))
+			for ((from, to, kind, stage) in jobs) {
+				val color = JOB_COLORS[JobKind.entries.getOrNull(kind) ?: JobKind.RETRIEVE] ?: continue
+				val alpha = STAGE_ALPHA[JobStage.entries.getOrNull(stage) ?: JobStage.PENDING] ?: continue
+				staticLines.add(Vec3.atCenterOf(from), Vec3.atCenterOf(to), color.alpha(alpha))
 			}
 		}
 	}
@@ -148,7 +146,7 @@ object WarehouseDebugRenderer {
 	 * wherever there is an entry, so the cage tracks the same smoothly dead-reckoned head the gantry
 	 * renderer draws instead of stepping once per snapshot. The snapshot's copy is the fallback for
 	 * a controller that has never synced one - a freshly bound, never-yet-run gantry - which is the
-	 * same fallback [WarehouseControllerBlockEntityRenderer] makes.
+	 * same fallback [WarehouseControllerVisual] makes.
 	 */
 	private fun bakeDynamic(warehouse: WarehouseDebugCache.Warehouse, gameTime: Double) {
 		val dead = GantryClientCache.get(warehouse.controller, gameTime)
@@ -177,9 +175,33 @@ object WarehouseDebugRenderer {
 		else -> RACK_UNREACHABLE_COLOR
 	}
 
-	private fun blockBox(pos: BlockPos, inset: Double, color: DebugColor) = staticLines.addBox(
-		pos.x + inset, pos.y + inset, pos.z + inset,
-		pos.x + 1.0 - inset, pos.y + 1.0 - inset, pos.z + 1.0 - inset,
-		color,
-	)
+	/**
+	 * Traces the block at [pos] along its **own outline**, the way
+	 * [net.kernelpanicsoft.boilerplate.pipe.client.DebugNetworkRenderer] traces a pipe network.
+	 *
+	 * [VoxelShape.forAllEdges] walks the solid's real edges, so a shape that is not a single box -
+	 * a chest with its lid lip, a machine with a recessed face - is outlined as it actually is
+	 * rather than swallowed by one enclosing cube. A rack is whatever block the index found, so this
+	 * has to hold for anything.
+	 */
+	private fun blockOutline(level: BlockGetter, pos: BlockPos, color: DebugColor) {
+		val shape = level.getBlockState(pos).getShape(level, pos)
+		if (shape.isEmpty) {
+			// Nothing to hug - a capability provider with no outline still deserves a marker.
+			staticLines.addBox(
+				pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble(),
+				pos.x + 1.0, pos.y + 1.0, pos.z + 1.0,
+				color,
+			)
+			return
+		}
+
+		shape.forAllEdges { x1, y1, z1, x2, y2, z2 ->
+			staticLines.add(
+				pos.x + x1, pos.y + y1, pos.z + z1,
+				pos.x + x2, pos.y + y2, pos.z + z2,
+				color,
+			)
+		}
+	}
 }

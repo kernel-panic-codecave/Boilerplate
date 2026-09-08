@@ -34,11 +34,10 @@ import net.minecraft.world.phys.shapes.VoxelShape
  * job execution on [tick]; a non-leader member still holds its own share of
  * [CraftingBufferEncasementState.localStorage] but does nothing else.
  *
- * The **item** half of a CPU: this member contributes item slots to the cluster's pool. A cluster
- * that also needs to stage fluids takes a [CraftingTankEncasementType] alongside these; both kinds
- * cluster through the same [CraftingCpuManager] and share one job queue, and the actual job
- * execution lives in [CraftingCpuRuntime] rather than here, since the leader driving it may be
- * either kind.
+ * A CPU's staging: this member contributes slots to the cluster's pools, of every registered kind
+ * at once. Members cluster through [CraftingCpuManager] and share one job queue, and the actual job
+ * execution lives in [CraftingCpuRuntime] rather than here, since the leader driving it may be any
+ * member of the cluster.
  *
  * Being an encasement rather than a standalone block, the CPU *is* a pipe segment: every routing
  * call below starts from its own position, and a shipment it sends leaves through its own

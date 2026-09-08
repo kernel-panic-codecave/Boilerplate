@@ -1,17 +1,19 @@
 package net.kernelpanicsoft.boilerplate.pipe.entity
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.boilerplate.network.PipeContentsSyncPacket
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
-import earth.terrarium.common_storage_lib.item.ItemApi
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
 import net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
+import net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchAtRouteEnd
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
-import net.kernelpanicsoft.boilerplate.pipe.network.ItemNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
+import net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypesAt
@@ -26,6 +28,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockState
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 
 /**
  * A plain pipe segment - the block entity behind every [net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock]
@@ -185,38 +188,50 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				continue
 			}
 
-			val resource = item.stack.resource
-			// A reserved delivery lands in its own reserved slot specifically, bypassing the
-			// network-facing (reservation-blocking) view that the api handed back - see
-			// ReservedSlotStorage. Everything else takes the ordinary any-slot path. Reservations
-			// are an item-network (terminal) concept, so the item router's own api resolves the
-			// pass-through/interface-stock nuance; the fluid path (a later pass) always deposits
-			// straight through its network type's own api.
+			// The reservation this delivery is for, if it is for one at all - what [receiver] then
+			// turns into an insert aimed at that exact slot.
 			val reservation = reservationOwner?.pendingDeliveries
 				?.firstOrNull { it.id == item.reservationId }
 				// Never index blindly off persisted state: a slot count that shrank under a saved
 				// reservation would crash the tick loop outright. Falling through to the ordinary
 				// path just lands it in any free slot instead.
 				?.takeIf { it.slot in 0 until reservationOwner.output.size() }
-			val inserted = if (networkType === ItemNetworkType) {
-				if (reservation != null) {
-					reservationOwner.output.insert(reservation.slot, resource as ItemResource, item.stack.amount, false)
-				} else {
-					val interfaceStock = if (item.targetFace != null) {
-						(serverLevel.getBlockEntity(nextPos) as? MultipartBlockEntity)?.hooks?.get(item.targetFace.name) as? InterfaceHookState
-					} else null
-					val storage = interfaceStock?.stock ?: ItemApi.BLOCK.find(serverLevel, nextPos, deliverFace)
-					if (storage == null) {
-						jamAndRelease(serverLevel, pos, item)
-						items.removeAt(index)
-						hopped = true
-						continue
-					}
-					storage.insert(resource as ItemResource, item.stack.amount, false)
-				}
-			} else {
-				networkType.deposit(serverLevel, nextPos, deliverFace, item.stack, simulate = false)
+			val resource = item.stack.resource as ResourceComponent
+			val insert = receiver(serverLevel, nextPos, deliverFace, networkType, item, reservation, reservationOwner)
+			if (insert == null) {
+				jamAndRelease(serverLevel, pos, item)
+				items.removeAt(index)
+				hopped = true
+				continue
 			}
+
+			// The last gate before a delivery physically lands, and the only one that can be right
+			// about a batching face. The destination has been running for the whole trip, so a batch
+			// that fitted when it was pulled may only part-fit by the time it arrives - and topping a
+			// machine up with the part that fits is the exact jam batching exists to prevent.
+			//
+			// Measured rather than predicted: ask for a whole multiple, then take back whatever did
+			// not land as one. A prediction would need to know how much the destination will really
+			// accept, and no probe can answer that for every storage shape - a simulated insert is
+			// the storage's own answer but over-reports on a part-filled vanilla container (see
+			// [net.kernelpanicsoft.boilerplate.network.roomFor]), while walking its slots is only
+			// meaningful for a storage whose slots are a faithful partition, which several of this
+			// mod's own are not. A real insert is exact for all of them, and the surplus is put back
+			// where it came from in the same call - no tick passes, so nothing observes the blip.
+			//
+			// An unbatched face is unaffected: the multiple is one, so nothing is ever taken back
+			// and this is the plain partial insert it always was.
+			val allowed = batchedForRoute(serverLevel, pos, listOf(nextPos), item.stack.amount)
+			var inserted = if (allowed <= 0L) 0L else insert.insert(allowed)
+			val surplus = batchSurplus(serverLevel, pos, nextPos, inserted)
+			if (surplus > 0L) inserted -= insert.takeBack(surplus)
+			// The one place a delivery's whole journey ends, and so the one worth reporting: a
+			// stalled arrival is not lost, but it is indistinguishable from lost to whoever was
+			// waiting for it, since it sits in the pipe indefinitely while the sender keeps going.
+			ResourceTrace.moved(
+				nextPos, "pipe.deliver", resource, item.stack.amount, inserted,
+				"from" to pos, "batched" to (allowed != item.stack.amount),
+			)
 			when {
 				inserted >= item.stack.amount -> {
 					reservationOwner?.pendingDeliveries?.removeIf { it.id == item.reservationId }
@@ -292,6 +307,11 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 * entry), not necessarily the next hop this jam happened at.
 	 */
 	private fun jamAndRelease(level: ServerLevel, pos: BlockPos, item: TravelingItem) {
+		ResourceTrace.at(
+			pos, "pipe.giveUp",
+			"resource" to item.stack.resource, "amount" to item.stack.amount,
+			"remainingPath" to item.path.size, "reserved" to (item.reservationId != null),
+		)
 		if (item.reservationId != null) {
 			item.path.lastOrNull()?.let { destination ->
 				reservationOwnerAt(level, destination, item)?.pendingDeliveries?.removeIf { it.id == item.reservationId }
@@ -299,6 +319,72 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		}
 		jam(level, pos, item)
 	}
+
+	/**
+	 * How much of [inserted] failed to make up a whole batch across the face between [pos] and
+	 * [nextPos] - what the arrival gate takes back out again.
+	 *
+	 * `0` for an unbatched face, so nothing is ever clawed back on an ordinary line.
+	 */
+	private fun batchSurplus(level: ServerLevel, pos: BlockPos, nextPos: BlockPos, inserted: Long): Long {
+		if (inserted <= 0L) return 0L
+		val batch = batchAtRouteEnd(level, pos, listOf(nextPos))
+		if (batch <= FilterHookState.NOT_BATCHED) return 0L
+		return inserted % batch
+	}
+
+	/**
+	 * How [item] gets into the block at [nextPos], as a function of `(amount, simulate)`, or `null`
+	 * when nothing there will take it at all.
+	 *
+	 * A pair of functions rather than a plain insert, because a batching face may have to take part
+	 * of a delivery back out again (see the gate in [tick]) - and "the real target" is three
+	 * different things: a reserved terminal slot, an interface hook's own stock, or whichever
+	 * storage of this network's kind faces the pipe. Resolving that once, here, is what lets the
+	 * caller insert into and extract from the same place.
+	 *
+	 * A reserved delivery lands in its own reserved slot specifically, bypassing the
+	 * network-facing (reservation-blocking) view that the api would hand back - see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.ReservedSlotStorage]. Everything else takes the
+	 * ordinary any-slot path.
+	 *
+	 * Kind-agnostic throughout, including the interface-stock case: an interface holds stock of
+	 * every registered kind ([InterfaceHookState.stockFor]), so a fluid aimed at one lands in its
+	 * tank exactly as an item lands in its row.
+	 */
+	private fun receiver(
+		level: ServerLevel,
+		nextPos: BlockPos,
+		deliverFace: Direction?,
+		networkType: ResourceNetworkType<*>,
+		item: TravelingItem,
+		reservation: PendingDelivery?,
+		reservationOwner: TerminalHookState?,
+	): Receiver? {
+		val resource = item.stack.resource as ResourceComponent
+		val kind = ResourceKindRegistry.forResource(resource) ?: return null
+		val storageKind = kind.storage ?: return null
+
+		if (reservation != null && reservationOwner != null) {
+			val output = reservationOwner.output
+			return Receiver(
+				insert = { amount -> storageKind.insertInto(output, reservation.slot, resource, amount, false) },
+				takeBack = { amount -> storageKind.extract(output, resource, amount, false) },
+			)
+		}
+		val interfaceStock = if (item.targetFace != null) {
+			((level.getBlockEntity(nextPos) as? MultipartBlockEntity)?.hooks?.get(item.targetFace.name) as? InterfaceHookState)
+				?.stockFor(kind)
+		} else null
+		val storage = interfaceStock ?: storageKind.find(level, nextPos, deliverFace) ?: return null
+		return Receiver(
+			insert = { amount -> storageKind.insert(storage, resource, amount, false) },
+			takeBack = { amount -> storageKind.extract(storage, resource, amount, false) },
+		)
+	}
+
+	/** Where one delivery lands, as the two operations the arrival gate needs of it - see [receiver]. */
+	private class Receiver(val insert: (Long) -> Long, val takeBack: (Long) -> Long)
 
 	/**
 	 * The [TerminalHookState] at [pos] still holding an active

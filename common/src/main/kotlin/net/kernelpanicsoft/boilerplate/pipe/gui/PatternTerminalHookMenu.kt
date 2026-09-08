@@ -1,11 +1,8 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.fluid.util.FluidAmounts
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
@@ -20,6 +17,8 @@ import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Inventory
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 
 /**
  * Menu for the pattern terminal hook attached to [tile] - everything [AbstractTerminalHookMenu] does, plus
@@ -75,11 +74,16 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
 		val grid = ArchieItemStorage(state.ghostInputs.size)
 		for ((index, resource) in state.ghostInputs.withIndex()) {
-			if (resource.isBlank || resource !is ItemResource) continue
+			if (resource.isBlank) continue
 			// A CRAFTING pattern is matched against a real vanilla recipe, which is one-item-per-cell -
 			// see PatternTerminalHookState.ghostInputAmounts for why a count there would be wrong.
 			val perRun = if (state.patternKind == PatternKind.PROCESSING) state.ghostInputAmounts[index].toInt().coerceAtLeast(1) else 1
-			grid[index].set(resource.toStack(perRun))
+			// A vanilla recipe can only be matched against kinds a vanilla grid holds; anything else
+			// leaves its cell empty here rather than being forced into a stack it has no form for.
+			val stack = ResourceKindRegistry.forResource(resource)
+				?.takeIf { it.vanillaCraftable }
+				?.toVanillaStack(resource, perRun.toLong()) ?: continue
+			grid[index].set(stack)
 		}
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PatternGridPreviewPacket(InstantCrafting.match(level, grid)))
 	}
@@ -98,6 +102,45 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK to 1L }
 		return state.ghostOutputs.zip(state.ghostOutputAmounts)
 	}
+
+	/**
+	 * The already-encoded [Pattern] currently sitting in this terminal's own result slot, or `null`
+	 * when it holds nothing (or a blank pattern).
+	 *
+	 * Readable on either side: the slot is a real vanilla-[net.minecraft.world.inventory.Slot]-backed
+	 * one over [PatternTerminalHookState.patternOutput], so its contents reach the client through
+	 * ordinary menu syncing rather than through the hooks map (which the screen only ever reads
+	 * once - see [currentGhostInputs]). That is what lets the *screen* notice a pattern being put
+	 * back in and load it, without any new packet in either direction.
+	 */
+	fun encodedPatternInOutput(): Pattern? {
+		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return null
+		val stack = state.patternOutput[0].getItem()
+		if (stack.isEmpty || !stack.`is`(ItemRegistry.Pattern)) return null
+		return PatternItemData(stack).pattern.takeIf { it != Pattern.EMPTY }
+	}
+
+	/**
+	 * [pattern]'s own cells as this terminal's ghost grid would hold them - resources paired with
+	 * **authored** amounts.
+	 *
+	 * A pattern stores what the platform counts in ([cellAmount] converts on the way out), so this
+	 * converts back: a 1000mB fluid cell reads as `1000` again rather than as however many droplets
+	 * the loader happens to use. Padded (and truncated) to the grid's own size, so a pattern from
+	 * anywhere is safe to load.
+	 */
+	private fun cellsOf(stacks: List<ResourceStack<ResourceComponent>>): List<Pair<ResourceComponent, Long>> =
+		List(PatternTerminalHookState.GRID_SIZE) { index ->
+			val cell = stacks.getOrNull(index)
+			if (cell == null || cell.resource.isBlank) ItemResource.BLANK to 1L
+			else cell.resource to (ResourceKindRegistry.forResource(cell.resource)?.toAuthored(cell.amount) ?: cell.amount).coerceAtLeast(1L)
+		}
+
+	/** [pattern]'s input cells, ready for the ghost grid - see [cellsOf]. */
+	fun inputCellsOf(pattern: Pattern): List<Pair<ResourceComponent, Long>> = cellsOf(pattern.inputs)
+
+	/** [pattern]'s output cells, ready for the ghost grid - see [cellsOf]. */
+	fun outputCellsOf(pattern: Pattern): List<Pair<ResourceComponent, Long>> = cellsOf(pattern.outputs)
 
 	/** Client-side: switches this pattern terminal between [PatternKind.CRAFTING] (a real vanilla recipe match, single derived output) and [PatternKind.PROCESSING] (an unordered ingredient bag, up to 9 manually-specified outputs). */
 	fun setPatternKind(kind: PatternKind) {
@@ -180,5 +223,5 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	 * Item cells are already counts and pass straight through.
 	 */
 	private fun cellAmount(resource: ResourceComponent, authored: Long): Long =
-		if (resource is FluidResource) FluidAmounts.toPlatformAmount(authored) else authored
+		ResourceKindRegistry.forResource(resource)?.toPlatform(authored) ?: authored
 }

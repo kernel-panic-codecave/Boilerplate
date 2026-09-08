@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.crafting
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
@@ -46,11 +47,17 @@ object PatternEncoder {
 
 		return when (kind) {
 			PatternKind.CRAFTING -> {
-				// Item-only, and strictly so - see this object's own KDoc.
-				if (inputs.any { !it.resource.isBlank && it.resource !is ItemResource }) return null
-				val craftingInput = CraftingInput.of(3, 3, inputs.map { cell ->
-					(cell.resource as? ItemResource)?.takeIf { !it.isBlank }?.toStack(1) ?: ItemStack.EMPTY
-				})
+				// A vanilla grid only holds kinds that say they fit in one - see
+				// [net.kernelpanicsoft.boilerplate.network.ResourceKind.vanillaCraftable], and this
+				// object's own KDoc for why that is strict rather than best-effort.
+				val cells = inputs.map { cell ->
+					if (cell.resource.isBlank) ItemStack.EMPTY
+					else ResourceKindRegistry.forResource(cell.resource)
+						?.takeIf { it.vanillaCraftable }
+						?.toVanillaStack(cell.resource, 1)
+						?: return null
+				}
+				val craftingInput = CraftingInput.of(3, 3, cells)
 				val recipe = level.recipeManager.getRecipeFor(RecipeType.CRAFTING, craftingInput, level).orElse(null) ?: return null
 				val assembled = recipe.value().assemble(craftingInput, level.registryAccess())
 				if (assembled.isEmpty) null

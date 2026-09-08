@@ -3,6 +3,7 @@ package net.kernelpanicsoft.boilerplate.network
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
 import net.minecraft.client.Minecraft
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
 
 /**
  * Server -> client: reply to [RequestCraftableListPacket] - [resources] is the distinct set of
@@ -10,7 +11,7 @@ import net.minecraft.client.Minecraft
  * [AbstractTerminalHookMenu] the receiving player currently has open, if any.
  */
 @Serializable
-data class CraftableListPacket(val resources: List<SItemResource>) {
+data class CraftableListPacket(val resources: List<SResourceComponent>) {
 	fun handleOnClient() {
 		val menu = Minecraft.getInstance().player?.containerMenu as? AbstractTerminalHookMenu<*> ?: return
 		menu.updateCraftableList(resources)

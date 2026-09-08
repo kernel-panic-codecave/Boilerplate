@@ -6,7 +6,7 @@ import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
-import java.util.UUID
+import java.util.*
 
 /**
  * Resolves the "pressure line" a [net.kernelpanicsoft.boilerplate.power.PressureConsumer] draws
@@ -38,7 +38,7 @@ object PressureLine {
 	 * *different* network, not a stale one - blindly unioning it back in here would let pressure
 	 * "leak" across the exact boundary the topology itself refuses to merge.
 	 *
-	 * [PressureApi.find] returns the generic CSL `ValueStorage` interface, not the concrete
+	 * [PressureApi.BLOCK] returns the generic CSL `ValueStorage` interface, not the concrete
 	 * [ArchieEnergyStorage] [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick]
 	 * itself requires - every endpoint this mod's own encasements expose really is backed by one
 	 * (built via `energyField`), so the cast is safe for them; a hypothetical third-party
@@ -61,9 +61,9 @@ object PressureLine {
 				// first, then its neighbors for a hypothetical external (non-`PressurePipeBlock`)
 				// energy-exposing block sitting adjacent to the network, symmetric to how item pipes
 				// reach an ordinary chest.
-				(PressureApi.find(level, memberPos, Direction.NORTH) as? ArchieEnergyStorage)?.let { return it }
+				(PressureApi.BLOCK.find(level, memberPos, Direction.NORTH) as? ArchieEnergyStorage)?.let { return it }
 				for (probeDirection in Direction.entries) {
-					val storage = PressureApi.find(level, memberPos.relative(probeDirection), probeDirection.opposite) as? ArchieEnergyStorage ?: continue
+					val storage = PressureApi.BLOCK.find(level, memberPos.relative(probeDirection), probeDirection.opposite) as? ArchieEnergyStorage ?: continue
 					return storage
 				}
 			}

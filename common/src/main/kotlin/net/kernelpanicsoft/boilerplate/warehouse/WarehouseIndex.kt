@@ -5,6 +5,7 @@ import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.network.SResourceComponent
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.util.SDirection
@@ -142,14 +143,26 @@ class WarehouseIndex {
 			val state = level.getBlockState(pos)
 			if (state.isAir) continue
 
-			// Any indexable storage of any registered kind - a fluid tank is as much a put-away
-			// destination as an item rack is.
-			for (dir in Direction.entries) {
-				if (storagesAt(level, pos, dir).isNotEmpty()) {
-					candidates.add(pos to dir)
-					break
+			// One face per registered kind, deduplicated - a fluid tank is as much a put-away
+			// destination as an item rack is, and the face that answers for one kind is not
+			// necessarily the face that answers for another.
+			//
+			// [bestRackFor] re-finds the storage through the face recorded here, so a candidate
+			// naming a face that only answers for items is no destination at all for a chemical.
+			// Usually one face answers for everything and this collapses back to a single entry;
+			// where it does not, the few extra entries are the difference between a tank being a
+			// put-away target and being silently skipped.
+			val faces = LinkedHashSet<Direction?>()
+			for (kind in ResourceKindRegistry.storageKinds()) {
+				val storageKind = kind.storage ?: continue
+				for (dir in Direction.entries) {
+					if (storageKind.find(level, pos, dir) != null) {
+						faces += dir
+						break
+					}
 				}
 			}
+			for (face in faces) candidates.add(pos to face)
 		}
 		// Sort only actual containers by distance (unambiguous primitive double overload)
 		internalAvailableSlots = candidates.sortedBy { (pos, _) ->
@@ -192,39 +205,79 @@ class WarehouseIndex {
 		// buffer it just pulled from - indistinguishable from the item silently vanishing, since
 		// nothing ever reaches a real rack.
 		if (pos == controllerPos) return false
+		// Nor a pipe. Every pipe face is a pass-through now (see
+		// [net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage]), so a pipe run crossing a
+		// bound volume would otherwise index as a whole row of racks that accept anything - and
+		// put-away would happily "stow" into them, which means scattering the items back into the
+		// network they were being taken out of.
+		if (ItemPipeRouter.isPipe(level, pos)) return false
 
 		val directionsToScan = if (direction != null) listOf(direction) else Direction.entries + listOf(null)
 		var foundStorage = false
 
-		for (dir in directionsToScan) {
-			val storages = storagesAt(level, pos, dir)
-			if (storages.isEmpty()) continue
-			foundStorage = true
-			knownContainers.add(pos.immutable())
+		// Per **kind**, each finding its own face - not one face for all of them.
+		//
+		// A block may expose different kinds on different sides: a Mekanism chemical tank answers
+		// the item capability on the faces its own side-config puts item slots on and the chemical
+		// capability on others. Taking the first face that exposed *anything* meant such a tank was
+		// indexed off its (empty) item slots and its chemical contents were never looked at - the
+		// rack ended up known-but-holding-nothing, which is exactly what the debug overlay draws in
+		// "available" blue, and what left it unreachable as a source.
+		//
+		// Recording each kind against the face that actually exposes it also matters downstream:
+		// a retrieval re-finds the storage through [RackSlotRef.direction], and a face that answered
+		// for some other kind hands it nothing.
+		for (kind in ResourceKindRegistry.storageKinds()) {
+			val storageKind = kind.storage ?: continue
+			// The face to record this kind against, and what it holds. Filled by the first face that
+			// answers with contents, then upgraded to one those contents can actually be *taken*
+			// out of - see below for why that is not the same question.
+			var chosenFace: Direction? = null
+			var chosenContents: Map<ResourceIdentity, Long> = emptyMap()
+			var chosenExtractable = false
 
-			// Totals are aggregated across every kind this face exposes at once, since the index is
-			// keyed by resource rather than by kind - two kinds on one face simply contribute
-			// different keys.
-			val aggregated = mutableMapOf<ResourceIdentity, Long>()
-			var anySlots = false
-			for (storage in storages) {
-				if (storage.size() > 0) anySlots = true
+			for (dir in directionsToScan) {
+				val storage = storageKind.find(level, pos, dir) ?: continue
+				foundStorage = true
+				knownContainers.add(pos.immutable())
+				// A storage with no slots is still a container worth knowing about, but there is
+				// nothing to read off it - keep looking for a face of this kind that has some.
+				if (storage.size() <= 0) continue
+
+				val aggregated = mutableMapOf<ResourceIdentity, Long>()
+				var extractable = false
 				for (i in 0 until storage.size()) {
 					val resource = storage.getResource(i) as? ResourceComponent ?: continue
 					if (resource.isBlank) continue
 					val amount = storage.getAmount(i)
-					if (amount > 0) {
-						val key = ResourceIdentity.of(resource)
-						aggregated[key] = (aggregated[key] ?: 0L) + amount
-					}
+					if (amount <= 0) continue
+					val key = ResourceIdentity.of(resource)
+					aggregated[key] = (aggregated[key] ?: 0L) + amount
+					// Reading a face and being able to pull out of it are different permissions:
+					// a machine's input side reports its contents perfectly well and refuses every
+					// extraction. Indexing such a face makes the resource *look* retrievable, and
+					// the retrieval that follows takes nothing - which then reads as the rack
+					// having lied, so the entry is dropped and the resource vanishes from the
+					// warehouse until the next full rescan.
+					if (!extractable && storageKind.extract(storage, resource, amount, true) > 0) extractable = true
 				}
+
+				if (chosenFace == null || (extractable && !chosenExtractable)) {
+					chosenFace = dir
+					chosenContents = aggregated
+					chosenExtractable = extractable
+				}
+				// An empty face settles it - the same storage answers on every side it is exposed
+				// on, so no other face is going to have contents this one lacks.
+				if (aggregated.isEmpty() || chosenExtractable) break
+				if (direction != null) break
 			}
 
-			for ((key, totalAmount) in aggregated) {
-				into.getOrPut(key) { mutableListOf() } += RackSlotRef(pos.immutable(), dir, totalAmount)
+			// One face per kind: the same storage is usually answered on several of them, and
+			// counting each would multiply this rack's contents by however many replied.
+			for ((key, totalAmount) in chosenContents) {
+				into.getOrPut(key) { mutableListOf() } += RackSlotRef(pos.immutable(), chosenFace, totalAmount)
 			}
-
-			if (direction == null && anySlots) break
 		}
 
 		return foundStorage
@@ -308,20 +361,6 @@ class WarehouseIndex {
 		locations = if (updated.isEmpty()) locations - key else locations + (key to updated)
 	}
 
-	private companion object {
-		/**
-		 * Every indexable storage [pos] exposes on [direction], one per registered
-		 * [net.kernelpanicsoft.boilerplate.network.ResourceKind] that has a
-		 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind].
-		 *
-		 * All of them, not the first: a block may expose more than one kind (a machine with an input
-		 * tank and an output buffer), and indexing only one of those made the other invisible to the
-		 * warehouse entirely. Registering a kind is the only thing needed to have it show up here -
-		 * nothing in this class names items or fluids.
-		 */
-		fun storagesAt(level: ServerLevel, pos: BlockPos, direction: Direction?): List<CommonStorage<*>> =
-			ResourceKindRegistry.storageKinds().mapNotNull { it.storage?.find(level, pos, direction) }
-	}
 }
 
 /**

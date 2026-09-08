@@ -1,26 +1,29 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
 import dev.architectury.registry.menu.ExtendedMenuProvider
-import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.archie.serialization.field
 import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
-import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
-import net.kernelpanicsoft.boilerplate.network.GantrySyncPacket
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
+import net.kernelpanicsoft.boilerplate.network.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.acceptsByFilter
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.registry.TileRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.Companion.GANTRY_SYNC_INTERVAL_TICKS
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.Companion.HEAD_CLEARANCE
@@ -44,17 +47,6 @@ import net.minecraft.world.level.block.Block.UPDATE_ALL
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.chunk.status.ChunkStatus
 import net.minecraft.world.phys.Vec3
-import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
-import net.benwoodworth.knbt.NbtTag
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.boilerplate.network.ResourceStorageKind
-import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 
 class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	NBTBlockEntity(TileRegistry.WarehouseController, pos, state), PressureConsumer, ExtendedMenuProvider {
@@ -295,23 +287,8 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 
 	val index: WarehouseIndex = WarehouseIndex()
 	val gantry: GantryState = GantryState(Vec3.atCenterOf(pos))
-	val inboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE, filter = { acceptsByFilter(filter, routing, it) })
-	val outboundBuffer: ArchieItemStorage by itemField(BUFFER_SIZE)
-
-	/**
-	 * Every non-item staging buffer's contents, keyed by [net.kernelpanicsoft.boilerplate.network.ResourceKind.kindTag]
-	 * and by direction (`in`/`out`), so a fluid the gantry was carrying survives a reload the same
-	 * way an item in [inboundBuffer] does.
-	 *
-	 * The item kind keeps its own dedicated fields above rather than living in here, because those
-	 * two are more than staging: they are the controller's own exposed item capability and what its
-	 * GUI draws. Everything else is reached through [inboundFor]/[outboundFor], which is what makes
-	 * a newly registered kind work here with no edit.
-	 */
-	private var extraBuffers: Map<String, NbtTag> by field(MapSerializer(String.serializer(), NbtTag.serializer())) { emptyMap() }
-
-	/** Live staging buffers for every kind but the item one, built on first use - see [extraBuffers]. */
-	private val bufferCache: MutableMap<String, CommonStorage<*>> = mutableMapOf()
+	val inboundBuffer: ResourceStorage by resourceField(BUFFER_SIZE, accepts = { acceptsByFilter(filter, routing, it) })
+	val outboundBuffer: ResourceStorage by resourceField(BUFFER_SIZE)
 
 	/**
 	 * The inbound (put-away) staging buffer for [kind], or `null` if that kind cannot be stored at
@@ -320,59 +297,21 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 	 * Nothing below this point asks whether a resource is an item: a job's cargo resolves its own
 	 * kind and gets that kind's buffer.
 	 */
-	fun inboundFor(kind: ResourceKind): CommonStorage<*>? = bufferFor(kind, "in")
+	@Suppress("UNCHECKED_CAST")
+	fun <T : ResourceComponent> inboundFor(kind: ResourceKind): CommonStorage<T>? =
+		inboundBuffer.viewOf(kind) as? CommonStorage<T>
 
 	/** See [inboundFor]. */
-	fun outboundFor(kind: ResourceKind): CommonStorage<*>? = bufferFor(kind, "out")
-
-	private fun bufferFor(kind: ResourceKind, direction: String): CommonStorage<*>? {
-		if (kind.kindTag == ITEM_KIND_TAG) return if (direction == "in") inboundBuffer else outboundBuffer
-		val storageKind = kind.storage ?: return null
-		val key = "${kind.kindTag}_$direction"
-		bufferCache[key]?.let { return it }
-
-		// Created and restored together, so a buffer is never handed out empty when the save had
-		// contents for it - the onChange hook writes straight back into the persisted map.
-		// The same admission rule the item buffer bakes in via its own itemField filter, so this
-		// controller's filter card gates every kind identically - including for the router's
-		// simulated insert, which is what decides whether this block is a destination at all.
-		val created = storageKind.createBuffer(
-			BUFFER_SIZE,
-			accepts = { direction == "out" || acceptsByFilter(filter, routing, it) },
-		) { persistBuffer(key, storageKind) }
-		bufferCache[key] = created
-		extraBuffers[key]?.let { storageKind.decodeBuffer(created, it) }
-		return created
-	}
-
-	private fun persistBuffer(key: String, storageKind: ResourceStorageKind) {
-		val buffer = bufferCache[key] ?: return
-		extraBuffers = extraBuffers + (key to storageKind.encodeBuffer(buffer))
-		setChanged()
-	}
-
-	/**
-	 * This controller's inbound **fluid** buffer, typed for the capability registration that exposes
-	 * it (see [net.kernelpanicsoft.boilerplate.registry.TileRegistry.WarehouseController]).
-	 *
-	 * Without this exposure a controller was simply invisible to the fluid network: `FluidApi.BLOCK`
-	 * found nothing at its position, so [net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter]
-	 * never weighed it as a destination and no fluid could be pushed into a warehouse at all - the
-	 * gantry could put fluid away perfectly well, but nothing could hand it any.
-	 *
-	 * The cast is safe by construction: the fluid kind's own
-	 * [net.kernelpanicsoft.boilerplate.registry.FluidStorageKind] is what built this buffer.
-	 */
 	@Suppress("UNCHECKED_CAST")
-	val inboundFluidBuffer: CommonStorage<FluidResource>?
-		get() = inboundFor(ResourceKindRegistry.Fluid) as? CommonStorage<FluidResource>
+	fun <T : ResourceComponent> outboundFor(kind: ResourceKind): CommonStorage<T>? =
+		outboundBuffer.viewOf(kind) as? CommonStorage<T>
 
 	/** The inbound staging buffer holding [resource]'s own kind - `null` for a resource of no storable kind. */
-	private fun inboundBufferFor(resource: ResourceComponent): CommonStorage<*>? =
+	private fun inboundBufferFor(resource: ResourceComponent): CommonStorage<out ResourceComponent>? =
 		ResourceKindRegistry.forResource(resource)?.let { inboundFor(it) }
 
 	/** See [inboundBufferFor]. */
-	private fun outboundBufferFor(resource: ResourceComponent): CommonStorage<*>? =
+	private fun outboundBufferFor(resource: ResourceComponent): CommonStorage<out ResourceComponent>? =
 		ResourceKindRegistry.forResource(resource)?.let { outboundFor(it) }
 
 	/**
@@ -785,6 +724,15 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			if (!level.hasChunk(slot.pos.x shr 4, slot.pos.z shr 4)) return null
 			val storage = storageKind.find(level, slot.pos, slot.direction)
 			val extracted = if (storage == null) 0L else storageKind.extract(storage, resource, job.stack.amount, false)
+			// The first step of a retrieval, and the one with no trace of its own until now: taking
+			// less than asked for is what makes the index drop this entry (see
+			// WarehouseIndex.recordExtraction), so a rack that quietly refuses is indistinguishable
+			// from one that emptied - and both end with the resource gone from the warehouse's own
+			// listing while nothing arrives anywhere.
+			ResourceTrace.moved(
+				slot.pos, "warehouse.pickUp", resource, job.stack.amount, extracted,
+				"face" to slot.direction, "found" to (storage != null),
+			)
 			index.recordExtraction(resource, slot.pos, slot.direction, job.stack.amount, extracted)
 			return if (extracted > 0) job.stack.withCount(extracted) else null
 		}
@@ -823,6 +771,11 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			is GantryJob.Retrieve -> {
 				val outbound = outboundBufferFor(resource) ?: return
 				val inserted = storageKind.insert(outbound, resource, amount, false)
+				// Between the rack and the pipe. What the buffer will not take is dropped here, so
+				// this is worth reporting even when it succeeds - a retrieval that ends at this line
+				// looks, from the terminal, exactly like one that never started.
+				ResourceTrace.moved(pos, "warehouse.stage", resource, amount, inserted)
+				ResourceTrace.lost(pos, "warehouse.stage", resource, amount - inserted, "the outbound buffer would not take it")
 				if (inserted <= 0) return
 				val target = job.deliverTo
 				if (target is DeliveryTarget.Pipe) shipOut(level, pos, resource, inserted, target.pos, target.face, target.reservationId)
@@ -855,11 +808,19 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			if (!level.hasChunk(neighborPos.x shr 4, neighborPos.z shr 4)) continue
 			val pipeTile = level.getBlockEntity(neighborPos) as? PipeBlockEntity ?: continue
 			val route = router.findRouteTo(level, neighborPos, deliverTo) ?: continue
-			val extracted = storageKind.extract(outbound, resource, amount, false)
+			// Whole multiples only where the destination demands them - see batchedForRoute.
+			val sendable = batchedForRoute(level, neighborPos, route, amount)
+			if (sendable <= 0) continue
+			val extracted = storageKind.extract(outbound, resource, sendable, false)
 			if (extracted <= 0) continue
 			pipeTile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction.opposite, 0f, route, null, deliverFace, reservationId)
+			ResourceTrace.moved(pos, "warehouse.shipOut", resource, amount, extracted, "to" to deliverTo)
 			return
 		}
+		// Every adjacent pipe tried and none could carry it - the stack stays in the outbound buffer
+		// (see this function's own KDoc), which from the outside looks exactly like a retrieval that
+		// was claimed and then never turned up.
+		ResourceTrace.moved(pos, "warehouse.shipOut", resource, amount, 0L, "to" to deliverTo, "reason" to "no adjacent pipe could route there")
 	}
 
 	/**
@@ -876,11 +837,11 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			.mapTo(mutableSetOf()) { ResourceKindRegistry.forResource(it.stack.resource)?.kindTag to it.sourceSlot }
 
 		for (kind in ResourceKindRegistry.storageKinds()) {
-			val buffer = inboundFor(kind) ?: continue
+			val buffer = inboundFor<ResourceComponent>(kind) ?: continue
 			for (i in 0 until buffer.size()) {
 				if (kind.kindTag to i in queued) continue
 
-				val resource = buffer.getResource(i) as? ResourceComponent ?: continue
+				val resource = buffer.getResource(i) ?: continue
 				if (resource.isBlank) continue
 
 				val amount = buffer.getAmount(i)
@@ -988,9 +949,6 @@ class WarehouseControllerBlockEntity(pos: BlockPos, state: BlockState) :
 			"boilerplate:gantry",
 			Comparator.comparingLong(BlockPos::asLong)
 		)
-
-		/** The item kind's own wire tag - the one kind whose staging buffers are dedicated fields ([inboundBuffer]/[outboundBuffer]) rather than living in `extraBuffers`, since those two are also this controller's exposed item capability and what its GUI draws. */
-		private const val ITEM_KIND_TAG = "item"
 
 		private const val BUFFER_SIZE = 9
 		private const val GANTRY_CARRY_CAPACITY = BUFFER_SIZE

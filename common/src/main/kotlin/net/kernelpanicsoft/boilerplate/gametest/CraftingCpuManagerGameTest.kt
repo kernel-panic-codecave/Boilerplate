@@ -1,8 +1,13 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
 import net.kernelpanicsoft.archie.gametest.assertTrue
+import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType
 import net.kernelpanicsoft.boilerplate.crafting.CraftingCpuManager
+import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.minecraft.core.BlockPos
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel
@@ -14,6 +19,57 @@ import net.minecraft.server.level.ServerLevel
  */
 @Suppress("unused")
 class CraftingCpuManagerGameTest {
+	/**
+	 * A Crafting CPU sitting *beside* the network, with no arms formed toward it, is not somewhere a
+	 * terminal may submit a job.
+	 *
+	 * The regression this locks in cost an evening: [net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment.reachablePipes]
+	 * hands back every position it merely examined - adjacent non-pipes included, deliberately,
+	 * since its other callers need those neighbours - and CPU discovery used to read that set
+	 * directly. An unconnected CPU therefore looked like a perfectly good submission target from the
+	 * terminal, took the job, and then resolved its *own* providers, warehouses and pattern sources
+	 * from its own isolated position, reached nothing, and sat forever reporting "No free pattern
+	 * provider" while the pattern was plainly sitting in a provider the terminal could see.
+	 *
+	 * Deliberately built with [setBlock] and no `updateFromNeighbourShapes` fix-up afterwards -
+	 * which is exactly what [placeCraftingBuffer] exists to do, and why it says so - so the segment
+	 * lands genuinely adjacent to the pipe with every connection bit false, the same shape a
+	 * half-formed one has in a real world.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testAnUnconnectedCpuIsNotOfferedAsASubmissionTarget() {
+		val pipePos = BlockPos(3, 2, 3)
+		val connectedCpuPos = BlockPos(4, 2, 3)
+		val strandedCpuPos = BlockPos(2, 2, 3)
+
+		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
+		val connected = placeCraftingBuffer(connectedCpuPos)
+
+		// The stranded one: a buffer on a segment whose arms were never recomputed, so it touches
+		// the pipe without connecting to it.
+		setBlock(strandedCpuPos, BlockRegistry.Multipart.defaultBlockState())
+		val strandedTile = getBlockEntity(strandedCpuPos) as MultipartBlockEntity
+		strandedTile.pipeBlockId = BuiltInRegistries.BLOCK.getKey(BlockRegistry.Pipe)
+		val strandedState = CraftingBufferEncasementType.createState()
+		strandedTile.encasement.value = strandedState
+		CraftingBufferEncasementType.onAttached(level, strandedTile.blockPos, strandedTile, strandedState)
+
+		val serverLevel = level as ServerLevel
+		val leaders = RequestFulfillment.reachableCraftingCpus(serverLevel, absolutePos(pipePos)).map { it.leaderPos }
+
+		assertTrue(absolutePos(connectedCpuPos) in leaders) {
+			"Expected the connected CPU at ${absolutePos(connectedCpuPos)} to be offered, got $leaders"
+		}
+		assertTrue(absolutePos(strandedCpuPos) !in leaders) {
+			"Expected the unconnected CPU at ${absolutePos(strandedCpuPos)} to be refused - a job submitted to it can never complete - got $leaders"
+		}
+		// Guards the reason rather than only the symptom: the point is that it cannot reach back.
+		assertTrue(RequestFulfillment.connectedPipes(serverLevel, absolutePos(strandedCpuPos)).size == 1) {
+			"Expected the unconnected CPU to walk to nothing but itself, got ${RequestFulfillment.connectedPipes(serverLevel, absolutePos(strandedCpuPos))}"
+		}
+		succeed()
+	}
+
 	@GameTest(template = SMALL, timeoutTicks = 20)
 	fun GameTestHelper.testSingleSegmentIsItsOwnCluster() {
 		val pos = absolutePos(BlockPos(3, 2, 3))

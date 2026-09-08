@@ -9,16 +9,63 @@ import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
+import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackResourceStorageExposer
+import net.kernelpanicsoft.boilerplate.network.ResourceKind
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
+import net.minecraft.core.Direction
 
 /**
  * Holds up to [SLOT_COUNT] [net.kernelpanicsoft.boilerplate.crafting.PatternItem] stacks - see
  * [PatternProviderHookType].
  */
-class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID), FallbackItemStorageExposer {
+class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID), FallbackItemStorageExposer, FallbackResourceStorageExposer {
 	val patterns: ArchieItemStorage by itemField(SLOT_COUNT)
 
-	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> = PatternBufferIO(this)
+	/**
+	 * The face this provider presents: a [PassThroughStorage] reading from [PatternBufferIO] - the
+	 * same shape [net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState] presents.
+	 *
+	 * The pass-through is the point. A hook's exposed storage answers *instead* of the face's own
+	 * (see [net.kernelpanicsoft.boilerplate.registry.TileRegistry]), and handing back the bare
+	 * buffer meant a machine pointed at this face met the pattern's ingredient staging - which
+	 * refuses anything that is not one of that pattern's own inputs. A machine's *result* never is,
+	 * so it was refused outright and stayed in the machine, stalling the job waiting on it. That
+	 * arrangement - provider pushes ingredients in, machine pushes its result back into the same
+	 * pipe - is exactly what a Pattern Provider exists to make possible, and what
+	 * [PassThroughStorage]'s own KDoc describes.
+	 *
+	 * The buffer keeps its first refusal on inserts ([PassThroughStorage]'s own `stage`), because
+	 * ingredients genuinely do arrive here: a delivery aimed at this hook gates on what this face
+	 * reports room for. So what the pattern consumes still stages, and only what it declines - the
+	 * result, and anything else a neighbour pushes - goes onto the network. Reads and extractions
+	 * reach the buffer unchanged.
+	 *
+	 * Falls back to the bare buffer when this hook is not actually mounted on [tile]: a pass-through
+	 * has no face to route from then, and the read surface is still correct.
+	 */
+	override fun exposedStorage(tile: MultipartBlockEntity, kind: ResourceKind): CommonStorage<*>? {
+		// Only items: a pattern's ingredient staging is an item surface, and there is nothing of any
+		// other kind here for a face to read. Answering `null` is not a dead end - the face falls
+		// back to the plain pass-through every face has (see [exposedStorageFor]), so a machine
+		// pushing a fluid or an addon's own chemical at this face still gets it routed.
+		if (kind != ResourceKindRegistry.Item) return null
+		val buffer = PatternBufferIO(this)
+		val face = directionOn(tile) ?: return buffer
+		return PassThroughStorage.of(tile, face, kind, backing = buffer, stage = buffer) ?: buffer
+	}
+
+	/** [exposedStorage] with the item kind named - total, since that branch never answers `null`. */
+	@Suppress("UNCHECKED_CAST")
+	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource> =
+		exposedStorage(tile, ResourceKindRegistry.Item) as? CommonStorage<ItemResource> ?: PatternBufferIO(this)
+
+	/** The [tile] face this hook is attached to, or null if [tile] doesn't actually carry it - hooks are keyed by `Direction.name`. */
+	fun directionOn(tile: MultipartBlockEntity): Direction? {
+		for ((directionName, hookState) in tile.hooks) if (hookState === this) return Direction.valueOf(directionName)
+		return null
+	}
 
 	/**
 	 * Index into [patterns] the attached target is currently feeding/processing, or `null` if idle

@@ -2,6 +2,8 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.network.SItemResource
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 /**
  * Shared shape [CraftQuantityDialog] needs from whichever terminal-flavored menu opened it -
@@ -10,8 +12,8 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
  */
 interface CraftPreviewMenu {
 	/** The most recently received craft-preview result - `resource to maxCraftable`. */
-	val craftPreview: Pair<SItemResource, Long>?
+	val craftPreview: Pair<SResourceComponent, Long>?
 
 	/** Asks how much of [resource] is currently craftable, up to [upperBound] - a dry run, nothing is requested. */
-	fun requestCraftPreview(resource: ItemResource, upperBound: Long)
+	fun requestCraftPreview(resource: ResourceComponent, upperBound: Long)
 }

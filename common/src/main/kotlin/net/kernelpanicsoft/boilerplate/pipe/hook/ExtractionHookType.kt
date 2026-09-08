@@ -83,7 +83,18 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 		// kinds. A kind with nothing routable on the face costs one capability lookup and falls
 		// through to the next.
 		for (carrier in carriersAt(level, pos)) {
-			val extraction = carrier.extractRoutable(level, pos, neighborPos, direction.opposite, color) ?: continue
+			// Round-robin: skip whatever this hook has already served, and when that leaves nothing
+			// willing, start the round again rather than stalling - the cycle has simply come back
+			// to the top. One retry, never a loop: the second pass excludes nothing, so if it also
+			// finds no destination then genuinely none will take this resource right now.
+			var extraction = carrier.extractRoutable(level, pos, neighborPos, direction.opposite, color, state.servedThisCycle)
+			if (extraction == null && state.servedThisCycle.isNotEmpty()) {
+				state.servedThisCycle.clear()
+				extraction = carrier.extractRoutable(level, pos, neighborPos, direction.opposite, color)
+			}
+			if (extraction == null) continue
+
+			extraction.route.lastOrNull()?.let { state.servedThisCycle += it }
 			tile.travelingItems += TravelingItem(extraction.stack, direction, 0f, extraction.route, color)
 			return
 		}

@@ -95,6 +95,12 @@ subprojects {
 			name = "createmod maven"
 			url = uri("https://maven.createmod.net/")
 		}
+		maven {
+			url = uri("https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1")
+		}
+		maven {
+			url = uri("https://modmaven.dev/")
+		}
 	}
 
 	@Suppress("UnstableApiUsage")

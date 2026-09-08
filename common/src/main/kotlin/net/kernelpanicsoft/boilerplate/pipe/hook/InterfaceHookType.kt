@@ -1,9 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
@@ -11,7 +8,7 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.gui.InterfaceHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.drainExcess
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.requisitionStock
-import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
+import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
@@ -25,6 +22,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
+import net.kernelpanicsoft.archie.util.rem
 
 /**
  * A stocking reservoir with a pass-through face, exposed to
@@ -129,24 +127,13 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 		// way to ask a network for "anything matching this card" - such an entry governs what is
 		// *kept* (see drainExcess) rather than what is fetched.
 		for ((resource, wanted) in state.namedTargets()) {
-			val item = resource as? ItemResource ?: continue
 			// An unbounded target has nothing to requisition toward: it is a "hold whatever turns up"
 			// instruction, not a quantity to reach.
 			if (wanted == UNBOUNDED_STOCK) continue
-			val shortfall = wanted - heldInStock(state, item)
+			val shortfall = wanted - amountHeld(state, resource)
 			if (shortfall <= 0) continue
-			RequestFulfillment.request(level, pos, ResourceStack(item as ResourceComponent, shortfall), pos, direction)
+			RequestFulfillment.request(level, pos, ResourceStack(resource, shortfall), pos, direction)
 		}
-	}
-
-	/** How much of [resource] this interface's whole [InterfaceHookState.stock] row holds - counted across columns, since a target names a resource and an amount rather than a column. */
-	private fun heldInStock(state: InterfaceHookState, resource: ItemResource): Long {
-		var total = 0L
-		for (i in 0 until state.stock.size()) {
-			val slot = state.stock[i]
-			if (slot.resource == resource) total += slot.amount
-		}
-		return total
 	}
 
 	/**
@@ -173,7 +160,8 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	/**
 	 * Pushes everything above each [InterfaceHookState.stock] column's [InterfaceHookState.ghosts]
 	 * target back into the network - a full column's worth when the column has no matching ghost at
-	 * all. The same [ItemPipeRouter.findRoute] push-routing [ExtractionHookType] uses, sourced from this
+	 * all. The same push-routing [ExtractionHookType] uses, through whichever network carries each
+	 * column's own kind, sourced from this
 	 * hook's own stock; [exclude] = [pos] so this hook's own [validRoute]-tagged stock never drains
 	 * right back into itself.
 	 */
@@ -196,8 +184,15 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 			allowances[key] = remaining - target
 			val excess = slot.amount - target
 			if (excess <= 0) continue
-			val route = ItemPipeRouter.findRoute(level, pos, resource, exclude = setOf(pos)) ?: continue
-			val extracted = state.stock.extract(resource, excess, false)
+			// Whichever network carries this column's own kind - the row is mixed, so a fluid column
+			// must not be handed to the item router (and, before this was generic, simply could not
+			// be: the row was item-typed).
+			val networkType = networkTypeForResource(resource) ?: continue
+			val route = networkType.route(level, pos, ResourceStack(resource, excess), exclude = setOf(pos)) ?: continue
+			// A batching destination takes whole multiples only; the rest stays in stock.
+			val sendable = batchedForRoute(level, pos, route, excess)
+			if (sendable <= 0) continue
+			val extracted = state.stock.extract(resource, sendable, false)
 			if (extracted <= 0) continue
 			tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction, 0f, route, null)
 		}

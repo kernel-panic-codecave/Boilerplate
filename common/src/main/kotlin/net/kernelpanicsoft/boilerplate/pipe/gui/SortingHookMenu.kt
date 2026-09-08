@@ -3,6 +3,7 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
+import net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
@@ -19,6 +20,15 @@ class SortingHookMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity,
 
 	/** [direction]'s current [RoutingModule], read once when the screen opens - see `docs/design/m2-sorting-routing.md`. */
 	fun currentRouting(): RoutingModule = (tile.hooks[direction.name] as? SortingHookState)?.routing ?: RoutingModule()
+
+	/** The filter hook on this face, or `null` - only [net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookType] batches, though the menu is shared with the sync hook. */
+	private fun filterState(): FilterHookState? = tile.hooks[direction.name] as? FilterHookState
+
+	/** Whether this face can batch at all - the sync hook reuses this menu but has no buffer. */
+	fun supportsBatching(): Boolean = filterState() != null
+
+	/** How many of a matching resource this face gathers before delivering, `0` when off - see [FilterHookState.batchSize]. */
+	fun batchSize(): Long = filterState()?.effectiveBatchSize() ?: FilterHookState.NOT_BATCHED
 
 	/**
 	 * A real, vanilla-[net.minecraft.world.inventory.Slot]-backed filter-card slot, exactly like

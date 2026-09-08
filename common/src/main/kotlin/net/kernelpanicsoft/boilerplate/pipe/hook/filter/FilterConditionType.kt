@@ -1,14 +1,8 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import androidx.compose.runtime.Composable
-import kotlinx.serialization.KSerializer
-import net.kernelpanicsoft.archie.config.toSnakeCase
-import net.kernelpanicsoft.archie.gui.blockentity.toSerializedValue
-import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.UpdateFilterCardFieldPacket
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
-import kotlin.reflect.KProperty0
 
 /**
  * A kind of condition a [FilterCardItem][net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem]
@@ -30,27 +24,18 @@ abstract class FilterConditionType<S : FilterConditionState> {
 	abstract fun matches(state: S, context: FilterContext): Boolean
 
 	/**
-	 * Renders this condition kind's own editable field(s) inside
-	 * [net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardScreen] - [state] is the live instance
-	 * from [menu]'s own [FilterCardMenu.currentConditionState] (not a copy). Mutate its fields
-	 * directly for the optimistic local read, and push the change with [pushFieldUpdate] - no
-	 * further plumbing back through this screen needed, since [UpdateFilterCardFieldPacket]
-	 * dispatches generically by field name.
+	 * Renders this condition kind's own editable field(s) inside the card editor - [state] is the
+	 * live instance from [editor]'s own [FilterCardEditor.state] (not a copy). Mutate its fields
+	 * directly for the optimistic local read, and push the change with [FilterCardEditor.push] - no
+	 * further plumbing needed, since [UpdateFilterCardFieldPacket] dispatches generically by field
+	 * name.
+	 *
+	 * [editor] rather than a menu, because the editor is a layer over whatever screen you opened it
+	 * from - see [FilterCardEditor] for what that buys.
 	 */
 	@Composable
-	abstract fun content(menu: FilterCardMenu, state: S, clickHandler: ClickHandler)
+	abstract fun content(editor: FilterCardEditor, state: S, clickHandler: ClickHandler)
 }
 
-/**
- * Pushes an edit to [property] (one declared via [FilterConditionState.editableField]/
- * [FilterConditionState.editableListField]) to the server, for whichever [FilterCardMenu] the
- * current screen has open - see [UpdateFilterCardFieldPacket]'s own KDoc. [property]'s own runtime
- * name (not a hand-typed string) becomes the wire key, so a rename can't silently desync from
- * whatever [FilterConditionState.applyFieldUpdate] looks up.
- */
-fun <T> pushFieldUpdate(property: KProperty0<T>, value: T, serializer: KSerializer<T>) {
-	BoilerplateNetworkChannel.toServer(UpdateFilterCardFieldPacket(property.name.toSnakeCase(), value.toSerializedValue(serializer)))
-}
-
-/** [net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardScreen]'s own content width, shared with every [FilterConditionType.content] override so a text field/ghost grid lines up with the rest of the screen. */
+/** How wide the card editor's own content column is - shared so a condition kind's fields line up with the mode selector above them. */
 const val FILTER_CARD_CONTENT_WIDTH = 18 * 9

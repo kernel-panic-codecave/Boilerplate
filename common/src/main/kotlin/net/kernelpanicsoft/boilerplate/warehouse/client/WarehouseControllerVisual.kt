@@ -1,6 +1,5 @@
 package net.kernelpanicsoft.boilerplate.warehouse.client
 
-import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.math.Axis
 import dev.engine_room.flywheel.api.instance.Instance
 import dev.engine_room.flywheel.api.instance.Instancer
@@ -10,6 +9,7 @@ import dev.engine_room.flywheel.api.model.Model
 import dev.engine_room.flywheel.api.task.Plan
 import dev.engine_room.flywheel.api.vertex.MutableVertexList
 import dev.engine_room.flywheel.api.visual.DynamicVisual
+import dev.engine_room.flywheel.api.visual.SectionTrackedVisual
 import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
@@ -17,38 +17,44 @@ import dev.engine_room.flywheel.lib.material.Materials
 import dev.engine_room.flywheel.lib.math.MoreMath
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.SingleMeshModel
+import net.kernelpanicsoft.boilerplate.client.WorldMeshMotion
+import net.kernelpanicsoft.boilerplate.client.preferredMaterial
 import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.task.SimplePlan
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.archie.util.div
-import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
+import net.kernelpanicsoft.boilerplate.network.SResourceStack
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.util.itemStack
+import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.*
+import net.minecraft.world.level.block.state.properties.BooleanProperty
 import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual.Companion.buildClippedRodMesh
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.block.model.BakedQuad
 import net.minecraft.client.renderer.texture.OverlayTexture
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.core.BlockPos
+import net.minecraft.core.SectionPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.RandomSource
-import net.minecraft.world.item.ItemDisplayContext
-import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
-import org.joml.Vector3f
+import org.joml.FrustumIntersection
 import org.joml.Vector4f
 import org.joml.Vector4fc
 import org.lwjgl.system.MemoryUtil
 import java.util.function.Consumer
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import net.kernelpanicsoft.archie.util.div
+import net.kernelpanicsoft.archie.util.rem
 
 class WarehouseControllerVisual(
 	visualizationContext: VisualizationContext,
@@ -75,39 +81,48 @@ class WarehouseControllerVisual(
 		private const val CARRIED_ITEM_Y_OFFSET = HEAD_HALF_EXTENT + 0.12f
 		/** Kept inside the head's own footprint, so a batch orbits over it rather than out past its corners. */
 		private const val CARRIED_ITEM_RADIUS = HEAD_HALF_EXTENT * 0.7f
-		private const val CARRIED_ITEM_SCALE = 0.4f
 		private const val CARRIED_ITEM_SPIN_DEGREES_PER_TICK = 3.0
 
-		/**
-		 * [itemStack]'s own baked model, re-baked into a plain triangle-list [Mesh] the same way
-		 * [buildClippedRodMesh] does - but with [ItemDisplayContext.GROUND]'s transform (the same one
-		 * [net.minecraft.client.renderer.entity.ItemRenderer.renderStatic] itself would apply)
-		 * pre-applied to every vertex once here, rather than reapplied via the instance's own
-		 * transform every frame, since it never actually changes for a given item.
-		 */
-		private fun buildCarriedItemMesh(itemStack: ItemStack): ClippedRodMesh {
-			val model = Minecraft.getInstance().itemRenderer.getModel(itemStack, null, null, 0)
-			val pose = PoseStack()
-			model.transforms.getTransform(ItemDisplayContext.GROUND).apply(false, pose)
-			pose.translate(-0.5, -0.5, -0.5)
-			val matrix = pose.last().pose()
-			val normalMatrix = pose.last().normal()
+		/** The crane's own copy of the droplet wobble - see [net.kernelpanicsoft.boilerplate.pipe.client.TravelingItemInstances] for what each of these means. */
+		private const val WOBBLE_AMPLITUDE = 0.14f
+		private const val WOBBLE_RADIANS_PER_DEGREE = 0.18f
+		private const val WOBBLE_PHASE_OFFSET = 1.7f
+		private const val TUMBLE_X_PER_DEGREE = 0.9f
+		private const val TUMBLE_Z_PER_DEGREE = 0.63f
 
-			val vertices = ArrayList<RodVertex>()
-			for (quad in model.getQuads(null, null, RandomSource.create())) {
-				val transformed = decodeQuadVertices(quad).map { point ->
-					val transformedPos = matrix.transformPosition(Vector3f(point.x, point.y, point.z))
-					ClipPoint(transformedPos.x(), transformedPos.y(), transformedPos.z(), point.u, point.v)
-				}
-				val rawNormal = quad.direction.normal
-				val normal = normalMatrix.transform(Vector3f(rawNormal.x.toFloat(), rawNormal.y.toFloat(), rawNormal.z.toFloat())).normalize()
-				for (i in 1 until transformed.size - 1) {
-					vertices += RodVertex(transformed[0], normal.x(), normal.y(), normal.z())
-					vertices += RodVertex(transformed[i], normal.x(), normal.y(), normal.z())
-					vertices += RodVertex(transformed[i + 1], normal.x(), normal.y(), normal.z())
-				}
-			}
-			return ClippedRodMesh(vertices)
+		/** Ceiling on how many chunk sections one warehouse tracks for lighting - see [setSectionCollector]. */
+		private const val MAX_TRACKED_SECTIONS = 512
+
+		/** The baked mesh one carried stack draws as, via its own kind - `null` for a kind with no world visual. */
+		private fun meshFor(stack: SResourceStack<*>): Mesh? {
+			val resource = stack.resource as ResourceComponent
+			return ResourceKindRegistry.forResource(resource)?.display?.worldMesh(resource, stack.amount)
+		}
+
+		/** How [stack]'s own kind moves while the crane carries it - see [WorldMeshMotion]. */
+		private fun motionOf(stack: SResourceStack<*>?): WorldMeshMotion {
+			val resource = stack?.resource as? ResourceComponent ?: return WorldMeshMotion.SPIN
+			return ResourceKindRegistry.forResource(resource)?.display?.worldMeshMotion ?: WorldMeshMotion.SPIN
+		}
+
+		/**
+		 * [net.kernelpanicsoft.boilerplate.registry.BlockRegistry.GantryRail]'s default state with
+		 * [negativeProperty] connected iff [current] has a segment behind it (`current > min`) and
+		 * [positiveProperty] connected iff it has one ahead (`current < max`) - so the two ends of a
+		 * run only connect inward and cap off cleanly, rather than every segment (including the true
+		 * ends) rendering as fully connected regardless of what is actually next to it.
+		 */
+		fun connectionState(
+			current: Int,
+			min: Int,
+			max: Int,
+			negativeProperty: BooleanProperty?,
+			positiveProperty: BooleanProperty?,
+		): BlockState {
+			var state = BlockRegistry.GantryRail.defaultBlockState()
+			if (negativeProperty != null) state = state.setValue(negativeProperty, current > min)
+			if (positiveProperty != null) state = state.setValue(positiveProperty, current < max)
+			return state
 		}
 
 		private val DOWN_PROPERTY by lazy { GantryRailBlock.propertiesByDirection.getValue(Direction.DOWN) }
@@ -122,7 +137,7 @@ class WarehouseControllerVisual(
 		/** A conservative bounding sphere for [buildClippedRodMesh]'s output - always a subset of the unmodified unit cube, whatever the clip boundary. */
 		private val UNIT_CUBE_BOUNDING_SPHERE: Vector4fc = Vector4f(0.5f, 0.5f, 0.5f, MoreMath.SQRT_3_OVER_2)
 
-		/** One (position, UV) pair from a [BakedQuad]'s own packed vertex data, clip-plane math only - unlike [WarehouseControllerBlockEntityRenderer]'s equivalent, no brightness/light is carried, since every instance in this class (this clipped one included) is flat-lit through [relight] alone rather than smooth per-vertex lighting. */
+		/** One (position, UV) pair from a [BakedQuad]'s own packed vertex data, clip-plane math only - no brightness or light is carried, since every instance in this class is flat-lit through [relight] rather than smooth per-vertex lighting. */
 		private data class ClipPoint(val x: Float, val y: Float, val z: Float, val u: Float, val v: Float)
 
 		/** [quad]'s 4 vertices decoded from [BakedQuad.getVertices]'s packed `DefaultVertexFormat.BLOCK` layout - position and UV only, in the model's own local (pre-transform) space. */
@@ -140,7 +155,7 @@ class WarehouseControllerVisual(
 			}
 		}
 
-		/** Sutherland-Hodgman clip of the (convex, planar) [vertices] polygon against the horizontal plane `y = [clipY]`, keeping the side at or above it - the same idea as [WarehouseControllerBlockEntityRenderer]'s `clipBelow`, minus the brightness/light interpolation it also carries. */
+		/** Sutherland-Hodgman clip of the (convex, planar) [vertices] polygon against the horizontal plane `y = [clipY]`, keeping the side at or above it. */
 		private fun clipAboveY(vertices: Array<ClipPoint>, clipY: Float): List<ClipPoint> {
 			val result = ArrayList<ClipPoint>(vertices.size + 1)
 			for (i in vertices.indices) {
@@ -166,7 +181,7 @@ class WarehouseControllerVisual(
 		/**
 		 * Clips [state]'s own baked quads against local `y = [clipY]` and fan-triangulates whatever
 		 * survives into a fresh [Mesh] - the geometric "actually cut the model down" counterpart to
-		 * [WarehouseControllerBlockEntityRenderer.drawClippedAt], built once per call rather than
+		 * a clipped rail segment, built once per call rather than
 		 * reused, since the bottom rod segment's own clip boundary moves every frame the head does.
 		 */
 		private fun buildClippedRodMesh(state: BlockState, clipY: Float): ClippedRodMesh {
@@ -262,7 +277,7 @@ class WarehouseControllerVisual(
 		// 1. X-Axis Crossbeams
 		val xRange = bounds.min.x..bounds.max.x
 		val xStates = xRange.map { x ->
-			WarehouseControllerBlockEntityRenderer.connectionState(
+			connectionState(
 				x, bounds.min.x, bounds.max.x, WEST_PROPERTY, EAST_PROPERTY
 			)
 		}
@@ -291,7 +306,7 @@ class WarehouseControllerVisual(
 		// 2. Z-Axis Crossbeams
 		val zRange = bounds.min.z..bounds.max.z
 		val zStates = zRange.map { z ->
-			WarehouseControllerBlockEntityRenderer.connectionState(
+			connectionState(
 				z, bounds.min.z, bounds.max.z, NORTH_PROPERTY, SOUTH_PROPERTY
 			)
 		}
@@ -324,7 +339,7 @@ class WarehouseControllerVisual(
 		val fullYStart = bottomY + 1
 		val fullYRange = if (fullYStart <= railY) (fullYStart..railY) else IntRange.EMPTY
 		val yStates = fullYRange.map { y ->
-			WarehouseControllerBlockEntityRenderer.connectionState(y, bottomY, railY, DOWN_PROPERTY, UP_PROPERTY)
+			connectionState(y, bottomY, railY, DOWN_PROPERTY, UP_PROPERTY)
 		}
 
 		if (yRodInstances.size != yStates.size) {
@@ -347,7 +362,7 @@ class WarehouseControllerVisual(
 		}
 
 		if (bottomY <= railY) {
-			val state = WarehouseControllerBlockEntityRenderer.connectionState(
+			val state = connectionState(
 				bottomY, bottomY, railY, DOWN_PROPERTY, UP_PROPERTY
 			)
 			val mesh = buildClippedRodMesh(state, clipFraction)
@@ -382,18 +397,18 @@ class WarehouseControllerVisual(
 			setChanged()
 		}
 
-		// Items only. A carried stack may be of any registered kind now, but a Flywheel instance
-		// needs a baked mesh, and the rippling droplet the vanilla renderer draws for a fluid
-		// (TravelingFluidRenderer) is generated per frame rather than baked. A fluid on the crane is
-		// therefore invisible under Flywheel while remaining visible without it - cosmetic only, and
-		// the fix is an instanced fluid mesh rather than anything about the transport itself.
-		val carried = GantryClientCache.carriedItems(blockEntity.blockPos).filter { it.resource is ItemResource }
+		// Whatever each carried stack's own kind bakes itself as - an item's model, a fluid's
+		// droplet. A kind with no world mesh simply isn't drawn on the crane, which is the kind's
+		// own answer (see [net.kernelpanicsoft.boilerplate.client.ResourceDisplayKind.worldMesh])
+		// rather than a check here.
+		val carried = GantryClientCache.carriedItems(blockEntity.blockPos).filter { meshFor(it) != null }
 		if (carried != carriedItemsCacheKey) {
 			carriedItemInstances.forEach(Instance::delete)
 			carriedItemInstances = carried.map { stack ->
-				val mesh = buildCarriedItemMesh((stack.resource as ItemResource).toStack(stack.amount.toInt().coerceAtLeast(1)))
-				val instancer = instancerProvider().instancer(InstanceTypes.TRANSFORMED, SingleMeshModel(mesh, Materials.CUTOUT_BLOCK))
-				instancer.createInstance()
+				// The mesh picks its own material, exactly as it does for pipe cargo - see MaterialMesh.
+				val mesh = meshFor(stack)!!
+				val model = SingleMeshModel(mesh, mesh.preferredMaterial())
+				instancerProvider().instancer(InstanceTypes.TRANSFORMED, model).createInstance()
 			}
 			carriedItemsCacheKey = carried
 		}
@@ -401,10 +416,11 @@ class WarehouseControllerVisual(
 		if (carried.isNotEmpty()) {
 			val spinDegrees = ((level?.gameTime ?: 0L) + partialTick) * CARRIED_ITEM_SPIN_DEGREES_PER_TICK
 			// headOffset is the head cell's *corner* - the convention every block-shaped mesh here
-			// wants, since those span [0,1] from their own origin. A carried item's mesh is not one
-			// of those: buildCarriedItemMesh bakes its own -0.5 in, so it's already centred about
-			// the origin. Placing it at the corner offset put every item half a block out along all
-			// three axes at once - i.e. off at the head's corner.
+			// wants, since those span [0,1] from their own origin. A carried stack's mesh is not one
+			// of those: [InstancedMeshes] bakes both the recentre and the transport scale in, so it
+			// is already centred about the origin at final size. Placing it at the corner offset put
+			// every item half a block out along all three axes at once - i.e. off at the head's
+			// corner - and scaling it again here would shrink it twice over.
 			val headCenterX = headOffsetX + 0.5f
 			val headCenterY = headOffsetY + 0.5f
 			val headCenterZ = headOffsetZ + 0.5f
@@ -422,7 +438,18 @@ class WarehouseControllerVisual(
 						headCenterZ + sin(angle) * radius,
 					)
 					rotate(Axis.YP.rotationDegrees(totalDegrees))
-					scale(CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE, CARRIED_ITEM_SCALE)
+					// The same tumble and slosh a droplet gets in a pipe, so cargo does not change
+					// character between the two places it is drawn - see [WorldMeshMotion].
+					if (motionOf(carried.getOrNull(index)) == WorldMeshMotion.TUMBLE) {
+						rotate(Axis.XP.rotationDegrees(spinDegrees.toFloat() * TUMBLE_X_PER_DEGREE))
+						rotate(Axis.ZP.rotationDegrees(spinDegrees.toFloat() * TUMBLE_Z_PER_DEGREE))
+						val wobble = spinDegrees.toFloat() * WOBBLE_RADIANS_PER_DEGREE + index * WOBBLE_PHASE_OFFSET
+						scale(
+							1f + WOBBLE_AMPLITUDE * sin(wobble),
+							1f + WOBBLE_AMPLITUDE * sin(wobble + 2f * PI.toFloat() / 3f),
+							1f + WOBBLE_AMPLITUDE * sin(wobble + 4f * PI.toFloat() / 3f),
+						)
+					}
 					setChanged()
 				}
 			}
@@ -490,6 +517,53 @@ class WarehouseControllerVisual(
 		bottomRodInstance?.let { relight(lightPos, it) }
 		headInstance?.let { relight(lightPos, it) }
 		carriedItemInstances.forEach { relight(lightPos, it) }
+	}
+
+	/**
+	 * The whole bound warehouse volume, not the controller block.
+	 *
+	 * [AbstractBlockEntityVisual]'s default tests a sphere around the block itself, which is right
+	 * for a visual whose geometry sits inside its own cell and wrong for this one: the gantry's
+	 * rails, rod and head are drawn across the entire bound volume, so testing the controller's own
+	 * cell made the whole crane vanish the instant that one block left the frustum. (The vanilla
+	 * renderer this replaces had the same problem, patched on NeoForge only, by a mixin overriding
+	 * `getRenderBoundingBox` - handled here once, for both loaders, instead.)
+	 *
+	 * Deliberately the bound volume rather than an always-visible box: the gantry can never draw
+	 * outside it, so this never wrongly culls, while a camera genuinely pointed elsewhere still
+	 * skips the per-frame work.
+	 */
+	override fun isVisible(frustum: FrustumIntersection): Boolean {
+		val bounds = blockEntity.bounds ?: return super.isVisible(frustum)
+		val origin = visualPos.subtract(pos)
+		return frustum.testAab(
+			(bounds.min.x + origin.x).toFloat(), (bounds.min.y + origin.y).toFloat(), (bounds.min.z + origin.z).toFloat(),
+			(bounds.max.x + origin.x + 1).toFloat(), (bounds.max.y + origin.y + 1).toFloat(), (bounds.max.z + origin.z + 1).toFloat(),
+		)
+	}
+
+	/**
+	 * Tracks this visual in every section its volume touches, not just the controller's own.
+	 *
+	 * Flywheel relights a visual when one of its tracked sections changes; a gantry drawn across a
+	 * whole warehouse would otherwise keep the lighting it happened to have when the controller's
+	 * own section last updated. Capped at [MAX_TRACKED_SECTIONS] because a large warehouse is
+	 * genuinely enormous and tracking thousands of sections costs more than the lighting accuracy is
+	 * worth - past that it falls back to the controller's own section, which is what it did before.
+	 */
+	override fun setSectionCollector(sectionCollector: SectionTrackedVisual.SectionCollector) {
+		super.setSectionCollector(sectionCollector)
+		val bounds = blockEntity.bounds ?: return
+		val sections = LongOpenHashSet()
+		for (x in SectionPos.blockToSectionCoord(bounds.min.x)..SectionPos.blockToSectionCoord(bounds.max.x)) {
+			for (y in SectionPos.blockToSectionCoord(bounds.min.y)..SectionPos.blockToSectionCoord(bounds.max.y)) {
+				for (z in SectionPos.blockToSectionCoord(bounds.min.z)..SectionPos.blockToSectionCoord(bounds.max.z)) {
+					if (sections.size >= MAX_TRACKED_SECTIONS) return
+					sections.add(SectionPos.asLong(x, y, z))
+				}
+			}
+		}
+		sectionCollector.sections(sections)
 	}
 
 	override fun _delete() = clearInstances()

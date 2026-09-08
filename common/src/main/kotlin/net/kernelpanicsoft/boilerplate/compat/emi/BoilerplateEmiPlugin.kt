@@ -13,11 +13,13 @@ import dev.emi.emi.api.stack.EmiStackInteraction
 import dev.emi.emi.api.widget.Bounds
 import dev.emi.emi.api.widget.SlotWidget
 import dev.emi.emi.api.widget.Widget
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.compat.ViewerResourceStacks
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
-import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.world.inventory.Slot
 import java.util.*
@@ -175,12 +177,16 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 			},
 		)
 
-		registry.addExclusionArea(AbstractTerminalHookScreen::class.java) { screen: AbstractTerminalHookScreen<*>, consumer ->
+		registry.addGenericExclusionArea { screen, consumer ->
+			if (screen !is AbstractTerminalHookScreen<*>) return@addGenericExclusionArea
 			consumer.accept(Bounds(screen.screenLeft, screen.screenTop, screen.screenWidth, screen.screenHeight))
 		}
 
-		registry.addStackProvider(AbstractTerminalHookScreen::class.java) { screen: AbstractTerminalHookScreen<*>, _, _ ->
-			screen.hoveredStack?.let { EmiStackInteraction(EmiStack.of(it.itemStack)) } ?: EmiStackInteraction.EMPTY
+		registry.addGenericStackProvider { screen, _, _ ->
+			val terminal = screen as? AbstractTerminalHookScreen<*> ?: return@addGenericStackProvider EmiStackInteraction.EMPTY
+			val hovered = terminal.hoveredStack ?: return@addGenericStackProvider EmiStackInteraction.EMPTY
+			val stack = EmiResourceStacks.of(hovered.resource as ResourceComponent, hovered.amount)
+			stack?.let { EmiStackInteraction(it, null, false) } ?: EmiStackInteraction.EMPTY
 		}
 	}
 
@@ -217,5 +223,21 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 		private const val COLOR_REQUESTABLE = 0x44FFA500
 		/** Not local and not reachable, but a known pattern could produce it somewhere reachable. */
 		private const val COLOR_CRAFTABLE = 0x440080FF
+	}
+}
+
+/**
+ * How each resource kind is shown to EMI - see [ViewerResourceStacks].
+ *
+ * Item and fluid are registered here because Boilerplate ships both kinds; an addon kind (a
+ * Mekanism chemical, say) registers its own converter the same way and its rows become
+ * recipe-lookupable with no edit here.
+ */
+val EmiResourceStacks = ViewerResourceStacks<EmiStack>().apply {
+	register("item") { resource, amount ->
+		(resource as? ItemResource)?.takeIf { !it.isBlank }?.toStack(amount.toInt().coerceAtLeast(1))?.let(EmiStack::of)
+	}
+	register("fluid") { resource, amount ->
+		(resource as? FluidResource)?.takeIf { !it.isBlank }?.let { EmiStack.of(it.type, it.dataPatch, amount) }
 	}
 }

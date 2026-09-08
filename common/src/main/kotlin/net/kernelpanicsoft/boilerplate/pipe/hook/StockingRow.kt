@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.network.SResourceComponent
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
@@ -115,7 +115,9 @@ fun StockingRow.exportableFrom(candidates: Iterable<ResourceComponent>, held: (R
  * match-everything rule. See [StockingRow].
  */
 fun configuredFilterOn(resource: ResourceComponent): FilterCardState? {
-	val item = resource as? ItemResource ?: return null
-	if (item.item !is FilterCardItem) return null
-	return FilterCardState(item.cachedStack).takeIf { it.configured }
+	// Asked of the kind rather than of the resource: a filter card is an item, and a kind with no
+	// item form of its own can never be one.
+	val stack = ResourceKindRegistry.forResource(resource)?.toVanillaStack(resource, 1) ?: return null
+	if (stack.item !is FilterCardItem) return null
+	return FilterCardState(stack).takeIf { it.configured }
 }

@@ -2,15 +2,13 @@ package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import androidx.compose.runtime.*
 import kotlinx.serialization.builtins.serializer
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import net.kernelpanicsoft.archie.gui.composables.basic.Label
 import net.kernelpanicsoft.archie.gui.composables.input.textfield.BasicTextField
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
-import net.kernelpanicsoft.archie.registries.holder
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
@@ -42,13 +40,13 @@ object TagConditionType : FilterConditionType<TagConditionState>() {
 	}
 
 	@Composable
-	override fun content(menu: FilterCardMenu, state: TagConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: TagConditionState, clickHandler: ClickHandler) {
 		var tagId by remember { mutableStateOf(state.tagId) }
 
-		Text(Component.literal("Tag ID"), dropShadow = false)
+		Label(Component.literal("Tag ID"))
 		BasicTextField(
 			value = tagId,
-			onValueChange = { tagId = it; state.tagId = it; pushFieldUpdate(state::tagId, it, String.serializer()) },
+			onValueChange = { tagId = it; state.tagId = it; editor.push(state::tagId, it, String.serializer()) },
 			modifier = Modifier.width(FILTER_CARD_CONTENT_WIDTH),
 		)
 	}

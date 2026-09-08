@@ -10,7 +10,7 @@ import net.kernelpanicsoft.boilerplate.warehouse.GantryClientCache
  * items, broadcast periodically (and only while actually moving) rather than every tick. Doesn't
  * carry the bound volume itself -
  * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.bounds] is already
- * `@Sync`'d independently, so [WarehouseControllerBlockEntityRenderer][net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerBlockEntityRenderer]
+ * `@Sync`'d independently, so [WarehouseControllerVisual][net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual]
  * reads it straight off the block entity instead.
  *
  * [speedPerTick] is the server's own *effective* gantry speed at sampling time - the

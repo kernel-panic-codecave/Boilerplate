@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -15,6 +16,7 @@ import kotlinx.serialization.encoding.Encoder
  * NOT), so a plain enum - same choice [net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode]
  * itself makes - rather than another registry.
  */
+@Serializable(with = BooleanOperatorSerializer::class)
 enum class BooleanOperator { AND, OR }
 
 /** A [KSerializer] for [BooleanOperator], encoded/decoded as its enum name - same knbt-enum workaround as [net.kernelpanicsoft.boilerplate.pipe.entity.FilterModeSerializer]. */

@@ -15,11 +15,14 @@ import net.kernelpanicsoft.boilerplate.network.SResourceStack
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.registry.Registrars
 import net.minecraft.core.BlockPos
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
+import net.kernelpanicsoft.boilerplate.network.roomFor
 import net.minecraft.core.Direction
 import net.minecraft.world.item.DyeColor
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.LevelAccessor
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 
 /**
  * A kind of thing a [PipeBlock] can carry or conduct - what governs which
@@ -60,6 +63,19 @@ abstract class NetworkType {
 	 */
 	open val genericPipeCarriage: PipeCarriage get() = PipeCarriage.NONE
 
+	/**
+	 * The block capability a non-pipe neighbor exposes this kind through, or `null` for a kind that
+	 * has no world-facing one at all - what [PipeBlock.externalConnectionExists] probes to decide
+	 * whether a pipe carrying this kind should form an arm toward a plain block.
+	 *
+	 * On the base rather than on [ResourceNetworkType] because a conductor kind has one too:
+	 * pressure carries no resource and so has no [ResourceNetworkType.api], but a pressure pipe
+	 * still has to connect to a [net.kernelpanicsoft.boilerplate.power.PressureApi] block. Declaring
+	 * it here is what lets a pipe type's connection rule be "whatever my registered kinds expose"
+	 * rather than a per-block override naming a capability by hand.
+	 */
+	open val externalLookup: BlockLookup<*, Direction?>? get() = null
+
 	/** This type's own topology manager for [level] - one instance per [ServerLevel], the same contract [AbstractPipeNetworkManager]'s own concrete subclasses already follow via their `get(level)` companions. */
 	abstract fun managerFor(level: ServerLevel): AbstractPipeNetworkManager<*>
 }
@@ -93,6 +109,9 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 	/** The capability lookup used to find a neighbor [CommonStorage] of this type's own [T] (items vs fluids). */
 	abstract val api: BlockLookup<CommonStorage<T>, Direction?>
 
+	/** A carrier kind's world-facing capability is exactly the one it moves payloads through - see [NetworkType.externalLookup]. */
+	override val externalLookup: BlockLookup<*, Direction?>? get() = api
+
 	/**
 	 * What a [T] envelope that stalls in transit does instead of arriving - the item network drops
 	 * an item entity, the fluid network voids it (there's no world item for a fluid, and placing a
@@ -104,16 +123,29 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 	fun isPipeAt(level: LevelAccessor, pos: BlockPos): Boolean = router.isPipe(level, pos)
 
 	/**
-	 * Inserts [stack]'s whole [T] into whichever storage of this kind faces [pos] on [direction],
+	 * Inserts [stack]'s [T] into whichever storage of this kind faces [pos] on [direction],
 	 * returning how much was accepted - the network-kind-specific deposit, `0` if nothing accepts.
 	 * [stack] is typed as the wildcard envelope the transport loop actually holds; the cast to [T]
 	 * happens here where [T] is bound.
+	 *
+	 * @param amount how much of [stack] to offer, defaulting to all of it - a caller that has to
+	 *   hold part of an envelope back (a batching face, say) passes the part it will send rather
+	 *   than rebuilding the envelope just to shrink it.
 	 */
-	fun deposit(level: ServerLevel, pos: BlockPos, direction: Direction?, stack: SResourceStack<*>, simulate: Boolean): Long {
+	fun deposit(
+		level: ServerLevel,
+		pos: BlockPos,
+		direction: Direction?,
+		stack: SResourceStack<*>,
+		simulate: Boolean,
+		amount: Long = stack.amount,
+	): Long {
 		@Suppress("UNCHECKED_CAST")
 		val typed = stack as SResourceStack<T>
 		val storage = api.find(level, pos, direction) ?: return 0
-		return storage.insert(typed.resource, typed.amount, simulate)
+		// A simulated deposit answers "how much would land", which is not what a simulated *insert*
+		// answers - see [roomFor].
+		return if (simulate) storage.roomFor(typed.resource, amount) else storage.insert(typed.resource, amount, false)
 	}
 
 	/** Dispatches a stalled wildcard envelope to this type's own [onJam] - see [deposit]'s note on the cast. */
@@ -139,6 +171,17 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 		val typed = stack as SResourceStack<T>
 		return router.findRoute(level, from, typed.resource, color, exclude)
 	}
+
+	/**
+	 * Routes to a *known* destination through this type's own [router] - [route]'s counterpart for a
+	 * request, which already knows where the resource is going and only needs a path.
+	 *
+	 * No cast and no resource: [PipeRouter.findRouteTo] is a plain search over this kind's own pipe
+	 * topology, so unlike [route] there is nothing here that needs [T] bound. It exists as a named
+	 * bridge anyway, so a caller holding a `ResourceNetworkType<*>` reads the same way for both
+	 * halves of routing rather than reaching through [router] for one of them.
+	 */
+	fun routeTo(level: ServerLevel, from: BlockPos, to: BlockPos): List<BlockPos>? = router.findRouteTo(level, from, to)
 
 	/**
 	 * How much of this kind one extraction pulls at a time - the per-kind analogue of "a stack",
@@ -175,6 +218,7 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 		sourcePos: BlockPos,
 		face: Direction,
 		color: DyeColor?,
+		avoid: Set<BlockPos> = emptySet(),
 	): RoutedExtraction? {
 		val storage = api.find(level, sourcePos, face) ?: return null
 		for (slotIndex in 0 until storage.size()) {
@@ -184,14 +228,55 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 			val available = storage.extract(resource, extractionBatch, true)
 			if (available <= 0) continue
 
-			val route = router.findRoute(level, from, resource, color, exclude = setOf(sourcePos)) ?: continue
+			// [avoid] carries the destinations already served this cycle, so a source with several
+			// equally good destinations works through them instead of refilling the first one
+			// forever - see [ExtractionHookState.servedThisCycle]. It rides on `exclude`, which is
+			// part of the route cache's own key, so each step of the cycle is cached separately
+			// rather than fighting a single pinned answer.
+			val route = router.findRoute(level, from, resource, color, exclude = avoid + sourcePos) ?: continue
 
-			val extracted = storage.extract(resource, available, false)
+			// A destination behind a batching filter hook takes whole multiples only, so the pull is
+			// rounded down to one and abandoned if it does not reach even that. The remainder stays
+			// in the source - a barrel ahead of this hook, typically - rather than being carried to
+			// a machine that cannot use it, which is the whole point: partial deliveries jam a
+			// machine whose recipe consumes a fixed number at a time.
+			// Capped at what the destination will actually take, then rounded down to a whole
+			// multiple - see batchedForRoute, the rule every push site shares.
+			val room = acceptedAtRouteEnd(level, from, route, resource, available)
+			val batched = batchedForRoute(level, from, route, available, room)
+			if (batched <= 0) continue
+
+			val extracted = storage.extract(resource, batched, false)
 			if (extracted <= 0) continue
 
+			// Which destination won, out of everything that could have. A resource going somewhere
+			// unexpected is decided here and nowhere else.
+			ResourceTrace.at(
+				from, "route.chose",
+				"resource" to resource, "amount" to extracted, "to" to route.last(), "hops" to route.size,
+			)
 			return RoutedExtraction(ResourceStack(resource, extracted), route)
 		}
 		return null
+	}
+
+	/**
+	 * How much of [resource] the block at the end of [route] will accept right now.
+	 *
+	 * Probed against the face the delivery actually lands on - opposite the last hop - so this
+	 * asks the storage the insert will really reach rather than another side of the same block.
+	 */
+	private fun acceptedAtRouteEnd(level: ServerLevel, from: BlockPos, route: List<BlockPos>, resource: T, amount: Long): Long {
+		if (amount <= 0) return 0
+		val destination = route.lastOrNull() ?: return 0
+		val previous = if (route.size >= 2) route[route.size - 2] else from
+		val face = Direction.fromDelta(
+			destination.x - previous.x,
+			destination.y - previous.y,
+			destination.z - previous.z,
+		) ?: return 0
+		val target = api.find(level, destination, face.opposite) ?: return 0
+		return target.roomFor(resource, amount)
 	}
 }
 
@@ -230,6 +315,9 @@ object ItemNetworkType : ResourceNetworkType<ItemResource>(ItemResource::class.j
 	override val extractionBatch: Long get() = ITEM_EXTRACTION_BATCH
 
 	override fun onJam(level: ServerLevel, pos: BlockPos, stack: SResourceStack<ItemResource>) {
+		// Recoverable in principle - but only until it despawns, so it is worth saying out loud
+		// where a delivery gave up rather than leaving a player to find the gap in their storage.
+		ResourceTrace.lost(pos, "pipe.jam", stack.resource, stack.amount, "dropped as an item entity")
 		net.minecraft.world.entity.item.ItemEntity(
 			level, pos.x + 0.5, pos.y + 0.5, pos.z + 0.5,
 			stack.resource.toStack(stack.amount.toInt()),
@@ -269,7 +357,10 @@ object FluidNetworkType : ResourceNetworkType<FluidResource>(FluidResource::clas
 	override val extractionBatch: Long get() = FluidAmounts.toPlatformAmount(MILLIBUCKETS_PER_BUCKET)
 
 	override fun onJam(level: ServerLevel, pos: BlockPos, stack: SResourceStack<FluidResource>) {
-		// A stalled droplet has nowhere to go and no world-item to drop - void it.
+		// A stalled droplet has nowhere to go and no world-item to drop, so this is a real,
+		// unrecoverable deletion rather than a stall - which is exactly what [ResourceTrace.lost]
+		// exists to make visible.
+		ResourceTrace.lost(pos, "pipe.jam", stack.resource, stack.amount, "voided, a fluid has no world form to drop")
 	}
 }
 

@@ -11,12 +11,11 @@ import net.kernelpanicsoft.archie.events.gametest.AGametestEvents
 import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
 import net.kernelpanicsoft.archie.registries.CustomModelRegistry
 import net.kernelpanicsoft.boilerplate.datagen.BoilerplateDatagen
+import net.kernelpanicsoft.boilerplate.debug.DebugOverlayViewers
 import net.kernelpanicsoft.boilerplate.gametest.BoilerplateGameTest
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
-import net.kernelpanicsoft.boilerplate.debug.DebugOverlayViewers
 import net.kernelpanicsoft.boilerplate.network.DebugNetworkSync
 import net.kernelpanicsoft.boilerplate.network.WarehouseDebugSync
-import net.kernelpanicsoft.boilerplate.pipe.network.DebugRouteTrace
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager
 import net.kernelpanicsoft.boilerplate.registry.*
@@ -64,6 +63,7 @@ object Boilerplate {
 		HookTypeRegistry.init()
 		EncasementTypeRegistry.init()
 		FilterConditionTypeRegistry.init()
+		CreativeTabRegistry.init()
 		BlockRegistry.init()
 		ItemRegistry.init()
 		TileRegistry.init()
@@ -97,7 +97,19 @@ object Boilerplate {
 	 */
 	@JvmStatic
 	fun initClient() {
+		requireFlywheel()
 		CustomModelRegistry.register(MOD, WarehouseControllerVisual.HEAD_MODEL_RL)
+	}
+
+	/**
+	 * Fails fast, on the client, if Flywheel is missing.
+	 */
+	private fun requireFlywheel() {
+		if (Platform.isModLoaded("flywheel")) return
+		throw IllegalStateException(
+			"Boilerplate requires Flywheel on the client - everything it draws is rendered through it, " +
+				"with no vanilla block entity renderers to fall back on. Install Flywheel and restart.",
+		)
 	}
 
 	/** Reserved for common-side initialization that must run after both [init] and platform bootstrap. */

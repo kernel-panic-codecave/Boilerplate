@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.compat.jei
 
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import mezz.jei.api.IModPlugin
 import mezz.jei.api.JeiPlugin
@@ -198,7 +199,13 @@ class BoilerplateJEIPlugin : IModPlugin {
 				): Optional<out IClickableIngredient<*>> {
 					val stack = containerScreen.hoveredStack ?: return Optional.empty()
 					val area = Rect2i((mouseX - HOVER_AREA_RADIUS).toInt(), (mouseY - HOVER_AREA_RADIUS).toInt(), HOVER_AREA_RADIUS * 2, HOVER_AREA_RADIUS * 2)
-					return builder.createBuilder(stack.itemStack).buildWithArea(area)
+					// Through the same per-kind registry the EMI and REI plugins use, so every row
+					// the terminal lists is lookupable rather than only the item ones - see
+					// [JeiResourceStacks], which is also where the loader seam JEI's fluid type
+					// needs is documented.
+					val resource = stack.resource as ResourceComponent
+					val ingredient = JeiResourceStacks.of(resource, stack.amount) ?: return Optional.empty()
+					return ingredient.clickableIn(builder, area)
 				}
 			},
 		)

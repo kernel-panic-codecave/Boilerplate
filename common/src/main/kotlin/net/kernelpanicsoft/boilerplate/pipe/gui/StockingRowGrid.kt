@@ -2,8 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.Composable
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.fluid.util.FluidAmounts
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.pipe.hook.UNBOUNDED_STOCK
 import net.kernelpanicsoft.boilerplate.pipe.hook.configuredFilterOn
@@ -51,12 +50,14 @@ fun StockingRowGrid(
 	)
 }
 
-/** What a cell's corner shows: ∞ for an unbounded entry, the millibucket count for a fluid, and nothing for an ordinary item (whose stack already draws its own count). */
-private fun countTextFor(target: ResourceComponent?, amount: Long?): String? = when {
-	target == null || target.isBlank -> null
-	amount == UNBOUNDED_STOCK -> "∞"
-	target is FluidResource -> FluidAmounts.toMillibuckets(amount ?: 0L).toString()
-	else -> null
+/**
+ * What a cell's corner shows: ∞ for an unbounded entry, the authored amount for a kind whose slot
+ * draws no count of its own, and nothing for one that does (an item stack already writes it).
+ */
+private fun countTextFor(target: ResourceComponent?, amount: Long?): String? {
+	if (target == null || target.isBlank) return null
+	if (amount == UNBOUNDED_STOCK) return "∞"
+	return amountLabelFor(target, amount ?: 0L)
 }
 
 /**
@@ -70,15 +71,13 @@ private fun countTextFor(target: ResourceComponent?, amount: Long?): String? = w
  * configured flag exists.
  */
 private fun defaultAmountFor(resource: ResourceComponent, existing: ResourceComponent?, existingAmount: Long?): Long {
+	val kind = ResourceKindRegistry.forResource(resource)
 	val sameKind = existing != null && !existing.isBlank &&
-		(existing is FluidResource) == (resource is FluidResource) &&
+		ResourceKindRegistry.forResource(existing) === kind &&
 		(configuredFilterOn(existing) != null) == (configuredFilterOn(resource) != null)
 	if (sameKind && existingAmount != null) return existingAmount
-	return when {
-		configuredFilterOn(resource) != null -> UNBOUNDED_STOCK
-		resource is FluidResource -> FluidAmounts.toPlatformAmount(MILLIBUCKETS_PER_BUCKET)
-		else -> 1L
-	}
+	if (configuredFilterOn(resource) != null) return UNBOUNDED_STOCK
+	return kind?.let { it.toPlatform(it.defaultAuthored) } ?: 1L
 }
 
 /**
@@ -90,14 +89,10 @@ private fun defaultAmountFor(resource: ResourceComponent, existing: ResourceComp
  * ghost row removed.
  */
 private fun stepAmount(target: ResourceComponent, amount: Long, delta: Int): Long {
-	val step = if (target is FluidResource) FluidAmounts.toPlatformAmount(FLUID_STEP_MILLIBUCKETS) else 1L
+	val kind = ResourceKindRegistry.forResource(target)
+	val step = kind?.let { it.toPlatform(it.authoredStep) } ?: 1L
 	if (amount == UNBOUNDED_STOCK) return if (delta > 0) step else UNBOUNDED_STOCK
 	val next = amount + delta * step
 	return if (next < step) UNBOUNDED_STOCK else next
 }
 
-/** One bucket, in millibuckets - a fluid cell's own default amount. */
-private const val MILLIBUCKETS_PER_BUCKET = 1000L
-
-/** How far one notch moves a fluid cell, in millibuckets - the same step the pattern terminal uses, for the same reason. */
-private const val FLUID_STEP_MILLIBUCKETS = 100L

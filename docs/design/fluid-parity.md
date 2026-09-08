@@ -20,7 +20,7 @@ The short version: the *abstraction* for multi-resource networks is already buil
 
 These were latent traps that would fire the moment a fluid actually moved. Fixing them does not make fluids work — it makes the codebase safe to build fluids on.
 
-1. **`pipe/client/TravelingItemRenderer.kt`** — `stack.resource as ItemResource` was an unchecked cast inside the level render loop. A single fluid in a pipe would have been a `ClassCastException` taking down the whole frame, not one sprite. Now `as? ItemResource ?: continue`; non-item envelopes are skipped until Stage 3 gives them a visual.
+1. **The in-pipe renderer** — `stack.resource as ItemResource` was an unchecked cast inside the level render loop. A single fluid in a pipe would have been a `ClassCastException` taking down the whole frame, not one sprite. Fixed at the time by skipping non-item envelopes; since superseded entirely, as cargo geometry now comes from the resource's own registered kind (`ResourceDisplayKind.worldMesh`) and there is no cast left to make.
 2. **`pipe/entity/PipeBlockEntity.kt` `redirectedDelivery`** — used `ItemPipeRouter` and `as ItemResource` directly on the cancelled-reservation reroute path. Now resolves through `networkTypeForResource(...)` and a new `ResourceNetworkType.route(...)` wildcard bridge, matching the existing `deposit`/`jam` pattern.
 3. **`pipe/network/PipeRouter.kt` `FluidPipeRouter.acceptsByFilter`** — returned a blanket `true`. This is genuinely reachable: a plain pipe carries the item *and* fluid networks simultaneously, so a fluid routing past an item `FilterHookType` hook lands here, and unconditionally accepting would leak fluid into destinations a player explicitly whitelisted away from, silently and unconfigurably. Now returns `routing.mode == FilterMode.BLACKLIST` — a fluid never *matches* an item-only card, so mode decides, exactly as it already does for a non-matching item or a blank card slot.
 
@@ -32,14 +32,14 @@ The two remaining `as ItemResource` casts in `PipeBlockEntity` (lines ~189, ~201
 - `ExtractionHookType` is kind-parametric: it asks each carrier its own segment conducts, in a **stable order** (sorted by registry id — `primaryNetworkTypesAt` returns a `hashSetOf`, so leaving it unsorted would make a face exposing two capabilities drain a different kind on different launches).
 - `compatibleNetworkTypes` derives from the live registry instead of a literal `{item}`, and is a computed `get()` rather than `by lazy` so it cannot be captured before the registry is populated.
 - `FluidPipeNetworkGameTest` **was never registered in `boilerplateGameTests()`** and had therefore never run once. Now registered, plus four new tests.
-- **A fluid tank block** (`warehouse/tank/`), the mod's first fluid container - one slot, filled and drained through `FluidApi` like a rack, with a server-side contents readout on right-click. Not `@Sync`'d: Archie's block-entity sync resolves a packet serializer from the property type, and a bare `FluidResource` has none, which crashes the server tick loop rather than merely failing to sync.
+- **A fluid tank block** (`warehouse/tank/`), the mod's first fluid container - one slot, filled and drained through `FluidApi` like a rack. Now `@Sync`'d and screened; see Stage 4.
 - **`ResourceIdentity`** plus `ResourceKind.identityOf`, the per-kind value-identity adapter. Forced by the warehouse index being a resource-keyed map (see blocker 2).
 - **The warehouse indexes fluid tanks.** `WarehouseIndex` is keyed by `ResourceIdentity` and scans item *and* fluid capabilities; `locations[x]` became `slotsFor(x)` across ~10 call sites. Defrag and the terminal explicitly filter to items, since `GantryJob.Move` and the terminal grid are item-typed.
 - End-to-end proof: tank -> generified extraction hook -> pipe -> tank, asserting the full volume arrives.
 
 ### Still missing
 
-- **No fluid GUI beyond the ghost slot.** The tank has no screen (right-click prints its contents), and the warehouse terminal indexes tanks but cannot list them.
+- **The terminal cannot list fluids.** The warehouse indexes tanks, but `StoreEntry` and the store/craft grid are item-shaped, so a tank's contents are invisible from the terminal. The tank itself now has a screen (Stage 4).
 - **Crafting is entirely item-typed** — gantry jobs, patterns, CPU. The warehouse *index* now handles fluids; moving them with the gantry does not.
 
 ## Upstream blockers found while implementing Stage 1
@@ -73,11 +73,10 @@ The symptom is a tank that accepts exactly one delivery and then silently refuse
 the rejected travellers stalling in the pipe forever - which is exactly how it was found (the
 end-to-end test drained a 4-bucket source and delivered 1 bucket, with 3 stuck in the segment).
 
-Worked around in Boilerplate by [`FluidTankStorage`][../../common/src/main/kotlin/net/kernelpanicsoft/boilerplate/warehouse/tank/FluidTankStorage.kt],
-a small `CommonStorage<FluidResource>` that compares through `ResourceIdentity`. **The real fix
-belongs in Archie** - it is Archie's own class, and every future fluid container built on
-`ArchieFluidStorage` inherits the bug. Once fixed there, `FluidTankStorage` can be deleted and the
-tank can go back to `fluidField`.
+**Fixed in Archie** (`fix(transfer): compare fluids by value in ArchieFluidSlot`), which is where it
+belonged - every future fluid container built on `ArchieFluidStorage` would otherwise have inherited
+it. Boilerplate's `FluidTankStorage` workaround has been deleted and the tank is back on a plain
+`fluidField`.
 
 ## Resolved design decision
 
@@ -158,12 +157,17 @@ test that fails against a naive comparison.
 
 ## Stage 3 — In-pipe fluid visuals — **done**
 
-A fluid in transit renders as a **rippling icosahedron tumbling on all three axes**, skinned with
-the fluid's own still texture (`TravelingFluidRenderer`). A fluid has no item model to borrow and a
-textured cube reads as a block of ice; an icosahedron is the cheapest solid that reads as round,
-and displacing each vertex along its own radius on a position-phased sine wave makes the surface
-slosh rather than tumble rigidly. Geometry is generated once in unit-radius object space and reused
-for every droplet and frame - the same bake-once discipline the debug overlays follow.
+A fluid in transit renders as an **icosahedron tumbling on its way down the pipe**, skinned with
+the fluid's own still texture (`InstancedMeshes.fluidMesh`, reached through the fluid kind's
+`ResourceDisplayKind.worldMesh`). A fluid has no item model to borrow and a textured cube reads as a
+block of ice; an icosahedron is the cheapest solid that reads as round. The mesh is baked once per
+fluid and instanced through Flywheel for every droplet on screen.
+
+> The original immediate-mode version also displaced each vertex along its own radius on a
+> position-phased sine wave, so the surface visibly sloshed. A baked mesh cannot: instanced geometry
+> is uploaded once and only its transform changes per frame. The tumble survives, the ripple does
+> not - restoring it would mean per-droplet vertex animation, which is exactly the per-frame cost
+> instancing buys away.
 
 > **Platform trap, resolved:** sprite/tint lookup is loader-specific (`FluidRenderHandlerRegistry`
 > on Fabric, `IClientFluidTypeExtensions` on NeoForge). Wired as `FluidSpriteSource`/`FluidSprites` -
@@ -187,6 +191,28 @@ for every droplet and frame - the same bake-once discipline the debug overlays f
 ## Stage 4 — GUI parity
 
 Fluid ghost slots, tank widgets, and fluid rendering in the pipe/hook screens (~14 files under `pipe/gui/` are item-typed). Depends on Stage 3 for the sprite/tint abstraction.
+
+### Tank screen — **done**
+
+`FluidTankMenu`/`FluidTankScreen`: the fluid's own sprite in Archie's `FluidTank` gauge, its name,
+`stored / capacity` in millibuckets, and a percentage. Right-click opens it instead of printing to
+the action bar.
+
+**The blocker recorded against this was not real.** The note above said a tank could not be `@Sync`'d
+because Archie resolves a packet serializer from the property's type and a `FluidResource` has none.
+That holds for a *bare* `FluidResource` field, but a `fluidField` yields an `ArchieFluidStorage`,
+which carries its own `@Serializable` serializer and is registered for sync by the same code path
+`itemField` uses - `fluidField` has an identical `@Sync` branch. Adding `@Sync` was the whole of the
+work; the entire fluid gametest suite passes with it on, which is what rules out the tick-loop crash
+the note predicted. **No bespoke sync packet is needed for a fluid GUI**, which is worth knowing
+before building the next one.
+
+Volumes are shown in millibuckets throughout. The gauge takes amount and capacity in platform units
+so it only ever needs their ratio; converting either first would cost precision for nothing.
+
+### Terminal listing — still to do
+
+The last item-shaped surface, and the biggest remaining gap: see "Still item-only" below.
 
 ## Stage 5 — Warehouse and crafting
 
@@ -246,7 +272,8 @@ and terminal delivery all iterate the registry.
 2. Stage 1 interface-hook buffer
 3. ~~Stage 3 in-pipe visuals~~ — done
 4. ~~Stage 2 filter conditions~~ — done bar the fluid ghost card, which needs Stage 4's slot
-5. Stage 4 GUI — a tank screen and a terminal listing (the warehouse indexes tanks already; the terminal just can't show them). The fluid ghost slot that would have gated this now exists, so the interface hook's fluid `ghosts` row is unblocked too
+5. ~~Stage 4 tank screen~~ — done; and it proved a fluid container needs no sync packet of its own
+6. Stage 4 terminal listing — the warehouse indexes tanks already; the terminal just can't show them. The fluid ghost slot that would have gated this exists, so the interface hook's fluid `ghosts` row is unblocked too
 6. ~~Stage 5 crafting~~ — done; patterns, the resolver, the job and the CPU are kind-generic, and a Crafting Tank holds the fluid side
 7. ~~Stage 5 warehouse~~ — done; the warehouse is resource-kind agnostic and a registered kind is storable with no warehouse edit
 8. Stage 4 terminal — the last item-shaped surface left

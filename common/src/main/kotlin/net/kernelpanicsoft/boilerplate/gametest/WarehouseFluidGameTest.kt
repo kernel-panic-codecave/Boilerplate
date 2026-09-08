@@ -5,24 +5,25 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.fluid.util.FluidAmounts
 import net.kernelpanicsoft.archie.gametest.assertTrue
+import net.kernelpanicsoft.archie.gui.blockentity.BlockEntityStateContainer
+import net.kernelpanicsoft.archie.gui.blockentity.getStateContainer
+import net.kernelpanicsoft.archie.transfer.ArchieFluidStorage
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionState
+import net.kernelpanicsoft.boilerplate.pipe.gui.reachableStock
 import net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
-import net.minecraft.world.item.ItemStack
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.warehouse.Bounds
-import net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseDefragPlanner
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseIndex
+import net.kernelpanicsoft.boilerplate.warehouse.*
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.Items
 import net.minecraft.world.level.material.Fluids
 
 /**
@@ -40,7 +41,181 @@ class WarehouseFluidGameTest {
 
 	private val water: FluidResource get() = FluidResource.of(Fluids.WATER)
 
+	/**
+	 * A tank reports a real capacity and its own contents - what `FluidTankScreen` draws.
+	 *
+	 * The capacity assertion is the point. Every `FluidAmounts` constant reads `0` in Common Storage
+	 * Lib 0.0.5, so a capacity taken from one would be zero - the screen would draw an empty gauge
+	 * over a full tank, and the tank itself would silently accept nothing. `capacity` converts
+	 * through `toPlatformAmount` instead, and this is what catches a regression back to a constant.
+	 *
+	 * The menu is not built here: `ComposeBlockContainerMenu` casts the opening player to a
+	 * `ServerPlayer` and a gametest's mock player is not one. It is a pass-through over exactly the
+	 * two values asserted below. That the tank is now `@Sync`'d - which the doc had recorded as
+	 * impossible - is pinned by every other fluid test here still passing with sync switched on.
+	 */
+	/**
+	 * The tank is obtainable.
+	 *
+	 * It was not: the block, its block entity, its blockstate, models, loot table, lang entry and
+	 * mineable tag all existed, but no `BlockItem` was ever registered - so the block could not be
+	 * picked up, given, or placed by a player, and its loot table dropped an item that did not exist.
+	 * Datagen had even emitted an item model for it, which is what makes the omission easy to miss.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testTheTankHasABlockItem() {
+		val item = BlockRegistry.FluidTank.asItem()
+		assertTrue(item != Items.AIR) { "The Fluid Tank block has no item, so nothing can obtain or place it" }
+		assertTrue(item == ItemRegistry.FluidTank) { "Expected the tank's item to be its registered BlockItem, got $item" }
+		succeed()
+	}
+
+	/**
+	 * What a client receives for a tank actually contains the fluid.
+	 *
+	 * Two separate faults made a full tank draw as empty, and this covers both. Archie's `getSyncTag`
+	 * read its serialized `data` map without flushing the live storages into it first, so the tag
+	 * carried whatever was last written to disk - empty, for a tank filled at runtime. And `@Sync`
+	 * only decides what a *sent* tag carries; nothing asked for one to be sent, so the contents were
+	 * frozen at chunk-load even once the tag was right.
+	 *
+	 * Asserted by round-tripping through a second block entity, which is exactly what the client does
+	 * with the packet: a tag that merely exists proves nothing if loading it yields an empty tank.
+	 */
+	/**
+	 * A viewer who starts watching a tank that was already full is told what it holds.
+	 *
+	 * Archie's block-entity sync is a delta stream: a container only recorded a property when
+	 * something *changed* it, and only ever sent properties marked dirty. So a tank filled before
+	 * anyone opened its screen - or simply loaded from disk - had no recorded value and nothing to
+	 * send, and the screen sat empty until the tank next happened to change. Starting to track now
+	 * seeds from the live block entity and marks everything dirty, so the first packet is a snapshot.
+	 */
+	/**
+	 * Filling a tank someone is already watching marks it for sync.
+	 *
+	 * The container recorded a property's value and skipped the update when it compared equal to what
+	 * was already there - but a storage-backed property hands back the *same* mutable object every
+	 * time, so that comparison was an object against itself and never reported a change. Nothing was
+	 * ever marked dirty, no packet was ever sent, and an open screen froze at whatever it had when it
+	 * opened. Reopening appeared to fix it only because opening seeds and force-marks the state.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testFillingAWatchedTankMarksItDirty() {
+		val tankPos = BlockPos(1, 2, 1)
+		setBlock(tankPos, BlockRegistry.FluidTank.defaultBlockState())
+		val tank = getBlockEntity(tankPos) as FluidTankBlockEntity
+
+		// The container the field itself publishes into - same instance, via getStateContainer().
+		val container = tank.getStateContainer()
+		container.captureCurrentValues()
+		container.clearDirty(0)
+		assertTrue(container.getDirtyProperties().isEmpty()) { "Expected a freshly synced container to be clean" }
+
+		tank.storage.insert(water, bucket, false)
+
+		assertTrue("storage" in container.getDirtyProperties()) {
+			"Filling the tank left the container clean, so no packet would ever be sent - got ${container.getDirtyProperties()}"
+		}
+		succeed()
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testAFreshViewerIsSentTheCurrentContents() {
+		val tankPos = BlockPos(1, 2, 1)
+		setBlock(tankPos, BlockRegistry.FluidTank.defaultBlockState())
+		val tank = getBlockEntity<FluidTankBlockEntity>(tankPos)
+		tank.storage.insert(water, bucket * 3, false)
+
+		// A container built after the fact, exactly as one is when a screen opens on an idle tank.
+		val container = BlockEntityStateContainer(tank)
+		assertTrue(container.getProperty("storage") == null) { "A fresh container should start with nothing recorded" }
+
+		container.captureCurrentValues()
+		container.markAllDirty()
+
+		assertTrue("storage" in container.getDirtyProperties()) {
+			"Expected the seeded storage to be dirty so the first packet carries it, got ${container.getDirtyProperties()}"
+		}
+		val seeded = container.getProperty("storage") as? ArchieFluidStorage
+		assertTrue(seeded != null && seeded.getAmount(0) == bucket * 3) {
+			"Expected the seed to carry the 3 buckets the tank holds, got ${(container.getProperty("storage") as? ArchieFluidStorage)?.getAmount(0)}"
+		}
+		succeed()
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testATanksUpdateTagCarriesItsContents() {
+		val tankPos = BlockPos(1, 2, 1)
+		setBlock(tankPos, BlockRegistry.FluidTank.defaultBlockState())
+		val tank = getBlockEntity(tankPos) as FluidTankBlockEntity
+		tank.storage.insert(water, bucket * 2, false)
+
+		val tag = tank.getUpdateTag(level.registryAccess())
+		assertTrue(!tag.isEmpty) { "A synced tank sent an empty update tag" }
+
+		val received = FluidTankBlockEntity(absolutePos(tankPos), BlockRegistry.FluidTank.defaultBlockState())
+		received.loadFromTag(tag)
+		val stored = received.storage.get(0)
+		assertTrue(ResourceIdentity.of(stored.resource) == ResourceIdentity.of(water)) {
+			"A client loading the update tag saw ${stored.resource}, not the water the tank holds"
+		}
+		assertTrue(stored.amount == bucket * 2) {
+			"A client loading the update tag saw ${stored.amount}, not the 2 buckets the tank holds"
+		}
+		succeed()
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testATankReportsARealCapacityAndItsContents() {
+		val tankPos = BlockPos(1, 2, 1)
+		setBlock(tankPos, BlockRegistry.FluidTank.defaultBlockState())
+		val tank = getBlockEntity(tankPos) as FluidTankBlockEntity
+
+		assertTrue(FluidTankBlockEntity.capacity > 0) {
+			"Expected a real capacity, got ${FluidTankBlockEntity.capacity} - a FluidAmounts constant has crept back in"
+		}
+
+		tank.storage.insert(water, bucket * 2, false)
+		val stored = tank.storage.get(0)
+		assertTrue(ResourceIdentity.of(stored.resource) == ResourceIdentity.of(water)) {
+			"Expected the tank to hold water, got ${stored.resource}"
+		}
+		assertTrue(stored.amount == bucket * 2) { "Expected 2 buckets, got ${stored.amount}" }
+		succeed()
+	}
+
 	/** A controller with a bound volume, plus a tank inside it - the smallest fluid warehouse. */
+	/**
+	 * A terminal reachable from a warehouse holding fluid **lists that fluid**.
+	 *
+	 * The whole point of indexing a tank: it was routable, withdrawable and defraggable the entire
+	 * time, and simply never appeared in the terminal's own list - so nothing could ever be asked
+	 * for. The listing narrowed itself to the item kind long after the grid had gained the ability
+	 * to draw any of them, and nothing caught it because the aggregation was buried in a method that
+	 * needed a menu and a player to call. [reachableStock] is that aggregation, liftable out and
+	 * asked directly.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 400)
+	fun GameTestHelper.testATerminalListsFluidHeldInAReachableWarehouse() {
+		val level = level as ServerLevel
+		val tankPos = BlockPos(3, 2, 4)
+		val pipePos = BlockPos(1, 2, 0)
+		layOutFluidWarehouse(tankPos, fill = bucket * 3)
+		setBlock(pipePos, BlockRegistry.Pipe.defaultBlockState())
+
+		succeedWhen {
+			val listed = reachableStock(level, absolutePos(pipePos))
+			val waterEntry = listed.firstOrNull { ResourceIdentity.of(it.resource) == ResourceIdentity.of(water) }
+			assertTrue(waterEntry != null) {
+				"Expected the warehouse's own water to be listed at a reachable terminal, got ${listed.map { it.resource }}"
+			}
+			assertTrue(waterEntry!!.amount == bucket * 3) {
+				"Expected all three buckets to be listed as one entry, got ${waterEntry.amount}"
+			}
+		}
+	}
+
 	private fun GameTestHelper.layOutFluidWarehouse(tankPos: BlockPos, fill: Long = 0L): WarehouseControllerBlockEntity {
 		val controllerPos = BlockPos(0, 2, 0)
 		val cornerTwoPos = BlockPos(4, 3, 4)
@@ -99,7 +274,7 @@ class WarehouseFluidGameTest {
 		controller.enqueueRetrieve(slot, ResourceStack(water as ResourceComponent, bucket * 2))
 
 		succeedWhen {
-			val outbound = controller.outboundFor(ResourceKindRegistry.Fluid)
+			val outbound = controller.outboundFor<FluidResource>(ResourceKindRegistry.Fluid)
 			assertTrue(outbound != null) { "Expected the controller to have a fluid outbound buffer" }
 			val held = (0 until outbound!!.size()).sumOf { i ->
 				if (ResourceIdentity.of(outbound.getResource(i) as ResourceComponent) == ResourceIdentity.of(water)) outbound.getAmount(i) else 0L
@@ -117,7 +292,7 @@ class WarehouseFluidGameTest {
 		val tankPos = BlockPos(3, 2, 4)
 		val controller = layOutFluidWarehouse(tankPos)
 
-		val inbound = controller.inboundFor(ResourceKindRegistry.Fluid)
+		val inbound = controller.inboundFor<FluidResource>(ResourceKindRegistry.Fluid)
 		assertTrue(inbound != null) { "Expected the controller to have a fluid inbound buffer" }
 		ResourceKindRegistry.Fluid.storage!!.insert(inbound!!, water, bucket, false)
 

@@ -48,5 +48,14 @@ versionRange = "[${versions.cloth_config_range},)"
 ordering = "NONE"
 side = "BOTH"
 
+# Every block entity this mod draws is rendered through Flywheel and has no vanilla
+# BlockEntityRenderer fallback, so the mod is not merely better with it - it is blank without it.
+[[dependencies."${mod_id}"]]
+modId = "flywheel"
+type = "required"
+versionRange = "[${versions.flywheel_range},)"
+ordering = "NONE"
+side = "CLIENT"
+
 [modproperties."${mod_id}"]
 catalogueImageIcon = "assets/${mod_id}/icon.png"

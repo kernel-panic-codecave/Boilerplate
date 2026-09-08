@@ -3,6 +3,7 @@ package net.kernelpanicsoft.boilerplate.registry
 import dev.architectury.registry.client.rendering.RenderTypeRegistry
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.blockProperties
+import net.kernelpanicsoft.archie.util.onClient
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.block.*
 import net.kernelpanicsoft.boilerplate.power.block.CreativePressureSourceBlock
@@ -11,8 +12,8 @@ import net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlock
 import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlock
 import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlock
-import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlock
 import net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlock
+import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlock
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.Block
@@ -89,10 +90,6 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
 	}
 
-	val CraftingTankPart: ConnectingEncasementModelBlock by register("crafting_tank_part") {
-		ConnectingEncasementModelBlock(blockProperties(Blocks.IRON_BLOCK) { })
-	}
-
 	val WarehouseController: WarehouseControllerBlock by register("warehouse_controller") {
 		WarehouseControllerBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
 	}
@@ -148,7 +145,14 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 		CreativePressureSourceBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
 	}
 
-	override fun initClient() {
-		RenderTypeRegistry.register(RenderType.cutout(), GantryRail)
+	override fun init()
+	{
+		super.init()
+		listen {
+			onClient {
+				RenderTypeRegistry.register(RenderType.cutout(), GantryRail)
+
+			}
+		}
 	}
 }

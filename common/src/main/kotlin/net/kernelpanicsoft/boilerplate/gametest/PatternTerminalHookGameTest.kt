@@ -42,12 +42,12 @@ class PatternTerminalHookGameTest {
 		grid[0].set(ItemStack(Items.OAK_LOG))
 		val patternOutputs = ArchieItemStorage(9)
 
-		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells(), state.blankPatterns, state.output)
+		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells(), state.blankPatterns, state.patternOutput)
 		assertTrue(encoded) { "Expected encodeAndConsume to succeed with a matching grid and a blank pattern in the blank slot" }
 
 		assertTrue(state.blankPatterns[0].getItem().isEmpty) { "Expected the blank pattern stack to have been consumed from the blank slot" }
-		val outputData = (0 until state.output.size()).map { state.output[it].getItem() }.map { PatternItemData(it) }.firstOrNull { it.pattern != Pattern.EMPTY }
-		assertTrue(outputData != null) { "Expected an encoded pattern to land in the terminal's own output slots" }
+		val outputData = (0 until state.patternOutput.size()).map { state.patternOutput[it].getItem() }.map { PatternItemData(it) }.firstOrNull { it.pattern != Pattern.EMPTY }
+		assertTrue(outputData != null) { "Expected an encoded pattern to land in the terminal's own pattern-output slots" }
 		val pattern = outputData!!.pattern
 		assertTrue(pattern.kind == PatternKind.CRAFTING) { "Expected a CRAFTING-mode encode to produce a CRAFTING pattern, got ${pattern.kind}" }
 		succeed()
@@ -63,9 +63,9 @@ class PatternTerminalHookGameTest {
 		grid[0].set(ItemStack(Items.OAK_LOG))
 		val patternOutputs = ArchieItemStorage(9)
 
-		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells(), state.blankPatterns, state.output)
+		val encoded = PatternEncoder.encodeAndConsume(level, PatternKind.CRAFTING, grid.patternCells(), patternOutputs.patternCells(), state.blankPatterns, state.patternOutput)
 		assertTrue(!encoded) { "Expected encodeAndConsume to fail without a blank pattern in the blank slot" }
-		assertTrue((0 until state.output.size()).all { state.output.get(it).getItem().isEmpty }) { "Expected nothing to land in output when there was no blank to consume" }
+		assertTrue((0 until state.patternOutput.size()).all { state.patternOutput.get(it).getItem().isEmpty }) { "Expected nothing to land in the pattern output when there was no blank to consume" }
 		succeed()
 	}
 

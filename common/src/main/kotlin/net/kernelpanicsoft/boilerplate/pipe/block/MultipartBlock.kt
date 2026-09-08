@@ -5,6 +5,7 @@ import dev.architectury.event.EventResult
 import dev.architectury.event.events.common.InteractionEvent
 import dev.architectury.registry.menu.MenuRegistry
 import net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType
+import net.kernelpanicsoft.boilerplate.pipe.block.MultipartBlock.Companion.removeBarePipe
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.item.EncasementItem
@@ -13,10 +14,7 @@ import net.kernelpanicsoft.boilerplate.pipe.item.PipeItem
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypesAt
 import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager
-import net.kernelpanicsoft.boilerplate.registry.EncasementTypeRegistry
-import net.kernelpanicsoft.boilerplate.registry.HookTypeRegistry
-import net.kernelpanicsoft.boilerplate.registry.TagsRegistry
-import net.kernelpanicsoft.boilerplate.registry.TileRegistry
+import net.kernelpanicsoft.boilerplate.registry.*
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -32,6 +30,7 @@ import net.minecraft.sounds.SoundSource
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.ItemInteractionResult
+import net.minecraft.world.MenuProvider
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.ItemStack
@@ -52,7 +51,6 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParams
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
-import net.minecraft.world.MenuProvider
 
 /**
  * A pipe segment that can additionally carry attachments: a
@@ -304,13 +302,13 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 
 		val pipeBlock = BuiltInRegistries.BLOCK.get(tile.pipeBlockId)
 		if (!player.abilities.instabuild) {
-			Block.dropResources(pipeBlock.defaultBlockState(), level, pos, tile, player, player.mainHandItem)
+			dropResources(pipeBlock.defaultBlockState(), level, pos, tile, player, player.mainHandItem)
 		}
 		tile.pipeBlockId = MultipartBlockEntity.NONE
 		resyncNetworkMembership(level, pos)
 
-		level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL)
-		state.updateNeighbourShapes(level, pos, Block.UPDATE_ALL)
+		level.sendBlockUpdated(pos, state, state, UPDATE_ALL)
+		state.updateNeighbourShapes(level, pos, UPDATE_ALL)
 		resendSegment(level, pos)
 		level.playSound(null, pos, state.soundType.breakSound, SoundSource.BLOCKS, 1f, 1f)
 		return ItemInteractionResult.SUCCESS
@@ -387,7 +385,7 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 	)
 	{
 		val blockEntity = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return super.spawnDestroyParticles(level, player, pos, state)
-		if (blockEntity.pipeBlockId == MultipartBlockEntity.NONE) return super.spawnDestroyParticles(level, player, pos, state)
+		if (blockEntity.pipeBlockId == MultipartBlockEntity.NONE) return super.spawnDestroyParticles(level, player, pos, BlockRegistry.Pipe.defaultBlockState())
 		val pipeState = BuiltInRegistries.BLOCK.get(blockEntity.pipeBlockId).defaultBlockState()
 		super.spawnDestroyParticles(level, player, pos, pipeState)
 	}
@@ -469,7 +467,7 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 				.withOptionalParameter(LootContextParams.BLOCK_STATE, state)
 				.withOptionalParameter(LootContextParams.BLOCK_ENTITY, tile)
 				.create(LootContextParamSets.BLOCK)
-			table.getRandomItems(params) { Block.popResource(level, pos, it) }
+			table.getRandomItems(params) { popResource(level, pos, it) }
 		}
 
 		/**
@@ -559,7 +557,7 @@ class MultipartBlock(properties: Properties) : PipeBlock(properties) {
 		 */
 		private fun removeBarePipe(state: BlockState, level: Level, pos: BlockPos, player: Player): ItemInteractionResult {
 			if (!player.abilities.instabuild) {
-				Block.dropResources(state, level, pos, level.getBlockEntity(pos), player, player.mainHandItem)
+				dropResources(state, level, pos, level.getBlockEntity(pos), player, player.mainHandItem)
 			}
 			level.removeBlock(pos, false)
 			level.playSound(null, pos, state.soundType.breakSound, SoundSource.BLOCKS, 1f, 1f)

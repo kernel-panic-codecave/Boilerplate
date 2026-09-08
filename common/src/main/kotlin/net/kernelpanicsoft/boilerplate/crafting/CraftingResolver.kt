@@ -49,12 +49,38 @@ object CraftingResolver {
 		val stockPulls: Map<ResourceIdentity, Long>,
 	)
 
+	/** A resource the plan needs but cannot obtain, with the total [amount] of it that was wanted. */
+	data class Shortfall(val resource: ResourceComponent, val amount: Long)
+
 	sealed interface Result {
 		data class Success(val plan: Plan) : Result
-		/** [resource] has neither enough stock nor a pattern producing it. */
-		data class Unresolvable(val resource: ResourceComponent) : Result
-		/** [resource]'s own pattern chain (directly or transitively) requires itself. */
-		data class Cyclic(val resource: ResourceComponent) : Result
+
+		/**
+		 * Every resource with neither enough stock nor a pattern producing it, and how much of each
+		 * was wanted, in discovery order.
+		 *
+		 * A list rather than the first one found: a plan blocked on three different ingredients used
+		 * to surface them one at a time, so fixing one only revealed the next. Only *independently*
+		 * blocked resources appear - once a resource is unresolvable its own ingredients are not
+		 * demanded, so nothing that is merely needed *because* of an already-listed blocker joins it.
+		 *
+		 * The amounts are exact rather than indicative: the demand walk reaches each resource only
+		 * after every consumer of it has been counted, so a shortfall is the whole shortfall.
+		 */
+		data class Unresolvable(val shortfalls: List<Shortfall>) : Result
+
+		/** Every resource whose pattern chain (directly or transitively) requires itself, in discovery order. */
+		data class Cyclic(val resources: List<ResourceComponent>) : Result
+	}
+
+	/**
+	 * Reports one resource's own resolution - see [resolve]'s [onResolved].
+	 *
+	 * A sink passed in rather than logging directly, so the algorithm stays the pure, wiring-free
+	 * thing its own KDoc promises and its tests keep resolving without a level or a logger.
+	 */
+	fun interface Observer {
+		fun onResolved(resource: ResourceComponent, demand: Long, fromStock: Long, shortfall: Long, plan: String)
 	}
 
 	fun resolve(
@@ -62,29 +88,41 @@ object CraftingResolver {
 		amount: Long,
 		stockOf: (ResourceComponent) -> Long,
 		patternFor: (ResourceComponent) -> Pattern?,
+		observer: Observer? = null,
 	): Result {
 		val postOrder = mutableListOf<ResourceIdentity>()
 		val visited = mutableSetOf<ResourceIdentity>()
 		val inProgress = mutableSetOf<ResourceIdentity>()
 
-		fun discover(resource: ResourceComponent): Result.Cyclic? {
+		// Keyed for dedup, valued for reporting - a resource reached down two branches is one problem.
+		val cyclic = LinkedHashMap<ResourceIdentity, ResourceComponent>()
+		val unresolvable = LinkedHashMap<ResourceIdentity, Shortfall>()
+
+		fun discover(resource: ResourceComponent) {
 			val key = ResourceIdentity.of(resource)
-			if (key in visited) return null
-			if (key in inProgress) return Result.Cyclic(resource)
+			if (key in visited) return
+			// Records the cycle and stops descending, rather than aborting the whole walk: the plan
+			// is doomed either way, and continuing finds every other cycle in one pass instead of
+			// making the reader fix them one at a time. Termination is unaffected - the frame that
+			// opened this branch still marks it visited on the way out.
+			if (key in inProgress) {
+				cyclic.putIfAbsent(key, resource)
+				return
+			}
 			val pattern = patternFor(resource)
 			if (pattern != null) {
 				inProgress += key
-				for (input in pattern.requiredInputs().keys) {
-					discover(input.resource)?.let { return it }
-				}
+				for (input in pattern.requiredInputs().keys) discover(input.resource)
 				inProgress -= key
 			}
 			visited += key
 			postOrder += key
-			return null
 		}
 
-		discover(target)?.let { return it }
+		discover(target)
+		// A cycle makes the demand walk meaningless, so it never runs - and missing ingredients found
+		// underneath a cyclic chain would be noise next to the cycle itself.
+		if (cyclic.isNotEmpty()) return Result.Cyclic(cyclic.values.toList())
 
 		val targetKey = ResourceIdentity.of(target)
 		val demand = mutableMapOf(targetKey to amount)
@@ -105,19 +143,37 @@ object CraftingResolver {
 			val fromStock = if (key == targetKey) 0L else stockOf(resource).coerceAtLeast(0L).coerceAtMost(totalDemand)
 			if (fromStock > 0) stockPulls[key] = (stockPulls[key] ?: 0L) + fromStock
 			val shortfall = totalDemand - fromStock
-			if (shortfall <= 0L) continue
+			if (shortfall <= 0L) {
+				// The quiet decision: covered entirely from stock, so no step will ever produce it.
+				observer?.onResolved(resource, totalDemand, fromStock, 0L, "all from stock, no step")
+				continue
+			}
 
-			val pattern = patternFor(resource) ?: return Result.Unresolvable(resource)
+			// Recorded and skipped rather than returned on: skipping means this resource's own inputs
+			// are never demanded, so the walk goes on to find blockers in sibling branches without
+			// dragging in everything that was only needed because of this one.
+			val pattern = patternFor(resource)
+			if (pattern == null) {
+				observer?.onResolved(resource, totalDemand, fromStock, shortfall, "no pattern produces it")
+				unresolvable.putIfAbsent(key, Shortfall(resource, shortfall))
+				continue
+			}
 			val outputAmount = pattern.outputAmount(resource)
-			if (outputAmount == null || outputAmount <= 0L) return Result.Unresolvable(resource)
+			if (outputAmount == null || outputAmount <= 0L) {
+				observer?.onResolved(resource, totalDemand, fromStock, shortfall, "pattern produces none of it")
+				unresolvable.putIfAbsent(key, Shortfall(resource, shortfall))
+				continue
+			}
 
 			val neededRuns = (shortfall + outputAmount - 1) / outputAmount
+			observer?.onResolved(resource, totalDemand, fromStock, shortfall, "craft $neededRuns run(s) of ${outputAmount}x")
 			steps += CraftStep(pattern, neededRuns, resource)
 			for ((inputKey, perRun) in pattern.requiredInputs()) {
 				demand[inputKey] = (demand[inputKey] ?: 0L) + perRun * neededRuns
 			}
 		}
 
+		if (unresolvable.isNotEmpty()) return Result.Unresolvable(unresolvable.values.toList())
 		return Result.Success(Plan(target, amount, steps.asReversed(), stockPulls))
 	}
 

@@ -1,6 +1,8 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
 import com.mojang.serialization.MapCodec
+import net.kernelpanicsoft.boilerplate.util.byDirection
+import net.kernelpanicsoft.boilerplate.util.invoke
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.world.item.context.BlockPlaceContext
@@ -56,12 +58,10 @@ class GantryRailBlock(properties: Properties) : Block(properties) {
 			result.setValue(propertiesByDirection.getValue(direction), level.getBlockState(pos.relative(direction)).block.let { it is GantryRailBlock || (direction == Direction.DOWN && it !is AirBlock) })
 		}
 
-	override fun getShape(state: BlockState, level: BlockGetter, pos: BlockPos, context: CollisionContext): VoxelShape {
-		var shape = CORE_SHAPE
+	override fun getShape(state: BlockState, level: BlockGetter, pos: BlockPos, context: CollisionContext): VoxelShape = CORE_SHAPE {
 		for ((direction, property) in propertiesByDirection) {
-			if (state.getValue(property)) shape = Shapes.or(shape, armShapes.getValue(direction))
+			if (state.getValue(property)) or(ARM_SHAPES.getValue(direction))
 		}
-		return shape
 	}
 
 	companion object {
@@ -78,13 +78,6 @@ class GantryRailBlock(properties: Properties) : Block(properties) {
 
 		val CORE_SHAPE: VoxelShape = Shapes.box(0.3125, 0.3125, 0.3125, 0.6875, 0.6875, 0.6875)
 
-		val armShapes: Map<Direction, VoxelShape> = mapOf(
-			Direction.NORTH to Shapes.box(0.3125, 0.3125, 0.0, 0.6875, 0.6875, 0.3125),
-			Direction.SOUTH to Shapes.box(0.3125, 0.3125, 0.6875, 0.6875, 0.6875, 1.0),
-			Direction.WEST to Shapes.box(0.0, 0.3125, 0.3125, 0.3125, 0.6875, 0.6875),
-			Direction.EAST to Shapes.box(0.6875, 0.3125, 0.3125, 1.0, 0.6875, 0.6875),
-			Direction.DOWN to Shapes.box(0.3125, 0.0, 0.3125, 0.6875, 0.3125, 0.6875),
-			Direction.UP to Shapes.box(0.3125, 0.6875, 0.3125, 0.6875, 1.0, 0.6875),
-		)
+		val ARM_SHAPES: Map<Direction, VoxelShape> = Shapes.box(0.3125, 0.3125, 0.0, 0.6875, 0.6875, 0.3125).byDirection
 	}
 }

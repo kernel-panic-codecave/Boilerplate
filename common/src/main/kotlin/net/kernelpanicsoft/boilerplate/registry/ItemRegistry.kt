@@ -4,19 +4,21 @@ import dev.architectury.event.EventResult
 import dev.architectury.event.events.client.ClientScreenInputEvent
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.itemProperties
+import net.kernelpanicsoft.archie.util.onClient
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.Boilerplate.MOD_ID
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType
-import net.kernelpanicsoft.boilerplate.crafting.CraftingTankEncasementType
 import net.kernelpanicsoft.boilerplate.crafting.Pattern.Companion.EMPTY
 import net.kernelpanicsoft.boilerplate.crafting.PatternItem
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.item.WrenchItem
 import net.kernelpanicsoft.boilerplate.item.WrenchTier
-import net.kernelpanicsoft.boilerplate.network.OpenFilterCardEditorPacket
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
+import net.kernelpanicsoft.boilerplate.network.OpenFilterCardEditorPacket
+import net.kernelpanicsoft.boilerplate.pipe.gui.filterCardEditor
+import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.boilerplate.pipe.hook.*
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.*
 import net.kernelpanicsoft.boilerplate.pipe.item.EncasementItem
@@ -28,9 +30,10 @@ import net.kernelpanicsoft.boilerplate.warehouse.WarehouseWandItem
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.client.renderer.item.ItemProperties
 import net.minecraft.core.registries.Registries
-import net.minecraft.world.entity.player.Player
-import net.minecraft.world.inventory.Slot
-import net.minecraft.world.item.*
+import net.minecraft.world.item.BlockItem
+import net.minecraft.world.item.CreativeModeTabs
+import net.minecraft.world.item.DiggerItem
+import net.minecraft.world.item.Item
 
 /** Registers Boilerplate's items, including the [BlockItem]s for [BlockRegistry.Pipe]/[BlockRegistry.GlassPipe]. */
 object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.ITEM) {
@@ -106,6 +109,11 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 		BlockItem(BlockRegistry.UnstackableRack, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
 
+	/** The fluid tank's own block item. Datagen already emitted its model, loot table and lang entry - only this was missing, so the block existed and simply could not be obtained. */
+	val FluidTank by register("fluid_tank") {
+		BlockItem(BlockRegistry.FluidTank, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
+	}
+
 	val PressurePipe by register("pressure_pipe") {
 		PipeItem(BlockRegistry.PressurePipe, itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) })
 	}
@@ -126,10 +134,6 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 	/** Named `<encasement type path>_encasement`, mirroring how each [HookItem] above is named `<hook type path>_hook` - the datagen'd item model and [net.kernelpanicsoft.boilerplate.pipe.client.MultipartBlockEntityVisual]'s own model lookup both rely on that convention. */
 	val CraftingBufferEncasement by register("crafting_buffer_encasement") {
 		EncasementItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, encasementId = CraftingBufferEncasementType.ID)
-	}
-
-	val CraftingTankEncasement by register("crafting_tank_encasement") {
-		EncasementItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES) }, encasementId = CraftingTankEncasementType.ID)
 	}
 
 	/** See [PatternItem]'s own KDoc - blank until encoded, one item type for both states. */
@@ -173,12 +177,9 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 		FilterCardItem(itemProperties { tab(CreativeModeTabs.TOOLS_AND_UTILITIES); stacksTo(1) }, conditionTypeId = CombinedConditionType.ID)
 	}
 
-	/** No creative tab - [BlockRegistry.GantryRail] is auto-placed by binding a warehouse, not hand-placed. */
-	val GantryRail by register("gantry_rail") { BlockItem(BlockRegistry.GantryRail, itemProperties {}) }
-
 	/**
 	 * The harvesting tool for every player-facing Boilerplate block - see [WrenchItem]
-	 * and the `boilerplate:mineable/wrench` block tag those blocks carry. The
+	 * and the `c:mineable/wrench` block tag those blocks carry. The
 	 * [net.minecraft.world.item.component.Tool] component here is what actually answers vanilla's
 	 * correct-tool check: one rule matching that tag at high mining speed, dropping the block.
 	 */
@@ -204,56 +205,53 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 		)
 	}
 
-	override fun initClient()
+	override fun init()
 	{
-		ItemProperties.register(Pattern, MOD_ID % "encoded") { itemStack, clientLevel, livingEntity, i ->
-			if (PatternItemData(itemStack).pattern != EMPTY) 1f
-			else 0f
-		}
-		fun findPlayerInventoryIndex(player: Player, slot: Slot): Int? {
-			val stack = slot.item
-			if (stack.isEmpty) return null
+		super.init()
+		listen {
+			onClient {
+				ItemProperties.register(Pattern, MOD_ID % "encoded") { itemStack, clientLevel, livingEntity, i ->
+					if (PatternItemData(itemStack).pattern != EMPTY) 1f
+					else 0f
+				}
+				/**
+				 * Right-clicking a filter card in any screen opens its editor.
+				 *
+				 * On one of this mod's own screens the editor goes up as a **layer**, so the screen
+				 * you were in stays open behind it - which is what makes the card addressable at all:
+				 * with the host menu still open, [FilterCardTarget.MenuSlot] keeps meaning the same
+				 * slot on both sides for as long as the editor is up. That covers a card sitting in a
+				 * hook's own filter slot, a machine's, or anywhere else one of our GUIs shows one.
+				 *
+				 * On a **vanilla** screen there is no layer stack to push onto, so only a card in the
+				 * player's own inventory can be opened - that one is addressable across the screen
+				 * swap the standalone editor performs, and nothing else is. A card in a vanilla
+				 * chest still has to come out first.
+				 *
+				 * Passing rather than interrupting everywhere else leaves right-click alone where a
+				 * screen wants it - this mod's own ghost slots take one of their own (see
+				 * [net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler]).
+				 */
+				ClientScreenInputEvent.MOUSE_CLICKED_PRE.register { client, screen, mouseX, mouseY, button ->
+					if (button != 1) return@register EventResult.pass()
+					if (screen !is AbstractContainerScreen<*>) return@register EventResult.pass()
 
-			val inv = player.inventory
+					val slot = screen.hoveredSlot ?: return@register EventResult.pass()
+					if (slot.item.item !is FilterCardItem) return@register EventResult.pass()
 
-			// 1. Fast path: normal survival slots
-			if (slot.container === inv) {
-				val idx = slot.containerSlot
-				if (idx in 0 until inv.containerSize && inv.getItem(idx) === stack) {
-					return idx
+					val player = client.player ?: return@register EventResult.pass()
+					if (player.isSpectator) return@register EventResult.pass()
+
+					if (screen is ComposeContainerScreen<*>) {
+						screen.layerManager.filterCardEditor(FilterCardTarget.MenuSlot(slot.index)) { screen.menu.carried }
+						return@register EventResult.interruptFalse()
+					}
+
+					if (slot.container !== player.inventory) return@register EventResult.pass()
+					BoilerplateNetworkChannel.toServer(OpenFilterCardEditorPacket(FilterCardTarget.PlayerSlot(slot.containerSlot)))
+					EventResult.interruptFalse()
 				}
 			}
-
-			// 2. Creative (or any wrapper): search by identity
-			for (i in 0 until inv.containerSize) {
-				if (inv.getItem(i) === stack) return i
-			}
-
-			// 3. Fallback: equal stack in the same slot range (hotbar / main)
-			for (i in 0 until inv.containerSize) {
-				if (ItemStack.isSameItemSameComponents(inv.getItem(i), stack)) return i
-			}
-
-			return null
-		}
-		ClientScreenInputEvent.MOUSE_CLICKED_PRE.register { client, screen, mouseX, mouseY, button ->
-			if (button != 1) return@register EventResult.pass()
-			if (screen !is AbstractContainerScreen<*>) return@register EventResult.pass()
-
-			val slot = screen.hoveredSlot ?: return@register EventResult.pass()
-			val stack = slot.item
-			if (stack.item !is FilterCardItem) return@register EventResult.pass()
-
-			val player = client.player ?: return@register EventResult.pass()
-			if (player.isSpectator) return@register EventResult.pass()
-
-			// Resolve a real inventory index (works in survival + creative)
-			val inventoryIndex = findPlayerInventoryIndex(player, slot)
-				?: return@register EventResult.pass()
-
-			val target = FilterCardTarget.PlayerSlot(inventoryIndex)
-			BoilerplateNetworkChannel.toServer(OpenFilterCardEditorPacket(target))
-			EventResult.interruptFalse()
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 
 /**
  * Whether [context] matches one ghost grid slot's [resource] - a blank slot never matches, a
@@ -14,9 +15,11 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 fun evaluateGhostSlot(resource: ItemResource, context: FilterContext): Boolean {
 	if (resource.isBlank) return false
 	if (resource.item is FilterCardItem) return FilterCardState(resource.toStack(1)).accepts(context)
-	// A plain ghost item can only ever mean "this exact item", so it never matches a resource of
-	// another kind. A fluid is filtered by mod/tag/regex card instead, until a fluid ghost grid
-	// exists to state one directly.
-	val tested = context.resource as? ItemResource ?: return false
-	return resource.isOf(tested.item)
+	// A plain ghost cell can only ever mean "this exact resource", so it never matches one of
+	// another kind. Compared by registry id rather than by value, which is what makes a ghost
+	// diamond sword match a damaged or enchanted one - the same looseness `isOf(item)` had, stated
+	// in terms every registered kind can answer.
+	val kind = ResourceKindRegistry.forResource(resource) ?: return false
+	if (ResourceKindRegistry.forResource(context.resource) !== kind) return false
+	return kind.registryId(resource) == kind.registryId(context.resource)
 }

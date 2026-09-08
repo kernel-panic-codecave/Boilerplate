@@ -1,10 +1,11 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
+import net.kernelpanicsoft.boilerplate.network.displayName
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -31,12 +32,28 @@ object CraftingRequest {
 		val providers = RequestFulfillment.reachableProviders(level, from)
 		val patterns = RequestFulfillment.reachablePatternProviders(level, from).flatMap { it.state.heldPatterns() }
 
-		return CraftingResolver.resolve(
+		val result = CraftingResolver.resolve(
 			target = target,
 			amount = amount,
-			stockOf = { resource -> stockOf(level, warehouses, providers, resource) },
+			stockOf = { resource -> stockOf(level, warehouses, providers, resource, from) },
 			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.produces(resource) } },
+			observer = { resource, demand, fromStock, shortfall, plan ->
+				ResourceTrace.resolved(from, resource, demand, fromStock, shortfall, plan)
+			},
 		)
+		ResourceTrace.plan(from, target, amount, describe(result))
+		return result
+	}
+
+	/** [result] as one line - the plan's shape, or exactly what blocked it. */
+	private fun describe(result: CraftingResolver.Result): String = when (result) {
+		is CraftingResolver.Result.Success ->
+			"ok, ${result.plan.steps.size} step(s), stockPulls=" +
+				result.plan.stockPulls.entries.joinToString(",") { (key, amount) -> "${key.resource.displayName().string}x$amount" }
+		is CraftingResolver.Result.Unresolvable ->
+			"unresolvable: " + result.shortfalls.joinToString(",") { "${it.resource.displayName().string}x${it.amount}" }
+		is CraftingResolver.Result.Cyclic ->
+			"cyclic: " + result.resources.joinToString(",") { it.displayName().string }
 	}
 
 	/** [CraftingResolver.maxCraftable] wired the same way [resolve] is - see its own KDoc. */
@@ -48,7 +65,7 @@ object CraftingRequest {
 		return CraftingResolver.maxCraftable(
 			target = target,
 			upperBound = upperBound,
-			stockOf = { resource -> stockOf(level, warehouses, providers, resource) },
+			stockOf = { resource -> stockOf(level, warehouses, providers, resource, from = null) },
 			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.produces(resource) } },
 		)
 	}
@@ -73,16 +90,33 @@ object CraftingRequest {
 	 * with a full chest behind it). [Int.MAX_VALUE] survives that same truncation as a large positive
 	 * number instead, and no real inventory holds anywhere near that much anyway.
 	 */
-	private fun stockOf(level: ServerLevel, warehouses: List<WarehouseControllerBlockEntity>, providers: List<RequestFulfillment.ProviderSource>, resource: ResourceComponent): Long =
-		warehouses.sumOf { warehouse -> warehouse.index.slotsFor(resource).sumOf { it.amount } } +
-			providers.sumOf { source ->
-				if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) 0L
-				else when (resource) {
-					// A fluid's stock comes from the same provider sources, read through their fluid
-					// surface instead - see [RequestFulfillment.ProviderSource.fluidStorage].
-					is FluidResource -> source.fluidStorage(level)?.extract(resource, Long.MAX_VALUE, true) ?: 0L
-					is ItemResource -> source.storage(level)?.extract(resource, Int.MAX_VALUE.toLong(), true) ?: 0L
-					else -> 0L
-				}
-			}
+	private fun stockOf(
+		level: ServerLevel,
+		warehouses: List<WarehouseControllerBlockEntity>,
+		providers: List<RequestFulfillment.ProviderSource>,
+		resource: ResourceComponent,
+		from: BlockPos?,
+	): Long {
+		val onShelves = warehouses.sumOf { warehouse -> warehouse.index.slotsFor(resource).sumOf { it.amount } }
+
+		// Split by whether the source would actually hand it over, purely so the trace can say so.
+		// The *total* deliberately still counts both, because changing what the resolver plans
+		// against is a behaviour decision and this is an instrumentation pass - but a non-zero
+		// `unclaimable` is the shape of a plan that can never be fed, since
+		// [RequestFulfillment.fulfillFromProvider] skips an unpowered hook that this counts.
+		var claimable = 0L
+		var unclaimable = 0L
+		for (source in providers) {
+			if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) continue
+			val kind = ResourceKindRegistry.forResource(resource) ?: continue
+			val storageKind = kind.storage ?: continue
+			val storage = source.storage(level, kind) ?: continue
+			val held = storageKind.extract(storage, resource, Int.MAX_VALUE.toLong(), true)
+			if (held <= 0L) continue
+			if (source.hookState.active) claimable += held else unclaimable += held
+		}
+
+		if (from != null) ResourceTrace.stock(from, resource, onShelves, claimable + unclaimable, unclaimable)
+		return onShelves + claimable + unclaimable
+	}
 }

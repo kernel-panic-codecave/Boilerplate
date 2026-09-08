@@ -1,12 +1,8 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import kotlinx.serialization.builtins.nullable
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import net.kernelpanicsoft.archie.gui.composables.basic.Label
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
 import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
 import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
@@ -17,9 +13,9 @@ import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.SimpleThemeState
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.util.DyeColorSerializer
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
+import net.kernelpanicsoft.boilerplate.util.DyeColorSerializer
+import net.kernelpanicsoft.boilerplate.util.SDyeColor
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.item.DyeColor
@@ -41,21 +37,21 @@ object ColorConditionType : FilterConditionType<ColorConditionState>() {
 		state.color != null && context.color == state.color
 
 	@Composable
-	override fun content(menu: FilterCardMenu, state: ColorConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: ColorConditionState, clickHandler: ClickHandler) {
 		var color by remember { mutableStateOf(state.color) }
 
-		Text(Component.literal("Color"), dropShadow = false)
+		Label(Component.literal("Color"))
 		val theme = LocalTheme.current
 		val composableTheme = theme.getComposableTheme("radio")
 		val default = composableTheme.states[TextureStates.DEFAULT] as SimpleThemeState
 		Scrollable(modifier = Modifier.height(default.height)) {
-			RadioGroup<DyeColor?>(
+			RadioGroup<SDyeColor?>(
 				options = buildList {
 					add(RadioOption(null, Component.literal("Any")))
 					for (dyeColor in DyeColor.entries) add(RadioOption(dyeColor, Component.literal(dyeColor.name.lowercase())))
 				},
 				selected = color,
-				onSelected = { color = it; state.color = it; pushFieldUpdate(state::color, it, DyeColorSerializer.nullable) },
+				onSelected = { color = it; state.color = it; editor.push(state::color, it, DyeColorSerializer.nullable) },
 			)
 		}
 	}

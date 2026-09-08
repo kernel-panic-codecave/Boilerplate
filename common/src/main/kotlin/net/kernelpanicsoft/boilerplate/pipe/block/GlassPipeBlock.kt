@@ -20,7 +20,7 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
 
 /**
  * A pipe segment rendered translucent, whose traveling items are visible in transit - see
- * [net.kernelpanicsoft.boilerplate.pipe.client.TravelingItemBlockEntityRenderer]. Mechanically
+ * [net.kernelpanicsoft.boilerplate.pipe.client.GlassPipeVisual]. Mechanically
  * identical to a plain [PipeBlock] (same connections/shape/network participation); only its own
  * [TileRegistry.GlassPipe] block entity type and blockstate/models differ, so that renderer never
  * runs for the far more common opaque tier.

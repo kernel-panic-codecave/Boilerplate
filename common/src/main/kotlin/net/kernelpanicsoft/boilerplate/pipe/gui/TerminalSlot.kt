@@ -2,9 +2,10 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.input.Clickable
 import net.kernelpanicsoft.archie.gui.composables.theme.TextureStates
@@ -20,6 +21,7 @@ import net.kernelpanicsoft.archie.gui.util.extension.drawThemeState
 import net.kernelpanicsoft.archie.gui.util.extension.invoke
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
+import androidx.compose.runtime.getValue
 
 /**
  * One cell of a virtual (non-slot-backed) result grid, e.g. [StoreResultsGrid]'s - the same
@@ -40,27 +42,51 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
  *   non-`null` and the caller passes one (e.g. [StoreResultsGrid]'s own "open the autocraft dialog
  *   for an in-stock, also-craftable entry" interaction) - see [ClickHandler]'s own KDoc for
  *   why detecting the actual click happens one level up, at the screen.
+ * @param handleRightClick The same, for a right-click - [StoreResultsGrid] uses it for "empty the
+ *   container I am holding into the network", the bundle's own gesture for the same idea. A
+ *   left-click still means "store the item itself", because a filled bucket is a reasonable thing
+ *   to want either done with.
  * @param enabled When `false`, draws [TextureStates.DISABLED]'s own slot texture instead of
  *   [TextureStates.DEFAULT] and ignores clicks entirely - the whole-terminal pressure gate (see
  *   [StoreResultsGrid]) rather than a per-cell concept.
  */
 @Composable
 fun TerminalSlot(
-	stack: ResourceStack<ItemResource>?,
+	stack: ResourceStack<*>?,
 	onClick: () -> Unit = {},
 	onHovered: (Boolean) -> Unit = {},
 	modifier: Modifier = Modifier,
 	countText: String? = null,
 	clickHandler: ClickHandler? = null,
 	handleClick: (() -> Unit)? = null,
+	rightClickHandler: ClickHandler? = null,
+	handleRightClick: (() -> Unit)? = null,
 	enabled: Boolean = true,
 ) {
 	Clickable(showHandCursor = stack != null && enabled, enabled = enabled, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
-		LaunchedEffect(isHovered, handleClick) {
+		// Keyed on the hover state itself, never on [handleClick] - that lambda is freshly
+		// allocated each recomposition, so keying on it restarted this effect on every pass and
+		// re-reported hover for all 27 cells continuously. The registered action reads the latest
+		// lambda through the wrapper rather than capturing whichever one was current when the
+		// effect happened to run.
+		val currentHandleClick by rememberUpdatedState(handleClick)
+		val currentHandleRightClick by rememberUpdatedState(handleRightClick)
+		LaunchedEffect(isHovered, enabled, handleClick != null) {
 			onHovered(isHovered)
-			clickHandler?.setHovered(if (isHovered && enabled) handleClick else null)
+			clickHandler?.setHovered(if (isHovered && enabled && handleClick != null) ({ currentHandleClick?.invoke() }) else null)
 		}
-		FakeSlot(stack, isHovered, countText, enabled)
+		// Its own effect rather than a second line in the one above: the two are keyed on different
+		// things, and a cell may offer one without the other.
+		LaunchedEffect(isHovered, enabled, handleRightClick != null) {
+			rightClickHandler?.setHovered(if (isHovered && enabled && handleRightClick != null) ({ currentHandleRightClick?.invoke() }) else null)
+		}
+		// Whatever kind the row happens to hold draws its own face - a terminal lists everything the
+		// network stores, which is no longer only items. A kind with no display of its own still
+		// gets the empty frame rather than a hole in the grid.
+		val resource = stack?.resource as? ResourceComponent
+		val display = resource?.let { ResourceKindRegistry.forResource(it)?.display }
+		if (resource == null || display == null) FakeSlot(null, isHovered, countText, enabled)
+		else display.SlotFace(resource, stack.amount, isHovered, countText, enabled)
 	}
 }
 
@@ -116,11 +142,29 @@ fun FakeSlot(stack: ResourceStack<ItemResource>?, isHovered: Boolean, countText:
  */
 @Composable
 fun ResourceFakeSlot(resource: ResourceComponent, amount: Long, isHovered: Boolean = false) {
-	when (resource) {
-		is FluidResource -> FluidSlotFace(resource, isHovered)
-		is ItemResource -> FakeSlot(ResourceStack(resource, amount), isHovered)
-		// A kind with no renderer of its own still gets the empty slot frame rather than nothing at
-		// all, so an addon resource leaves a visible hole in the layout instead of collapsing it.
-		else -> FakeSlot(null, isHovered)
-	}
+	// A kind with no display of its own still gets the empty slot frame rather than nothing at all,
+	// so an addon resource leaves a visible hole in the layout instead of collapsing it.
+	val display = ResourceKindRegistry.forResource(resource)?.display
+	if (display == null) FakeSlot(null, isHovered)
+	else display.SlotFace(resource, amount, isHovered, amountLabelFor(resource, amount), enabled = true)
+}
+
+/**
+ * The corner label a cell should show for [amount] of [resource], or `null` for a kind whose face
+ * writes its own.
+ *
+ * An item stack draws its count itself (see
+ * [net.kernelpanicsoft.boilerplate.network.ResourceKind.drawsOwnAmount]); a sprite draws nothing, so
+ * everything else needs the number handed to it. In the kind's own **authored** unit - millibuckets,
+ * not the droplets Fabric counts fluids in - because this is a label a player reads.
+ *
+ * Every surface that draws a resource cell goes through here rather than deciding for itself, which
+ * is what stopped fluids and chemicals from silently showing no amount at all: each caller happened
+ * to pass `null` and nothing downstream could tell that apart from "this kind writes its own".
+ */
+internal fun amountLabelFor(resource: ResourceComponent?, amount: Long): String? {
+	if (resource == null || resource.isBlank) return null
+	val kind = ResourceKindRegistry.forResource(resource) ?: return null
+	if (kind.drawsOwnAmount) return null
+	return formatCount(kind.toAuthored(amount))
 }

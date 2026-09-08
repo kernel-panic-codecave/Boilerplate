@@ -30,3 +30,6 @@ common/src/main/generated/.cache/
 .architectury-transformer
 .kotlin
 */.kotlin
+
+# Stray dev-launch log dropped at the repo root - the per-loader run/ dirs are already ignored above.
+/logs/

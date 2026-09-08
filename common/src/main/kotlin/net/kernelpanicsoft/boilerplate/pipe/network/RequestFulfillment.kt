@@ -1,17 +1,13 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
-import earth.terrarium.common_storage_lib.fluid.FluidApi
-import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.boilerplate.crafting.CraftingCpuManager
 import net.kernelpanicsoft.boilerplate.crafting.craftingCpuMemberAt
+import net.kernelpanicsoft.boilerplate.network.ResourceKind
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
@@ -19,7 +15,12 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.PatternOutputIO
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.ProviderHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
+import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment.fulfillFromWarehouse
+import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment.providerSources
+import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment.reachablePipes
 import net.kernelpanicsoft.boilerplate.registry.HookTypeRegistry
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
@@ -86,15 +87,8 @@ object RequestFulfillment {
 		onDispatch: ((pipeHops: Int, gantryBlocks: Double, dispatched: Long) -> Unit)? = null,
 	): Long {
 		val reachable = reachablePipes(level, from)
-		// Providers are reached per kind - a different capability, router and reachability graph
-		// each (see [fulfillFluidFromProvider]). The warehouse fallback below needs no such split:
-		// its index and its gantry already work in bare resources.
 		val sources = providerSources(level, reachable)
-		val fromProvider = when (val resource = stack.resource) {
-			is FluidResource -> fulfillFluidFromProvider(level, sources, ResourceStack(resource, stack.amount), deliverTo, deliverFace)
-			is ItemResource -> fulfillFromProvider(level, sources, ResourceStack(resource, stack.amount), deliverTo, deliverFace, reservationId, onDispatch)
-			else -> 0L
-		}
+		val fromProvider = fulfillFromProvider(level, sources, stack, deliverTo, deliverFace, reservationId, onDispatch)
 		if (fromProvider > 0) return fromProvider
 		return fulfillFromWarehouse(level, warehousesIn(level, reachable), stack, deliverTo, deliverFace, reservationId, onDispatch)
 	}
@@ -116,6 +110,14 @@ object RequestFulfillment {
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.advanceTerminalJobs]'s own same-table self-supply
 	 * step) handles that directly instead of going through here at all.
 	 *
+	 * Kind-agnostic, like [fulfillFromWarehouse] beneath it. What differs between an item and a
+	 * fluid raw material is the capability the stock is read through and the topology it is routed
+	 * over, and both of those are things a registered
+	 * [net.kernelpanicsoft.boilerplate.network.ResourceKind] already carries - its
+	 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind] and its
+	 * [ResourceNetworkType]. Asking the resource which kind it is and then hand-writing that kind's
+	 * pull is what a registry exists to avoid, so nothing here branches on what is being moved.
+	 *
 	 * Serves only the *first* willing [sources] entry per call, returning whatever that one extract
 	 * yielded - a caller chasing a larger total ([request], or a Crafting CPU's raw-material
 	 * claiming, see
@@ -134,62 +136,32 @@ object RequestFulfillment {
 	internal fun fulfillFromProvider(
 		level: ServerLevel,
 		sources: List<ProviderSource>,
-		stack: ResourceStack<ItemResource>,
+		stack: ResourceStack<ResourceComponent>,
 		deliverTo: BlockPos,
 		deliverFace: Direction? = null,
 		reservationId: Long? = null,
 		onDispatch: ((Int, Double, Long) -> Unit)? = null,
 	): Long {
+		val resource = stack.resource
+		val kind = ResourceKindRegistry.forResource(resource) ?: return 0
+		val storageKind = kind.storage ?: return 0
+		val networkType = networkTypeForResource(resource) ?: return 0
 		for (source in sources) {
 			if (!source.hookState.active) continue
-			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
-			val storage = source.storage(level) ?: continue
-			val available = storage.extract(stack.resource, stack.amount, true)
+			if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) continue
+			val storage = source.storage(level, kind) ?: continue
+			val available = storageKind.extract(storage, resource, stack.amount, true)
 			if (available <= 0) continue
-			val route = ItemPipeRouter.findRouteTo(level, source.hookPos, deliverTo) ?: continue
-			val extracted = storage.extract(stack.resource, available, false)
+			val route = networkType.routeTo(level, source.hookPos, deliverTo) ?: continue
+			// Whole multiples only where the destination demands them - a standing order that
+			// delivered a partial would jam the very machine it is meant to keep fed.
+			val sendable = batchedForRoute(level, source.hookPos, route, available)
+			if (sendable <= 0) continue
+			val extracted = storageKind.extract(storage, resource, sendable, false)
 			if (extracted <= 0) continue
 			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
 			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace, reservationId)
 			onDispatch?.invoke(route.size, 0.0, extracted)
-			return extracted
-		}
-		return 0
-	}
-
-	/**
-	 * [fulfillFromProvider]'s exact shape for a **fluid** raw material - first willing reachable
-	 * source, one per call, routed over the fluid network instead of the item one.
-	 *
-	 * A separate method rather than a generified one because the two share no types at any point:
-	 * different storage lookup ([ProviderSource.fluidStorage]), different router
-	 * ([FluidPipeRouter]), different reachability graph. The filter check is deliberately the same
-	 * [SortingHookState.accepts] - see [FluidPipeRouter.acceptsByFilter] for why a fluid is an
-	 * ordinary filter input.
-	 *
-	 * There is deliberately no warehouse counterpart yet: retrieving a fluid from a bound warehouse
-	 * means a gantry job carrying it, which is Stage 5 of `docs/design/fluid-parity.md` and not
-	 * built. A fluid raw material therefore has to be reachable through a provider/interface hook
-	 * (or already sitting in the CPU's own tanks) for a plan needing it to actually run.
-	 */
-	internal fun fulfillFluidFromProvider(
-		level: ServerLevel,
-		sources: List<ProviderSource>,
-		stack: ResourceStack<FluidResource>,
-		deliverTo: BlockPos,
-		deliverFace: Direction? = null,
-	): Long {
-		for (source in sources) {
-			if (!source.hookState.active) continue
-			if (source.hookState is SortingHookState && !source.hookState.accepts(stack.resource)) continue
-			val storage = source.fluidStorage(level) ?: continue
-			val available = storage.extract(stack.resource, stack.amount, true)
-			if (available <= 0) continue
-			val route = FluidPipeRouter.findRouteTo(level, source.hookPos, deliverTo) ?: continue
-			val extracted = storage.extract(stack.resource, available, false)
-			if (extracted <= 0) continue
-			val tile = level.getBlockEntity(source.hookPos) as? MultipartBlockEntity ?: continue
-			tile.travelingItems += TravelingItem(stack.withCount(extracted), source.direction, 0f, route, null, deliverFace, null)
 			return extracted
 		}
 		return 0
@@ -234,10 +206,28 @@ object RequestFulfillment {
 	/** Every [PatternProviderHookState] reachable from [from], for [net.kernelpanicsoft.boilerplate.crafting.CraftingRequest]'s own pattern search and [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookType]'s step feeding. */
 	fun reachablePatternProviders(level: ServerLevel, from: BlockPos): List<PatternProviderSource> = patternProviderSourcesIn(level, reachablePipes(level, from))
 
-	/** Every distinct reachable Crafting CPU cluster from [from], one entry per cluster leader - a terminal's own entry point for finding somewhere to submit a craft request. A cluster's members are themselves pipe segments (see [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType]), so the reachable set is scanned directly rather than through each pipe's own neighbors. Clusters whose arrangement isn't a valid cuboid (see [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuManager]) aren't CPUs and never appear here. */
+	/**
+	 * Every distinct Crafting CPU cluster genuinely connected to [from], one entry per cluster
+	 * leader - a terminal's own entry point for finding somewhere to submit a craft request. A
+	 * cluster's members are themselves pipe segments (see
+	 * [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferEncasementType]), so the walked set is
+	 * scanned directly rather than through each pipe's own neighbors. Clusters whose arrangement
+	 * isn't a valid cuboid (see [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuManager]) aren't
+	 * CPUs and never appear here.
+	 *
+	 * [connectedPipes], **not** [reachablePipes], and that difference is the whole point. The latter
+	 * hands back every position it merely *examined*, adjacent non-pipes included, because its other
+	 * callers need those neighbours. Used here it accepts a CPU that is only sitting *beside* the
+	 * network - a buffer whose segment holds no pipe, or one whose arms never formed - and a job
+	 * submitted to such a CPU can never complete: the CPU resolves its own providers, warehouses and
+	 * pattern sources from its own position, reaches nothing, and reports "No free pattern provider"
+	 * forever while the pattern is plainly sitting in a provider the *terminal* could see. Refusing
+	 * it up front turns a silent permanent stall into "No reachable Crafting CPU" at the moment of
+	 * submission, which is both true and actionable.
+	 */
 	fun reachableCraftingCpus(level: ServerLevel, from: BlockPos): List<CraftingCpuRef> {
 		val leaders = LinkedHashSet<BlockPos>()
-		for (candidatePos in reachablePipes(level, from)) {
+		for (candidatePos in connectedPipes(level, from)) {
 			if (craftingCpuMemberAt(level, candidatePos) == null) continue
 			val cluster = CraftingCpuManager.get(level).clusterOf(level, candidatePos)
 			if (!cluster.valid) continue
@@ -250,8 +240,7 @@ object RequestFulfillment {
 		val sources = mutableListOf<ProviderSource>()
 		for (candidatePos in reachable) {
 			val tile = level.getBlockEntity(candidatePos) as? MultipartBlockEntity ?: continue
-			for ((directionName, entry) in tile.hooks) {
-				val hookState = entry as HookHolderState
+			for ((directionName, hookState) in tile.hooks) {
 				val hookType = HookTypeRegistry.byId(hookState.type)
 				checkNotNull(hookType)
 				if (!hookType.providesItems) continue
@@ -326,7 +315,40 @@ object RequestFulfillment {
 		return false
 	}
 
-	/** Every pipe position reachable from [from], [from] itself included - the search space for both fulfillment sources. */
+	/**
+	 * Every pipe position genuinely walked to from [from], [from] itself included - [reachablePipes]
+	 * minus the neighbours it only ever *looked at*.
+	 *
+	 * The distinction matters wherever the answer is "can this thing act as part of my network",
+	 * rather than "what is worth probing near my network" - see [reachableCraftingCpus], which is
+	 * what forced it. Shares [sharesSubnet]'s own walk rule exactly: a pipe on both sides, arms
+	 * formed both ways, no boundary edge crossed.
+	 */
+	fun connectedPipes(level: ServerLevel, from: BlockPos): Set<BlockPos> {
+		val walked = hashSetOf(from)
+		val queue = ArrayDeque<BlockPos>()
+		queue += from
+		while (queue.isNotEmpty()) {
+			val current = queue.removeFirst()
+			for (direction in Direction.entries) {
+				val neighborPos = current.relative(direction)
+				if (neighborPos in walked) continue
+				if (SubnetBoundary.isBoundaryEdge(level, current, direction)) continue
+				if (!ItemPipeRouter.isPipe(level, neighborPos)) continue
+				val currentState = level.getBlockState(current)
+				val neighborState = level.getBlockState(neighborPos)
+				if (
+					!currentState.getValue(PipeBlock.propertiesByDirection[direction]!!) ||
+					!neighborState.getValue(PipeBlock.propertiesByDirection[direction.opposite]!!)
+				) continue
+				walked += neighborPos
+				queue += neighborPos
+			}
+		}
+		return walked
+	}
+
+	/** Every pipe position reachable from [from], [from] itself included - the search space for both fulfillment sources. Includes positions merely *examined*; see [connectedPipes] for the stricter walk. */
 	private fun reachablePipes(level: ServerLevel, from: BlockPos): Set<BlockPos> {
 		val visited = hashSetOf(from)
 		val queue = ArrayDeque<BlockPos>()
@@ -365,21 +387,24 @@ object RequestFulfillment {
 	 * are read from [PatternOutputIO] instead.
 	 */
 	data class ProviderSource(val hookPos: BlockPos, val direction: Direction, val hookState: HookHolderState) {
-		fun storage(level: ServerLevel): CommonStorage<ItemResource>? = when {
-			hookState is InterfaceHookState -> hookState.stock
-			hookState is PatternProviderHookState && level.getBlockState(hookPos.relative(direction)).`is`(Blocks.CRAFTING_TABLE) -> PatternOutputIO(hookState)
-			else -> ItemApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
-		}
-
 		/**
-		 * [storage]'s fluid counterpart - what [fulfillFluidFromProvider] pulls a fluid raw material
-		 * out of. The [InterfaceHookState] special case is the same one [storage] documents, against
-		 * that hook's own fluid stock; there is no crafting-table case, since a table has no fluids
-		 * to hold.
+		 * What this source offers of [kind] - its adjacent inventory of that kind, or one of the two
+		 * special cases above.
+		 *
+		 * The branches are on the *hook*, never on what is being moved: an interface holds its own
+		 * stock of each kind ([InterfaceHookState.stockFor]), and an ordinary neighbour is found
+		 * through the kind's own capability lookup, so a fluid comes off a tank here exactly as a
+		 * stack of ingots comes off a chest.
 		 */
-		fun fluidStorage(level: ServerLevel): CommonStorage<FluidResource>? = when {
-			hookState is InterfaceHookState -> hookState.fluidStock
-			else -> FluidApi.BLOCK.find(level, hookPos.relative(direction), direction.opposite)
+		fun storage(level: ServerLevel, kind: ResourceKind): CommonStorage<*>? = when {
+			hookState is InterfaceHookState -> hookState.stockFor(kind)
+			// A vanilla table's assembled results. Gated on the kind's own answer rather than a
+			// check here: [PatternOutputIO] is an item surface, and a table cannot hold a kind that
+			// does not fit in a crafting grid in the first place.
+			kind.vanillaCraftable &&
+				hookState is PatternProviderHookState &&
+				level.getBlockState(hookPos.relative(direction)).`is`(Blocks.CRAFTING_TABLE) -> PatternOutputIO(hookState)
+			else -> kind.storage?.find(level, hookPos.relative(direction), direction.opposite)
 		}
 	}
 

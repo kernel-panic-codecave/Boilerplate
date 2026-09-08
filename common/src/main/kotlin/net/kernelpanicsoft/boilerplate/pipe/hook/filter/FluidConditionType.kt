@@ -1,20 +1,22 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import kotlinx.serialization.builtins.ListSerializer
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
+import kotlinx.serialization.builtins.serializer
+import net.kernelpanicsoft.archie.gui.composables.basic.Label
+import net.kernelpanicsoft.archie.gui.composables.input.Checkbox
+import net.kernelpanicsoft.archie.gui.layout.Alignment
+import net.kernelpanicsoft.archie.gui.layout.Arrangement
+import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.network.FluidResourceSerializer
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
-import net.kernelpanicsoft.boilerplate.pipe.gui.FilterCardMenu
 import net.kernelpanicsoft.boilerplate.pipe.gui.FluidGhostSlotGrid
+import net.kernelpanicsoft.boilerplate.util.test
+import net.kernelpanicsoft.boilerplate.util.toFluidStack
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -34,28 +36,45 @@ object FluidConditionType : FilterConditionType<FluidConditionState>() {
 
 	override fun matches(state: FluidConditionState, context: FilterContext): Boolean {
 		val tested = context.resource as? FluidResource ?: return false
-		val testedIdentity = ResourceIdentity.of(tested)
-		return state.fluidMatches.any { !it.isBlank && ResourceIdentity.of(it) == testedIdentity }
+		return if (state.matchComponents) {
+			val stack = tested.toFluidStack(1)
+			state.fluidMatches.any { it.test(stack) }
+		} else {
+			state.fluidMatches.any { it.isOf(tested.type) }
+		}
 	}
 
 	@Composable
-	override fun content(menu: FilterCardMenu, state: FluidConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: FluidConditionState, clickHandler: ClickHandler) {
 		var fluidMatches by remember { mutableStateOf(state.fluidMatches.toList()) }
+		var matchComponents by remember { mutableStateOf(state.matchComponents) }
 
-		Text(Component.literal("Fluids (click a slot holding a bucket or tank)"), dropShadow = false)
+		Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
+			Checkbox(
+				checked = matchComponents,
+				onCheckedChange = {
+					matchComponents = it
+					state.matchComponents = it
+					editor.push(state::matchComponents, it, Boolean.serializer())
+				},
+			)
+			Label(Component.literal("Match components"))
+		}
+
+		Label(Component.literal("Fluids"))
 		FluidGhostSlotGrid(
 			resources = fluidMatches,
 			columns = 3,
-			carried = { menu.carried },
+			carried = { editor.carried() },
 			onPlace = { index, resource ->
 				fluidMatches = fluidMatches.toMutableList().also { it[index] = resource }
 				state.fluidMatches[index] = resource
-				pushFieldUpdate(state::fluidMatches, fluidMatches, ListSerializer(FluidResourceSerializer))
+				editor.push(state::fluidMatches, fluidMatches, ListSerializer(FluidResourceSerializer))
 			},
 			onClear = { index ->
 				fluidMatches = fluidMatches.toMutableList().also { it[index] = FluidResource.BLANK }
 				state.fluidMatches[index] = FluidResource.BLANK
-				pushFieldUpdate(state::fluidMatches, fluidMatches, ListSerializer(FluidResourceSerializer))
+				editor.push(state::fluidMatches, fluidMatches, ListSerializer(FluidResourceSerializer))
 			},
 		)
 	}

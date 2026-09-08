@@ -1,9 +1,10 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceStack
+import net.minecraft.world.inventory.ClickType
+import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.boilerplate.crafting.*
@@ -17,6 +18,8 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
+import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -26,6 +29,14 @@ import net.minecraft.world.inventory.MenuType
 import net.minecraft.world.inventory.Slot
 import net.minecraft.world.item.ItemStack
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
+import net.kernelpanicsoft.boilerplate.crafting.amountIn
+import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 
 /**
  * Menu for the warehouse terminal hook attached to [tile]: search/withdraw across *every* source
@@ -47,10 +58,10 @@ import earth.terrarium.common_storage_lib.resources.ResourceComponent
  * required.
  */
 abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(type: MenuType<SELF>, id: Int, inventory: Inventory, tile: MultipartBlockEntity, val direction: Direction) :
-	ComposeBlockContainerMenu<MultipartBlockEntity, SELF>(type, id, inventory, tile), CraftPreviewMenu, CraftTreeMenu {
+	ComposeBlockContainerMenu<MultipartBlockEntity, SELF>(type, id, inventory, tile), CraftPreviewMenu, CraftPlanMenu, CraftTreeMenu {
 
 	/** The most recently received search results - Compose state, so [TerminalHookScreen] recomposes whenever [updateResults] applies a fresh [TerminalSearchResultsPacket]. */
-	var results: List<SResourceStack<SItemResource>> by mutableStateOf(emptyList())
+	var results: List<SResourceStack<*>> by mutableStateOf(emptyList())
 		protected set
 
 	/**
@@ -69,9 +80,23 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	/** [tile]'s own [MultipartBlockEntity.craftJobStatus] - [tile] itself is `protected`, so [TerminalHookScreen] reaches it through this narrow pass-through rather than the whole block entity. */
 	val craftJobStatus: String get() = tile.craftJobStatus
 
+	/**
+	 * The inbox row, as its *item* layer.
+	 *
+	 * Real vanilla slots, so every ordinary item interaction - shift-click, drag-split, hotbar swap,
+	 * Q-throw, [quickMoveStack] - keeps working with no reimplementation. A column holding a
+	 * fluid-like kind reads as empty here and refuses placement; [clicked] intercepts those columns
+	 * before vanilla ever sees them, and [AbstractTerminalHookScreen] draws what is really in them.
+	 *
+	 * The filter is `false` throughout: the inbox is a delivery destination, not somewhere a player
+	 * pushes items into by hand. Taking *out* is unaffected - see
+	 * [net.kernelpanicsoft.archie.transfer.CommonStorageMenuSlot.allowModification].
+	 */
 	override fun registerSlotHandlers() {
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
-		handler("output", state.output) {
+		@Suppress("UNCHECKED_CAST")
+		val items = state.inboxFor(ResourceKindRegistry.Item) as? CommonStorage<ItemResource> ?: return
+		handler("output", items) {
 			false
 		}
 	}
@@ -96,34 +121,32 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	}
 
 	/** Client-side: applies a freshly received [TerminalSearchResultsPacket]. */
-	fun updateResults(results: List<SResourceStack<SItemResource>>, hasPressure: Boolean) {
+	fun updateResults(results: List<SResourceStack<*>>, hasPressure: Boolean) {
 		this.results = results
 		this.hasPressure = hasPressure
 	}
 
 	/** The distinct resources currently craftable somewhere reachable, independent of current stock - Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftableList] applies a fresh [CraftableListPacket]. */
-	var craftableResources: List<SItemResource> by mutableStateOf(emptyList())
+	var craftableResources: List<SResourceComponent> by mutableStateOf(emptyList())
 		protected set
 
 	/** Client-side: applies a freshly received [CraftableListPacket]. */
-	fun updateCraftableList(resources: List<SItemResource>) {
+	fun updateCraftableList(resources: List<SResourceComponent>) {
 		craftableResources = resources
 	}
 
 	/** Server-side: computes and replies with the distinct resources every reachable [net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState]'s own held patterns can produce. */
 	fun sendCraftableList() {
 		val level = level as? ServerLevel ?: return
-		// Item outputs only. A pattern may produce a fluid now, but this list feeds the terminal's
-		// store/craft grid, which is still item-shaped throughout (StoreEntry, combineStoreEntries,
-		// its stock rows) - listing a fluid here would surface a row the grid cannot render or
-		// withdraw. Teaching the terminal to browse fluids is its own piece of work (Stage 4 of
-		// docs/design/fluid-parity.md); until then a fluid-producing pattern still runs perfectly
-		// well as a step inside a craft, it just isn't independently requestable from here.
+		// Every kind a reachable pattern can produce - the grid renders each row through its own
+		// [net.kernelpanicsoft.boilerplate.client.ResourceDisplayKind], so a fluid output is a row
+		// like any other. Deduplicated by [ResourceIdentity] rather than by the resource, since a
+		// fluid has no value equality of its own and `distinct()` would keep every mention of one.
 		val resources = RequestFulfillment.reachablePatternProviders(level, tile.blockPos)
 			.flatMap { it.state.heldPatterns() }
 			.flatMap { it.outputs }
-			.mapNotNull { it.resource as? ItemResource }
-			.distinct()
+			.map { it.resource as ResourceComponent }
+			.distinctBy { ResourceIdentity.of(it) }
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, CraftableListPacket(resources))
 	}
 
@@ -141,28 +164,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 			BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, TerminalSearchResultsPacket(emptyList(), hasPressure = false))
 			return
 		}
-		val totals = LinkedHashMap<ItemResource, Long>()
-		fun add(resource: ItemResource, amount: Long) {
-			if (resource.isBlank || amount <= 0) return
-			totals[resource] = (totals[resource] ?: 0L) + amount
-		}
-
-		for (source in RequestFulfillment.reachableProviders(level, tile.blockPos)) {
-			if (!source.hookState.active) continue
-			val storage = source.storage(level) ?: continue
-			for (i in 0 until storage.size()) add(storage.getResource(i), storage.getAmount(i))
-		}
-		for (warehouse in RequestFulfillment.reachableWarehouses(level, tile.blockPos)) {
-			if (!warehouse.hasPressure()) continue
-			// Items only: the terminal grid renders item stacks and has no fluid widget yet, so a
-			// warehouse's tanks are indexed but not listed here. Surfacing them is fluid-GUI work.
-			for ((key, entries) in warehouse.index.locations) {
-				val resource = key.resource as? ItemResource ?: continue
-				add(resource, entries.sumOf { it.amount })
-			}
-		}
-
-		val stacks = totals.map { (resource, amount) -> ResourceStack(resource, amount.coerceAtMost(Int.MAX_VALUE.toLong())) }
+		val stacks = reachableStock(level, tile.blockPos).map { it.withCount(it.amount.coerceAtMost(Int.MAX_VALUE.toLong())) }
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, TerminalSearchResultsPacket(stacks, hasPressure = true))
 	}
 
@@ -192,11 +194,12 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * `request` finds no source at all - `onDispatch` simply never fires for that case, which also
 	 * leaves the slot it had picked genuinely unreserved for the next attempt.
 	 */
-	fun withdraw(stack: ResourceStack<ItemResource>) {
+	fun withdraw(stack: ResourceStack<ResourceComponent>) {
 		if (!isActive()) return
 		val level = level as? ServerLevel ?: return
 		val state = tile.hooks[direction.name] as? TerminalHookState ?: return
-
+		// One path for every kind: the inbox is a mixed row, so a fluid reserves a column exactly as
+		// an item does and lands in it the same way. Nothing here asks what it is holding.
 		var remaining = stack.amount
 		while (remaining > 0) {
 			val (slot, slotLimit) = state.reserveOutputSlot(stack.resource) ?: break
@@ -226,9 +229,32 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	var pendingDeliveries: List<PendingDelivery> by mutableStateOf(emptyList())
 		private set
 
+	/**
+	 * What this terminal's inbox row is holding, as last polled - Compose state, like
+	 * [pendingDeliveries] and for the same reason.
+	 *
+	 * Only the columns vanilla cannot show by itself matter here; an item column arrives through its
+	 * own slot. See [PendingDeliveriesPacket.inbox].
+	 */
+	var inboxCells: List<ResourceStorage.Cell> by mutableStateOf(emptyList())
+		private set
+
 	/** Client-side: applies a freshly received [PendingDeliveriesPacket]. */
-	fun updatePendingDeliveries(deliveries: List<PendingDelivery>) {
+	fun updatePendingDeliveries(deliveries: List<PendingDelivery>, inbox: List<ResourceStorage.Cell> = emptyList()) {
 		pendingDeliveries = deliveries
+		inboxCells = inbox
+	}
+
+	/**
+	 * The kind and contents column [index] of the inbox is holding, when that is something vanilla's
+	 * own slot cannot draw - a fluid, an addon's chemical - or `null` for an empty column or an
+	 * ordinary item, which the real [net.minecraft.world.inventory.Slot] under it already draws.
+	 */
+	fun inboxFaceFor(index: Int): Pair<ResourceKind, ResourceStack<ResourceComponent>>? {
+		val cell = inboxCells.firstOrNull { it.index == index } ?: return null
+		val kind = ResourceKindRegistry.forResource(cell.resource) ?: return null
+		if (kind === ResourceKindRegistry.Item) return null
+		return kind to ResourceStack(cell.resource, cell.amount)
 	}
 
 	/** Server-side: sends this hook's own current [TerminalHookState.pendingDeliveries] to this menu's own player - see [RequestPendingDeliveriesPacket]. Guarded on actually being server-side, matching [sendSearchResults] - this menu class is instantiated on both sides, and the [ServerPlayer] cast below would hard-crash a client that reached it. */
@@ -239,7 +265,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		// flight, so this is what makes the placeholder's countdown a rolling estimate. The recomputed
 		// value is deliberately not written back - see PendingDelivery's own KDoc.
 		val rolling = state.pendingDeliveries.map { it.copy(totalTicks = estimateTicks(it.pipeHops, it.gantryBlocks)) }
-		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PendingDeliveriesPacket(rolling))
+		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PendingDeliveriesPacket(rolling, state.output.snapshot()))
 	}
 
 	/**
@@ -327,24 +353,73 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	}
 
 	/** The most recently received craft-preview result - `resource to maxCraftable` - or `null` before any preview's been requested. Compose state, so [TerminalHookScreen]'s Craft tab recomposes whenever [updateCraftPreview] applies a fresh [CraftPreviewPacket]. */
-	override var craftPreview: Pair<SItemResource, Long>? by mutableStateOf(null)
+	override var craftPreview: Pair<SResourceComponent, Long>? by mutableStateOf(null)
 		protected set
 
 	/** Client-side: asks how much of [resource] is currently craftable, up to [upperBound] - a dry run, nothing is requested. */
-	override fun requestCraftPreview(resource: ItemResource, upperBound: Long) {
+	override fun requestCraftPreview(resource: ResourceComponent, upperBound: Long) {
 		BoilerplateNetworkChannel.toServer(RequestCraftPreviewPacket(resource, upperBound))
 	}
 
 	/** Client-side: applies a freshly received [CraftPreviewPacket]. */
-	fun updateCraftPreview(resource: ItemResource, maxCraftable: Long) {
+	fun updateCraftPreview(resource: ResourceComponent, maxCraftable: Long) {
 		craftPreview = resource to maxCraftable
 	}
 
 	/** Server-side: computes and replies with how much of [resource] is currently craftable, up to [upperBound] - see [CraftingRequest.maxCraftable]. */
-	fun sendCraftPreview(resource: ItemResource, upperBound: Long) {
+	fun sendCraftPreview(resource: ResourceComponent, upperBound: Long) {
 		val level = level as? ServerLevel ?: return
 		val max = CraftingRequest.maxCraftable(level, tile.blockPos, resource, upperBound)
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, CraftPreviewPacket(resource, max))
+	}
+
+	/** The most recently received craft plan, or `null` before one was asked for and while one is in flight - Compose state, so the request wizard's plan page recomposes when [updateCraftPlan] applies a fresh [CraftPlanPacket]. */
+	override var craftPlan: CraftPlanPacket? by mutableStateOf(null)
+		protected set
+
+	/** Client-side: asks what crafting [amount] of [resource] would entail. Clears [craftPlan] so the wizard shows its pending state rather than the previous amount's answer. */
+	override fun requestCraftPlan(resource: ResourceComponent, amount: Long) {
+		craftPlan = null
+		BoilerplateNetworkChannel.toServer(RequestCraftPlanPacket(resource, amount))
+	}
+
+	/** Client-side: applies a freshly received [CraftPlanPacket]. */
+	override fun updateCraftPlan(plan: CraftPlanPacket) {
+		craftPlan = plan
+	}
+
+	/**
+	 * Server-side: resolves [amount] of [resource] and replies with what it would take and where it
+	 * could run.
+	 *
+	 * The same [CraftingRequest.resolve] the real submission runs, so what the wizard shows is what
+	 * would actually happen rather than a separate estimate that could disagree with it.
+	 */
+	override fun sendCraftPlan(resource: ResourceComponent, amount: Long) {
+		val level = level as? ServerLevel ?: return
+		val cpus = RequestFulfillment.reachableCraftingCpus(level, tile.blockPos)
+			.mapNotNull { ref -> craftingBufferAt(level, ref.leaderPos)?.let { CraftCpuOption(ref.leaderPos, it.backlogDepth()) } }
+
+		val packet = when (val result = CraftingRequest.resolve(level, tile.blockPos, resource, amount)) {
+			is CraftingResolver.Result.Success -> CraftPlanPacket(
+				resource = resource,
+				amount = amount,
+				// Produced amounts rather than raw run counts - "12 Iron Ingot" is what the reader
+				// asked about, where "3 runs" makes them do the pattern arithmetic themselves. Same
+				// formula CraftingBufferJob.toTree uses, so the two views agree.
+				steps = result.plan.steps.map { CraftPlanEntry(it.resource, it.runs * (it.pattern.outputAmount(it.resource) ?: 1L)) },
+				stockPulls = result.plan.stockPulls.map { (identity, pulled) -> CraftPlanEntry(identity.resource, pulled) },
+				cpus = cpus,
+			)
+			is CraftingResolver.Result.Unresolvable -> CraftPlanPacket(resource, amount, emptyList(), emptyList(), missing = result.shortfalls.map { CraftPlanEntry(it.resource, it.amount) }, cpus = cpus)
+			is CraftingResolver.Result.Cyclic -> CraftPlanPacket(resource, amount, emptyList(), emptyList(), cyclic = result.resources, cpus = cpus)
+		}
+		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, packet)
+	}
+
+	/** Client-side: submits a craft request, optionally pinned to the CPU cluster led by [cpu]. */
+	override fun requestCraft(resource: ResourceComponent, amount: Long, cpu: BlockPos?) {
+		BoilerplateNetworkChannel.toServer(CraftingRequestPacket(resource, amount, cpu))
 	}
 
 	/** Every currently in-flight job's own tree - Compose state, so [TerminalHookScreen]'s Tree tab recomposes whenever [updateCraftTrees] applies a fresh [CraftJobTreePacket]. */
@@ -370,10 +445,6 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	}
 
 	/** Client-side: submits an on-demand crafting request for [stack] - resolved and, if resolvable, executed server-side by whichever Crafting CPU cluster ends up running it. */
-	fun requestCraft(stack: ResourceStack<ItemResource>) {
-		BoilerplateNetworkChannel.toServer(CraftingRequestPacket(stack.resource, stack.amount))
-	}
-
 	/**
 	 * Server-side: resolves [resource]/[amount] and, on success, hands the resulting plan off to
 	 * the least-busy reachable Crafting CPU cluster ([RequestFulfillment.reachableCraftingCpus]),
@@ -381,14 +452,19 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * can poll it. On failure - unresolvable, cyclic, or no reachable CPU at all - reports why
 	 * directly via [MultipartBlockEntity.craftJobStatus] without ever submitting anything.
 	 */
-	fun submitCraft(resource: ItemResource, amount: Long) {
+	@JvmOverloads
+	fun submitCraft(resource: ResourceComponent, amount: Long, preferredCpu: BlockPos? = null) {
 		val level = level as? ServerLevel ?: return
 		when (val result = CraftingRequest.resolve(level, tile.blockPos, resource, amount)) {
 			is CraftingResolver.Result.Success -> {
 				val state = tile.hooks[direction.name] as? TerminalHookState ?: return
-				val cpu = RequestFulfillment.reachableCraftingCpus(level, tile.blockPos)
+				val reachable = RequestFulfillment.reachableCraftingCpus(level, tile.blockPos)
 					.mapNotNull { ref -> craftingBufferAt(level, ref.leaderPos)?.let { ref.leaderPos to it } }
-					.minByOrNull { (_, buffer) -> buffer.backlogDepth() }
+				// An explicit choice is honoured only while it is still reachable and formed - a
+				// cluster can be broken between the wizard planning against it and the submission
+				// landing, and falling back to the lightest-loaded one beats refusing the job.
+				val cpu = preferredCpu?.let { chosen -> reachable.firstOrNull { it.first == chosen } }
+					?: reachable.minByOrNull { (_, buffer) -> buffer.backlogDepth() }
 				if (cpu == null) {
 					tile.craftJobStatus = "No reachable Crafting CPU"
 					return
@@ -396,8 +472,10 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 				val (leaderPos, buffer) = cpu
 				state.submittedJobs += SubmittedJobRef(leaderPos, buffer.enqueue(result.plan))
 			}
-			is CraftingResolver.Result.Unresolvable -> tile.craftJobStatus = "Cannot craft: missing ${result.resource.displayName().string}"
-			is CraftingResolver.Result.Cyclic -> tile.craftJobStatus = "Cannot craft: cyclic pattern for ${result.resource.displayName().string}"
+			// Named in full rather than truncated: this is a one-line status with no way to ask it
+			// for the rest, unlike the request wizard's own scrollable list.
+			is CraftingResolver.Result.Unresolvable -> tile.craftJobStatus = "Cannot craft: missing ${result.shortfalls.joinToString { "${it.amount} ${it.resource.displayName().string}" }}"
+			is CraftingResolver.Result.Cyclic -> tile.craftJobStatus = "Cannot craft: cyclic pattern for ${result.resources.joinToString { it.displayName().string }}"
 		}
 	}
 
@@ -409,19 +487,31 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		}
 	}
 
-	fun deposit(stack: ResourceStack<ItemResource>, clearCarried: Boolean = false, clearSlot: Int? = null) {
+	fun deposit(stack: ResourceStack<ResourceComponent>, clearCarried: Boolean = false, clearSlot: Int? = null) {
 		val level = level as? ServerLevel ?: return
-		val route = ItemPipeRouter.findRoute(level, tile.blockPos, stack.resource)
-		if (route != null)
-		{
-			tile.travelingItems += TravelingItem(stack, direction, 0f, route)
-			if (clearCarried) carried = ItemStack.EMPTY
-			if (clearSlot != null)
-				slots[clearSlot].set(ItemStack.EMPTY)
-		}
+		val networkType = networkTypeForResource(stack.resource) ?: return
+		val route = networkType.route(level, tile.blockPos, stack) ?: return
+		tile.travelingItems += TravelingItem(stack, direction, 0f, route)
+		if (clearCarried) carried = ItemStack.EMPTY
+		if (clearSlot != null) slots[clearSlot].set(ItemStack.EMPTY)
 	}
 
-
+	/**
+	 * Sends the contents of whatever container the player is carrying out into the network, leaving
+	 * them holding the emptied container.
+	 *
+	 * The counterpart of clicking an inbox column to *fill* one, and the reason a terminal needs no
+	 * slot of its own for this: the carried stack is already a perfectly good place to put a bucket.
+	 * A carried stack that is not a container of any registered kind, or holds nothing routable, is
+	 * left alone - the caller falls back to depositing the item itself.
+	 */
+	fun depositCarriedContainer(): Boolean {
+		val level = level as? ServerLevel ?: return false
+		val emptied = drainContainerIntoNetwork(level, tile.blockPos, direction, tile, carried) ?: return false
+		carried = emptied
+		sendSearchResults()
+		return true
+	}
 
 	/**
 	 * Client-side: sends a withdrawal request for [amount] of [resource] and immediately reflects it
@@ -431,26 +521,35 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 * [TerminalSearchResultsPacket] says (that eventual completion, a manual refresh, or simply the
 	 * post-[withdraw] resync) still overwrites this guess with the authoritative total.
 	 */
-	fun requestWithdraw(resourceStack: ResourceStack<ItemResource>) {
+	fun requestWithdraw(resourceStack: ResourceStack<ResourceComponent>) {
+		val key = ResourceIdentity.of(resourceStack.resource)
 		results = results.mapNotNull { stack ->
-			if (stack.resource != resourceStack.resource) return@mapNotNull stack
+			if (ResourceIdentity.of(stack.resource as ResourceComponent) != key) return@mapNotNull stack
 			val remaining = stack.amount - resourceStack.amount
 			if (remaining <= 0) null else stack.withCount(remaining.coerceAtMost(Int.MAX_VALUE.toLong()))
 		}
 		BoilerplateNetworkChannel.toServer(TerminalItemWithdrawRequestPacket(resourceStack.withCount(resourceStack.amount.coerceAtMost(Int.MAX_VALUE.toLong()))))
 	}
 
-	fun requestDeposit(resourceStack: ResourceStack<ItemResource>, clearCarried: Boolean = false, clearSlot: Int? = null) {
+	fun requestDeposit(
+		resourceStack: ResourceStack<ResourceComponent>,
+		clearCarried: Boolean = false,
+		clearSlot: Int? = null,
+		drainContainer: Boolean = false,
+	) {
 		BoilerplateNetworkChannel.toServer(
 			TerminalItemDepositRequestPacket(
 				stack = resourceStack.withCount(
 					resourceStack.amount.coerceAtMost(Int.MAX_VALUE.toLong())
 				),
 				clearCarried = clearCarried,
-				clearSlot = clearSlot
+				clearSlot = clearSlot,
+				drainContainer = drainContainer,
 			)
 		)
-		if (clearCarried) carried = ItemStack.EMPTY
+		// The carried stack survives a drain - it comes back as the emptied container - so only a
+		// real deposit clears it here.
+		if (clearCarried && !drainContainer) carried = ItemStack.EMPTY
 	}
 
 	/**
@@ -535,6 +634,38 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		if (stackInSlot.isEmpty) slot.set(ItemStack.EMPTY) else slot.setChanged()
 		slot.onTake(player, stackInSlot)
 		return copied
+	}
+
+	/**
+	 * Which of this menu's own slots are the inbox row - slots `0` until
+	 * [TerminalHookState.SLOT_COUNT], since [registerSlotHandlers] registers `"output"` first and
+	 * every subclass that adds groups of its own registers them after.
+	 */
+	protected open val inboxSlotRange: IntRange get() = 0 until TerminalHookState.SLOT_COUNT
+
+	/**
+	 * Intercepts a click on an inbox column that a **fluid-like** kind holds, filling whatever
+	 * container the player is carrying from it, and lets vanilla have every other click untouched.
+	 *
+	 * This is why the row is built from real [net.minecraft.world.inventory.Slot]s rather than drawn
+	 * as a virtual group: shift-click, drag-split, double-click gather, hotbar swap and Q-throw all
+	 * keep working on the item columns for free, and only the case vanilla genuinely cannot express
+	 * - "there is no item here, fill my bucket from it" - is handled by hand.
+	 *
+	 * Item columns are not intercepted at all: an item in the inbox is a real stack in a real slot
+	 * and behaves like one.
+	 */
+	override fun clicked(slotId: Int, button: Int, clickType: ClickType, player: Player) {
+		val state = tile.hooks[direction.name] as? TerminalHookState
+		if (state != null && clickType == ClickType.PICKUP && slotId in inboxSlotRange) {
+			val column = slots.getOrNull(slotId)?.containerSlot ?: -1
+			val kind = state.output.ownerOf(column)
+			if (kind != null && kind !== ResourceKindRegistry.Item) {
+				fillContainerFromInbox(state, column, carried)?.let { carried = it }
+				return
+			}
+		}
+		super.clicked(slotId, button, clickType, player)
 	}
 
 	/** [fullRange] with every index covered by any of [forbidden] removed, as the largest possible contiguous sub-ranges - the gaps [quickMoveStack] actually tries [moveItemStackTo] against, in order. */

@@ -15,9 +15,14 @@ import net.minecraft.world.item.Item
 /**
  * Turns the attached face into a filtered/prioritized/color-matched routing candidate - see
  * [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter] and
- * `docs/design/m2-sorting-routing.md`. Purely declarative: all the actual filter/priority/color
- * evaluation happens in [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter.search] when a
- * route is resolved, not on a per-tick basis.
+ * `docs/design/m2-sorting-routing.md`. Filter/priority/color evaluation is purely declarative and
+ * happens in [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter.search] when a route is
+ * resolved, not per tick.
+ *
+ * [FilterHookState.batchSize] is declarative too: it constrains the *amount* a transfer across this
+ * face may carry, enforced where that amount is chosen (see
+ * [net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType.extractRoutable]), so this hook
+ * still holds nothing and does no per-tick work.
  */
 object FilterHookType : PipeHookType<FilterHookState>() {
 	val ID: ResourceLocation = Boilerplate.MOD % "filter"

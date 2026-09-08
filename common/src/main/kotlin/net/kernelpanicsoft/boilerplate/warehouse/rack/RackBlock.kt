@@ -5,14 +5,17 @@ import dev.architectury.registry.menu.MenuRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionResult
+import net.minecraft.world.MenuProvider
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.BaseEntityBlock
 import net.minecraft.world.level.block.RenderShape
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
-import net.minecraft.world.MenuProvider
+import net.minecraft.world.phys.shapes.CollisionContext
+import net.minecraft.world.phys.shapes.VoxelShape
 
 /**
  * Shared shape for [GeneralRackBlock]/[BulkRackBlock]/[UnstackableRackBlock] - a plain, always
@@ -28,6 +31,15 @@ abstract class RackBlock<T>(properties: Properties) : BaseEntityBlock(properties
 
 
 	override fun getRenderShape(state: BlockState): RenderShape = RenderShape.MODEL
+
+	override fun getShape(
+		state: BlockState,
+		level: BlockGetter,
+		pos: BlockPos,
+		context: CollisionContext
+	): VoxelShape = shape
+
+	abstract val shape: VoxelShape
 
 	@Suppress("UNCHECKED_CAST")
 	override fun useWithoutItem(state: BlockState, level: Level, pos: BlockPos, player: Player, hitResult: BlockHitResult): InteractionResult {

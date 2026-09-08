@@ -1,13 +1,12 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.item.ItemApi
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
-import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.gui.PatternProviderHookMenu
@@ -15,6 +14,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType.tickGen
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType.tickVanillaCraftingTable
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
@@ -23,6 +23,9 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
 import net.minecraft.world.level.block.Blocks
+import net.kernelpanicsoft.boilerplate.network.roomFor
+import net.kernelpanicsoft.archie.util.rem
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 
 /**
  * Holds encoded [net.kernelpanicsoft.boilerplate.crafting.PatternItem]s and decides *what* to
@@ -72,7 +75,7 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: PatternProviderHookState) {
 		val targetPos = pos.relative(direction)
-		if (level.getBlockState(targetPos).`is`(Blocks.CRAFTING_TABLE)) tickVanillaCraftingTable(state)
+		if (level.getBlockState(targetPos).`is`(Blocks.CRAFTING_TABLE)) tickVanillaCraftingTable(pos, state)
 		else tickGenericTarget(level, targetPos, direction, state)
 	}
 
@@ -86,29 +89,46 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 	 * lands in [PatternProviderHookState.patternOutputBuffers] (via [outputBufferFor]) since a real
 	 * crafting table has no inventory of its own to hold it.
 	 */
-	private fun tickVanillaCraftingTable(state: PatternProviderHookState) {
+	private fun tickVanillaCraftingTable(pos: BlockPos, state: PatternProviderHookState) {
 		for (index in 0 until state.patterns.size()) {
 			val pattern = patternAt(state, index)?.takeIf { it.kind == PatternKind.CRAFTING } ?: continue
 			val buffer = state.bufferFor(index)
 			val output = state.outputBufferFor(index)
-			// A CRAFTING pattern is item-only by construction (see PatternEncoder), so unwrapping
-			// each side to an ItemResource here is total rather than lossy - a pattern that somehow
-			// named anything else could not have been encoded in this kind at all, and is skipped
-			// rather than half-run.
-			val requiredInputs = pattern.requiredInputs().mapNotNull { (key, perRun) ->
-				(key.resource as? ItemResource)?.let { it to perRun }
+			// A CRAFTING pattern names only kinds a vanilla grid can hold (see PatternEncoder), so
+			// every side of it resolves to a storage surface here - one that somehow named anything
+			// else could not have been encoded in this kind at all, and is skipped rather than
+			// half-run.
+			val requiredInputs = pattern.requiredInputs().map { (key, perRun) -> key.resource to perRun }
+			val outputs = pattern.outputs.map { it.resource to it.amount }
+			val kinds = (requiredInputs + outputs).associate { (resource, _) ->
+				ResourceIdentity.of(resource) to ResourceKindRegistry.storageFor(resource)
 			}
-			if (requiredInputs.size != pattern.requiredInputs().size) continue
-			val outputs = pattern.outputs.mapNotNull { out -> (out.resource as? ItemResource)?.let { it to out.amount } }
-			if (outputs.size != pattern.outputs.size) continue
+			if (kinds.values.any { it == null }) continue
+			fun kindOf(resource: ResourceComponent) = kinds.getValue(ResourceIdentity.of(resource))!!
 
+			var runs = 0
 			while (
 				requiredInputs.all { (resource, perRun) -> amountIn(buffer, resource) >= perRun } &&
-				outputs.all { (resource, amount) -> output.insert(resource, amount, true) >= amount }
+				outputs.all { (resource, amount) -> kindOf(resource).roomFor(output, resource, amount) >= amount }
 			) {
-				for ((resource, perRun) in requiredInputs) buffer.extract(resource, perRun, false)
-				for ((resource, amount) in outputs) output.insert(resource, amount, false)
+				for ((resource, perRun) in requiredInputs) {
+					val taken = kindOf(resource).extract(buffer, resource, perRun, false)
+					ResourceTrace.moved(pos, "pattern.consume", resource, perRun, taken, "pattern" to index)
+					// The run's inputs are gone but its outputs are not yet in - a partial extract
+					// here would leave the pattern half-run with no way to put the rest back.
+					ResourceTrace.lost(pos, "pattern.consume", resource, perRun - taken, "input vanished mid-run")
+				}
+				for ((resource, amount) in outputs) {
+					val stored = kindOf(resource).insert(output, resource, amount, false)
+					ResourceTrace.moved(pos, "pattern.produce", resource, amount, stored, "pattern" to index)
+					// The loop only runs while the output buffer says it has room for a whole
+					// output, so this should be unreachable - but the amount is already assembled
+					// by the time we find out, and there is nowhere to put it back.
+					ResourceTrace.lost(pos, "pattern.produce", resource, amount - stored, "output buffer took less than it promised")
+				}
+				runs++
 			}
+			if (runs > 0) ResourceTrace.at(pos, "pattern.convert", "pattern" to index, "runs" to runs)
 		}
 	}
 
@@ -136,10 +156,20 @@ object PatternProviderHookType : PipeHookType<PatternProviderHookState>() {
 		return PatternItemData(stack).pattern
 	}
 
-	/** Total amount of [resource] currently sitting across every slot of [storage] - [ArchieItemStorage] has no direct "how much of X do I hold" query of its own. */
-	internal fun amountIn(storage: ArchieItemStorage, resource: ItemResource): Long {
+	/**
+	 * Total amount of [resource] currently sitting across every slot of [storage] - a
+	 * [CommonStorage] has no direct "how much of X do I hold" query of its own.
+	 *
+	 * Compared through [ResourceIdentity], not `==`: a resource is not guaranteed value equality
+	 * across kinds (see [ResourceIdentity] itself), so a bare comparison silently counts zero for
+	 * any kind that lacks it.
+	 */
+	internal fun amountIn(storage: CommonStorage<*>, resource: ResourceComponent): Long {
+		val wanted = ResourceIdentity.of(resource)
 		var total = 0L
-		for (i in 0 until storage.size()) if (storage.getResource(i) == resource) total += storage.getAmount(i)
+		for (i in 0 until storage.size()) {
+			if (ResourceIdentity.of(storage.getResource(i) as ResourceComponent) == wanted) total += storage.getAmount(i)
+		}
 		return total
 	}
 

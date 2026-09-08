@@ -2,15 +2,18 @@ package net.kernelpanicsoft.boilerplate.network
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import kotlinx.serialization.KSerializer
+import net.kernelpanicsoft.boilerplate.client.ResourceDisplayKind
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.tags.TagKey
+import net.minecraft.world.item.ItemStack
 
 /**
  * A kind of carrier resource that [ResourceStackSerializer] can put on the wire - the item and
  * fluid kinds Boilerplate ships with, and (via a loader/addon registrar) an addon's own kind
  * (Mekanism gas, say). A real registry entry (see
- * [net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry]/[net.kernelpanicsoft.boilerplate.registry.Registrars.RESOURCE_KIND])
+ * [ResourceKindRegistry]/[net.kernelpanicsoft.boilerplate.registry.Registrars.RESOURCE_KIND])
  * rather than a hardcoded case in [ResourceStackSerializer]'s dispatch, so a new kind is just
  * another registered `(kindTag, resourceClass, serializer)` triple - the addon subclasses
  * [net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder] over the same
@@ -48,7 +51,7 @@ abstract class ResourceKind {
 	 *
 	 * The default returns [resource] itself, which is correct for any kind that already has value
 	 * equality. A kind whose resource type doesn't override it must say what its identity is
-	 * instead - see [net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry]'s fluid entry.
+	 * instead - see [ResourceKindRegistry]'s fluid entry.
 	 * Always reached through [ResourceIdentity.of] rather than called directly.
 	 */
 	open fun identityOf(resource: ResourceComponent): Any = resource
@@ -77,6 +80,18 @@ abstract class ResourceKind {
 	open val storage: ResourceStorageKind? get() = null
 
 	/**
+	 * How this kind is drawn - in a slot, in a pipe, on the crane - or `null` if it has no visuals
+	 * of its own, in which case nothing draws it.
+	 *
+	 * **Read only from client code.** The property exists on the common kind so that registering a
+	 * kind is the single thing an addon has to do, but the implementation it returns lives in a
+	 * client class that a dedicated server never loads, because nothing there ever reads this.
+	 *
+	 * @see net.kernelpanicsoft.boilerplate.client.ResourceDisplayKind
+	 */
+	open val display: ResourceDisplayKind? get() = null
+
+	/**
 	 * A human-readable name for [resource] - what job status lines, tooltips and error text show.
 	 *
 	 * Defaults to the path of [registryId] (`water`, `diamond`), which is legible for any kind that
@@ -85,6 +100,58 @@ abstract class ResourceKind {
 	 */
 	open fun displayName(resource: ResourceComponent): Component =
 		Component.literal(registryId(resource)?.path ?: resource.toString())
+
+	/**
+	 * [amount], converted from the platform's own count into the unit a player authors and reads.
+	 *
+	 * The two are the same number for a counted kind and are not for a measured one: a fluid is
+	 * authored in **millibuckets**, which is the unit a player thinks in, while the platform counts
+	 * droplets on Fabric and millibuckets on NeoForge. Every screen that shows or edits an amount
+	 * goes through here rather than asking what it is holding, so a registered kind brings its own
+	 * unit with it - see [toPlatform] for the way back.
+	 */
+	open fun toAuthored(amount: Long): Long = amount
+
+	/** [authored], converted back into the platform's own count - [toAuthored]'s inverse, applied at the boundary where a durable amount is stored. */
+	open fun toPlatform(authored: Long): Long = authored
+
+	/**
+	 * One authored unit of this kind - what a cell holding it defaults to when nothing better is
+	 * known. One item; one bucket.
+	 */
+	open val defaultAuthored: Long get() = 1L
+
+	/** How far one scroll notch moves an authored amount of this kind - one item, or 100mB. */
+	open val authoredStep: Long get() = 1L
+
+	/** The largest authored amount a single pattern cell of this kind holds - a stack, or 64 buckets. */
+	open val maxAuthored: Long get() = 64L
+
+	/**
+	 * Whether a slot of this kind draws its own amount.
+	 *
+	 * An item stack renders its count itself, so a caller that also drew one would double it; a
+	 * fluid's still sprite carries no number at all and needs the amount written beside it. A
+	 * screen asks this instead of asking what it is holding.
+	 */
+	open val drawsOwnAmount: Boolean get() = false
+
+	/**
+	 * Whether a **vanilla** crafting grid can hold this kind at all.
+	 *
+	 * Vanilla recipes, the crafting table block and `CraftingInput` are all defined over
+	 * [net.minecraft.world.item.ItemStack] and nothing else, so a kind that is not an item form
+	 * cannot be an ingredient of, or a result of, a vanilla recipe - no matter how well the rest of
+	 * the mod carries it. Everything that touches a real crafting table asks this rather than
+	 * checking what it is holding, and a kind that says `true` must answer [toVanillaStack].
+	 */
+	open val vanillaCraftable: Boolean get() = false
+
+	/**
+	 * [amount] of [resource] as the vanilla [net.minecraft.world.item.ItemStack] a crafting grid
+	 * would hold, or `null` for a kind with no item form - see [vanillaCraftable].
+	 */
+	open fun toVanillaStack(resource: ResourceComponent, amount: Long): ItemStack? = null
 
 	/**
 	 * Every tag [resource] belongs to, for
@@ -104,5 +171,5 @@ abstract class ResourceKind {
  * degrade to something ugly rather than throw.
  */
 fun ResourceComponent.displayName(): Component =
-	net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry.forResource(this)?.displayName(this)
+	ResourceKindRegistry.forResource(this)?.displayName(this)
 		?: Component.literal(toString())

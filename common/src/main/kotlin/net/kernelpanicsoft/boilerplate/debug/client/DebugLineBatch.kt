@@ -4,8 +4,10 @@ import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList
 import it.unimi.dsi.fastutil.floats.FloatArrayList
+import net.kernelpanicsoft.boilerplate.debug.client.DebugLineBatch.Companion.scratch
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import kotlin.math.sqrt
 
 /**
  * A batch of world-space debug lines, built once and replayed cheaply every frame.
@@ -40,7 +42,7 @@ class DebugLineBatch {
 	private var sealedColors = EMPTY_NORMALS
 	private var dirty = true
 
-	val isEmpty: Boolean get() = points.isEmpty()
+	val isEmpty: Boolean get() = points.isEmpty
 
 	fun clear() {
 		points.clear()
@@ -54,7 +56,7 @@ class DebugLineBatch {
 		val dx = (x2 - x1).toFloat()
 		val dy = (y2 - y1).toFloat()
 		val dz = (z2 - z1).toFloat()
-		val length = Math.sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
+		val length = sqrt((dx * dx + dy * dy + dz * dz).toDouble()).toFloat()
 		if (length == 0f) return
 
 		points.add(x1); points.add(y1); points.add(z1)

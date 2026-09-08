@@ -110,7 +110,6 @@ private val DETACH_HOOK_TYPES: List<PipeHookType<out HookHolderState>> = listOf(
 /** Encasement types getting a generated detach table - see [PipeEncasementType.detachLootTableId]. */
 private val DETACH_ENCASEMENT_TYPES: List<PipeEncasementType<out EncasementHolderState>> = listOf(
 	EncasementTypeRegistry.CraftingBuffer,
-	EncasementTypeRegistry.CraftingTank,
 	EncasementTypeRegistry.Compressor,
 	EncasementTypeRegistry.PressureTank,
 )
@@ -143,7 +142,6 @@ private val HIDDEN_PART_BLOCKS: List<Block> = listOf(
 	BlockRegistry.PatternTerminalHook,
 	BlockRegistry.AdapterHook,
 	BlockRegistry.CraftingBufferPart,
-	BlockRegistry.CraftingTankPart,
 	BlockRegistry.CompressorPart,
 	BlockRegistry.PressureTankPart,
 )

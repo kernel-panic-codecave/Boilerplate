@@ -4,6 +4,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.boilerplate.network.CraftJobTreeNode
 import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.pipe.network.RoutingDemand
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 
@@ -27,6 +28,14 @@ class CraftingBufferJob(val id: String, val target: ResourceComponent, val targe
 
 	/** [CraftingResolver.Plan.stockPulls] not yet fully claimed - seeded on promotion, drained as [CraftingBufferEncasementType] successfully claims more of each resource. */
 	val outstandingStockClaims: MutableMap<ResourceIdentity, Long> = mutableMapOf()
+
+	/**
+	 * What [outstandingStockClaims] started at, per resource - the plan's own
+	 * [CraftingResolver.Plan.stockPulls], kept because that map is decremented as claims are placed
+	 * and [outstandingOutput] needs to know how much of what has arrived came from stock rather than
+	 * from this job's own machines.
+	 */
+	val stockPlanned: MutableMap<ResourceIdentity, Long> = mutableMapOf()
 
 	/** The pattern-provider hook's own target position assigned to each [steps] index, once resolved - stable for the rest of that step. */
 	val tableForStep: MutableMap<Int, BlockPos> = mutableMapOf()
@@ -73,15 +82,40 @@ class CraftingBufferJob(val id: String, val target: ResourceComponent, val targe
 
 	/** Whether this job is finished (delivered or gave up) - once true, the cluster drains everything left in its own storage back onto the network and clears this job out. */
 	var done: Boolean = false
+		set(value) {
+			// Guarded on a real change: the runtime re-asserts this every tick once a job is
+			// finished, and bumping [RoutingDemand] on each of those would flush every route cache
+			// on the server continuously. Finishing also stops the cluster awaiting anything, which
+			// is why it bumps at all.
+			if (field == value) return
+			field = value
+			RoutingDemand.changed()
+		}
+
+	/** Whether any of [steps] produces [resource] - what tells "makes this but wants none right now" apart from "never makes it", for the trace. */
+	fun needsAnyOf(resource: ResourceComponent): Boolean {
+		val key = ResourceIdentity.of(resource)
+		return steps.any { ResourceIdentity.of(it.resource) == key }
+	}
 
 	/**
 	 * How much of [resource] this job's own steps still expect to receive, given [inStorage] of it
 	 * sitting in the cluster right now - what makes this cluster a routing destination for it at
 	 * all (see [CraftingCpuRuntime.awaitsDelivery]). `0` for a resource no step produces.
 	 *
+	 * Deliberately still only what the **steps produce**, never what the job consumes: attraction
+	 * runs at an unbeatable priority, so widening it to inputs would let a cluster mid-job outrank
+	 * every chest and warehouse on the network for every ingredient it happens to use.
+	 *
 	 * Already-received is `[inStorage] + whatever has since been fed onward as a later step's own
 	 * input` - an intermediate is routinely consumed again the moment it lands, so its current
-	 * amount alone would read as never having arrived and this job would keep attracting it forever.
+	 * amount alone would read as never having arrived and this job would keep attracting it forever
+	 * - **minus whatever of it came from stock**, which is the subtlety this got wrong. A resource
+	 * sourced partly from stock and partly from crafting is received in greater quantity than the
+	 * steps will ever make, so counting all of it against step production drove this negative
+	 * partway through: the cluster stopped advertising, the router filed the craft's own output into
+	 * storage, and the job starved on the thing it was busy producing. Seen in the field as 304
+	 * Infused Alloy wanted, 179 from stock, and the cluster giving up after 125.
 	 */
 	fun outstandingOutput(resource: ResourceComponent, inStorage: Long): Long {
 		val key = ResourceIdentity.of(resource)
@@ -92,7 +126,12 @@ class CraftingBufferJob(val id: String, val target: ResourceComponent, val targe
 		}
 		if (needed <= 0L) return 0L
 		val fedOnward = fedAmounts.entries.sumOf { (entry, amount) -> if (entry.second == key) amount else 0L }
-		return needed - (inStorage + fedOnward)
+		// Dispatched rather than confirmed-arrived, so a stock claim still in flight is discounted a
+		// little early. That errs toward attracting for slightly longer, which is the safe direction:
+		// the alternative is the cluster refusing deliveries it still needs.
+		val fromStock = ((stockPlanned[key] ?: 0L) - (outstandingStockClaims[key] ?: 0L)).coerceAtLeast(0L)
+		val fromSteps = (inStorage + fedOnward - fromStock).coerceAtLeast(0L)
+		return needed - fromSteps
 	}
 
 	/** Whether [index]'s own requirement for [resource] (an input of `steps[index].pattern`) has been fully delivered yet - see [fedAmounts]. `true` for a resource that isn't actually one of [index]'s own inputs. */

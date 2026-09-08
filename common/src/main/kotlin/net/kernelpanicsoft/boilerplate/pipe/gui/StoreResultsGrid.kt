@@ -20,6 +20,10 @@ import net.kernelpanicsoft.boilerplate.network.SItemResource
 import net.kernelpanicsoft.boilerplate.network.SResourceStack
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
+import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 private const val COLUMNS = 9
 private const val VISIBLE_ROWS = 3
@@ -38,15 +42,23 @@ enum class StoreViewMode(val label: String, val tooltip: String) {
 }
 
 /** One combined row of [StoreResultsGrid] - [amount] is `0` for a craftable entry with nothing currently in stock. */
-data class StoreEntry(val resource: SItemResource, val amount: Long, val craftable: Boolean)
+data class StoreEntry(val resource: SResourceComponent, val amount: Long, val craftable: Boolean)
 
-/** Merges [results] (real stock) and [craftable] (distinct craftable resources) into [StoreEntry]s, filtered down to [mode]'s own subset. */
-fun combineStoreEntries(results: List<SResourceStack<SItemResource>>, craftable: List<SItemResource>, mode: StoreViewMode): List<StoreEntry> {
-	val craftableSet = craftable.toSet()
-	val stockByResource = LinkedHashMap<ItemResource, Long>()
-	for (stack in results) stockByResource[stack.resource] = stack.amount
+/**
+ * Merges [results] (real stock) and [craftable] (distinct craftable resources) into [StoreEntry]s,
+ * filtered down to [mode]'s own subset.
+ *
+ * Every map and set here is keyed by [ResourceIdentity] rather than by the resource: a terminal
+ * lists whatever the network holds, which is no longer only items, and `FluidResource` has no value
+ * equality of its own - keying on the resource would make each mention of one fluid a separate row
+ * and the craftable lookup would never match it.
+ */
+fun combineStoreEntries(results: List<SResourceStack<*>>, craftable: List<SResourceComponent>, mode: StoreViewMode): List<StoreEntry> {
+	val craftableSet = craftable.mapTo(LinkedHashSet()) { ResourceIdentity.of(it) }
+	val stockByResource = LinkedHashMap<ResourceIdentity, Long>()
+	for (stack in results) stockByResource[ResourceIdentity.of(stack.resource as ResourceComponent)] = stack.amount
 
-	val order = LinkedHashSet<ItemResource>()
+	val order = LinkedHashSet<ResourceIdentity>()
 	when (mode) {
 		StoreViewMode.AVAILABLE -> order += stockByResource.keys
 		StoreViewMode.CRAFTABLE -> order += craftableSet
@@ -56,7 +68,7 @@ fun combineStoreEntries(results: List<SResourceStack<SItemResource>>, craftable:
 		}
 	}
 
-	return order.map { resource -> StoreEntry(resource, stockByResource[resource] ?: 0L, resource in craftableSet) }
+	return order.map { key -> StoreEntry(key.resource, stockByResource[key] ?: 0L, key in craftableSet) }
 }
 
 /**
@@ -71,7 +83,10 @@ fun combineStoreEntries(results: List<SResourceStack<SItemResource>>, craftable:
  *   [onRequestCraft]'s dialog (see [ClickHandler]/[TerminalSlot]'s own `onMiddleClick`).
  *
  * A non-empty [carried] cursor overrides all of the above - any click deposits it via
- * [onDepositCarried] instead, matching every other terminal grid in this mod.
+ * [onDepositCarried] instead, matching every other terminal grid in this mod. **Right**-clicking
+ * asks for the container's *contents* rather than the container - a bucket of water emptied into
+ * the network, the bundle's own gesture for the same idea - because a filled bucket is a reasonable
+ * thing to want stored either way and only the player knows which they meant.
  *
  * A single, non-menu-specific composable (unlike the sibling menu classes it's used from) since
  * nothing about search/filter/click-routing actually depends on which concrete terminal menu is
@@ -84,25 +99,31 @@ fun combineStoreEntries(results: List<SResourceStack<SItemResource>>, craftable:
  */
 @Composable
 fun StoreResultsGrid(
-	results: List<SResourceStack<SItemResource>>,
-	craftable: List<SItemResource>,
+	results: List<SResourceStack<*>>,
+	craftable: List<SResourceComponent>,
 	mode: StoreViewMode,
 	contentWidth: Int,
 	carried: () -> ItemStack,
-	onDepositCarried: () -> Unit,
-	onRequestWithdraw: (ResourceStack<ItemResource>) -> Unit,
-	onRequestCraft: (ItemResource) -> Unit,
+	onDepositCarried: (drainContainer: Boolean) -> Unit,
+	onRequestWithdraw: (ResourceStack<ResourceComponent>) -> Unit,
+	onRequestCraft: (ResourceComponent) -> Unit,
 	clickHandler: ClickHandler,
-	onHoveredStackChanged: (SResourceStack<SItemResource>?) -> Unit,
+	rightClickHandler: ClickHandler,
+	onHoveredStackChanged: (SResourceStack<*>?) -> Unit,
 	enabled: Boolean = true,
 ) {
 	var query by remember { mutableStateOf("") }
-	var hoveredStack by remember { mutableStateOf<SResourceStack<SItemResource>?>(null) }
-	LaunchedEffect(hoveredStack) { onHoveredStackChanged(hoveredStack) }
+	var hoveredIndex by remember { mutableStateOf<Int?>(null) }
 
 	val entries = remember(results, craftable, mode) { combineStoreEntries(results, craftable, mode) }
-	val filtered = entries.filter { query.isBlank() || it.resource.cachedStack.hoverName.string.contains(query, ignoreCase = true) }
+	// Matched on the kind's own display name rather than an item stack's hover name, so a fluid row
+	// is searchable by the same text the row itself shows.
+	val filtered = entries.filter { query.isBlank() || it.resource.displayName().string.contains(query, ignoreCase = true) }
 	val rows = maxOf(VISIBLE_ROWS, (filtered.size + COLUMNS - 1) / COLUMNS)
+
+	val hoveredEntry = hoveredIndex?.let { filtered.getOrNull(it) }
+	val hoveredStack = hoveredEntry?.let { ResourceStack(it.resource, if (it.amount > 0) it.amount else 1L) }
+	LaunchedEffect(hoveredEntry?.resource, hoveredEntry?.amount) { onHoveredStackChanged(hoveredStack) }
 
 	Column(verticalArrangement = Arrangement.spacedBy(6)) {
 		BasicTextField(
@@ -116,23 +137,32 @@ fun StoreResultsGrid(
 				for (row in 0 until rows) {
 					Row {
 						for (column in 0 until COLUMNS) {
-							val entry = filtered.getOrNull(row * COLUMNS + column)
+							val index = row * COLUMNS + column
+							val entry = filtered.getOrNull(index)
 							val stack = entry?.let { ResourceStack(it.resource, if (it.amount > 0) it.amount else 1L) }
 							val craftableInStock = entry != null && entry.amount > 0 && entry.craftable
 							TerminalSlot(
 								stack = stack,
-								countText = entry?.takeIf { it.amount <= 0 }?.let { "Craft" },
+								// "Craft" for an out-of-stock craftable, otherwise whatever this
+								// kind needs written in the corner - see amountLabelFor.
+								countText = if (entry != null && entry.amount <= 0) "Craft"
+								else amountLabelFor(entry?.resource, entry?.amount ?: 0L),
 								onClick = {
 									if (carried() != ItemStack.EMPTY) {
-										onDepositCarried()
+										onDepositCarried(false)
 									} else if (entry != null) {
 										if (entry.amount > 0) onRequestWithdraw(ResourceStack(entry.resource, entry.amount))
 										else if (entry.craftable) onRequestCraft(entry.resource)
 									}
 								},
-								onHovered = { hovered -> hoveredStack = if (hovered) stack else if (hoveredStack === stack) null else hoveredStack },
+								onHovered = { hovered -> hoveredIndex = if (hovered) index else if (hoveredIndex == index) null else hoveredIndex },
 								clickHandler = clickHandler,
-								handleClick = if (craftableInStock) ({ onRequestCraft(entry!!.resource) }) else null,
+								handleClick = if (craftableInStock) ({ onRequestCraft(entry.resource) }) else null,
+								rightClickHandler = rightClickHandler,
+								// Always offered, not only while something is carried: the carried
+								// stack is read when the click actually happens, and an empty hand
+								// resolves to a deposit of nothing rather than to a stale gesture.
+								handleRightClick = { onDepositCarried(true) },
 								enabled = enabled,
 							)
 						}

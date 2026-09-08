@@ -7,8 +7,7 @@ import java.util.WeakHashMap
 
 /**
  * Tracks which pipe segments carrying a Crafting CPU encasement - a [CraftingBufferEncasementType]
- * or a [CraftingTankEncasementType] - cluster together
- * into one Crafting CPU, one instance per [ServerLevel] - mirrors
+ * - cluster together into one Crafting CPU, one instance per [ServerLevel] - mirrors
  * [net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager]'s own cached-topology idiom,
  * on top of [AbstractMultiblockManager]'s shared flood-fill/cache machinery (see its own KDoc, and
  * [net.kernelpanicsoft.boilerplate.power.PressureMultiblockManager] for the sibling that adds a
@@ -23,7 +22,7 @@ import java.util.WeakHashMap
  * cluster actually drives job execution.
  */
 class CraftingCpuManager private constructor() : AbstractMultiblockManager<CraftingCpuMemberState>() {
-	/** Either member kind counts - a Crafting Tank clusters with Crafting Buffers into one CPU, see [CraftingTankEncasementType]. */
+	/** Any Crafting CPU member counts, whatever its encasement type - see [craftingCpuMemberAt]. */
 	override fun memberAt(level: ServerLevel, pos: BlockPos): CraftingCpuMemberState? = craftingCpuMemberAt(level, pos)
 
 	/** No further shape rule beyond [AbstractMultiblockManager.clusterOf]'s own bounding-box check - a Crafting CPU may take any cuboid shape. */

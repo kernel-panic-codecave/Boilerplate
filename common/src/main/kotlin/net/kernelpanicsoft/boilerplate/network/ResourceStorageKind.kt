@@ -1,11 +1,13 @@
 package net.kernelpanicsoft.boilerplate.network
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import net.benwoodworth.knbt.NbtTag
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.entity.BlockEntityType
 
 /**
  * How a [ResourceKind]'s storage is reached and moved through - the capability that makes a kind
@@ -28,6 +30,11 @@ interface ResourceStorageKind {
 	/** This kind's storage exposed by the block at [pos] on [direction], or `null` if it exposes none. The warehouse's definition of "is this a rack". */
 	fun find(level: ServerLevel, pos: BlockPos, direction: Direction?): CommonStorage<*>?
 
+	fun <T : BlockEntity> BlockEntityType<T>.exposeStorage(selector: (tile: T, direction: Direction?) -> CommonStorage<*>?)
+
+	@Suppress("UNCHECKED_CAST")
+	fun <T : ResourceComponent> CommonStorage<*>.cast(): CommonStorage<T> = this as CommonStorage<T>
+
 	/**
 	 * Inserts up to [amount] of [resource] into [storage], returning how much was accepted.
 	 *
@@ -38,26 +45,74 @@ interface ResourceStorageKind {
 	 */
 	fun insert(storage: CommonStorage<*>, resource: ResourceComponent, amount: Long, simulate: Boolean): Long
 
+	/**
+	 * [insert], but into one specific slot of [storage] rather than wherever it fits - what a
+	 * delivery reserved against a known slot needs. Same typing contract as [insert].
+	 */
+	fun insertInto(storage: CommonStorage<*>, index: Int, resource: ResourceComponent, amount: Long, simulate: Boolean): Long
+
+	/**
+	 * This kind's storage exposed by the **item** in [holder]'s own [slot] - a bucket's fluid, a
+	 * tank's, any container another mod ships - or `null` when that item exposes none.
+	 *
+	 * The item-side counterpart of [find], and what lets a terminal hand a fluid back through a
+	 * container the player already owns rather than minting a carrier item of its own.
+	 *
+	 * **The returned storage must write through to [holder]'s own [slot].** Filling a container
+	 * changes the *item* - an empty bucket becomes a water bucket, a tank's data components gain
+	 * contents - and a caller reads its result back out of [holder] afterwards. An implementation
+	 * that resolves the capability against a detached copy of the stack works perfectly and voids
+	 * everything it is handed, which is not a failure any caller can detect. Common Storage Lib's
+	 * own item lookups take an [earth.terrarium.common_storage_lib.context.ItemContext] that does
+	 * this; a platform capability with no such notion has to be wrapped so that it does.
+	 *
+	 * A kind may refuse a [slot] holding more than one item. Contents usually live in the stack's
+	 * own components, which a whole stack shares, so filling one of several is not something every
+	 * kind can express - and quietly filling all of them would create the difference out of nothing.
+	 *
+	 * `null` by default: a kind whose resources are items has no separate item-side form to find.
+	 */
+	fun findInItem(holder: CommonStorage<ItemResource>, slot: Int): CommonStorage<*>? = null
+
 	/** [insert]'s counterpart - see its own KDoc for the typing contract. */
 	fun extract(storage: CommonStorage<*>, resource: ResourceComponent, amount: Long, simulate: Boolean): Long
 
 	/**
-	 * A fresh staging buffer of this kind, [slots] wide, calling [onChange] whenever its contents
-	 * move - what the warehouse controller holds cargo in between the two legs of a gantry job.
+	 * How much of [resource] [storage] will really accept right now, up to [limit] - the kind-erased
+	 * form of the `CommonStorage.roomFor` extension, and what every caller sizing a transfer should
+	 * ask rather than simulating an insert. See that function for why a simulated insert answers a
+	 * different, and larger, question.
+	 *
+	 * Same typing contract as [insert].
+	 */
+	fun roomFor(storage: CommonStorage<*>, resource: ResourceComponent, limit: Long): Long
+
+	/**
+	 * [parts] presented as a single storage of this kind, slots concatenated in order.
+	 *
+	 * What lets a multiblock pool grow by adding members without anything downstream knowing how
+	 * many there are - a Crafting CPU's own combined pool is exactly this over each encased
+	 * segment's local storage. Same typing contract as [insert]: every entry of [parts] must be one
+	 * this kind produced or found.
+	 *
+	 * Concatenation is the same operation whatever the kind, so this has a default rather than an
+	 * implementation per kind. It had one per kind, each casting [parts] to that kind's own concrete
+	 * storage class - which quietly ruled out a part that is a *view* over something larger, and a
+	 * generic buffer hands over exactly that.
+	 */
+	@Suppress("UNCHECKED_CAST")
+	fun combine(parts: List<CommonStorage<*>>): CommonStorage<*> =
+		CombinedResourceStorage(parts as List<CommonStorage<ResourceComponent>>)
+
+	/**
+	 * A fresh, empty storage of this kind, [slots] wide - one layer of a [ResourceStorage], which is
+	 * the only thing that builds these and which owns everything around them (admission, change
+	 * notification, persistence). All this has to supply is the kind's own slot rules.
 	 *
 	 * [slots] is a slot count for a discrete kind and a tank count for a continuous one; each kind
-	 * decides what a "slot" of it holds (a fluid one sizes its own per-tank capacity).
-	 *
-	 * [accepts] is the owner's own admission rule (a warehouse controller's filter card, say). It
-	 * belongs *in* the buffer rather than being checked by callers, because the thing that consults
-	 * it is the router's simulated insert when it decides whether this block is a destination at
-	 * all - a buffer that accepted anything would advertise itself for resources its owner rejects.
+	 * decides what a "slot" of it holds. [capacity] is one slot's limit in this kind's own
+	 * *authored* unit - millibuckets for a fluid, converted here to whatever the platform counts in
+	 * - and is ignored by a counted kind, whose slot holds a stack.
 	 */
-	fun createBuffer(slots: Int, accepts: (ResourceComponent) -> Boolean, onChange: () -> Unit): CommonStorage<*>
-
-	/** [buffer]'s contents as NBT, for a controller to persist across a reload. */
-	fun encodeBuffer(buffer: CommonStorage<*>): NbtTag
-
-	/** Restores what [encodeBuffer] wrote into [buffer], in place. Silently leaves [buffer] untouched if [tag] isn't a shape this kind wrote. */
-	fun decodeBuffer(buffer: CommonStorage<*>, tag: NbtTag)
+	fun createBuffer(slots: Int, capacity: Long): CommonStorage<*>
 }

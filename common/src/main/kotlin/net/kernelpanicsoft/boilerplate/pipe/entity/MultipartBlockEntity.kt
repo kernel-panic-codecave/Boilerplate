@@ -51,15 +51,24 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 	 */
 	@Sync
 	val hooks: NestedNBTHolderMap<HookHolderState> by nestedMapField { tag ->
-		val id = ResourceLocation.parse(tag.getString("type"))
-		HookTypeRegistry.byId(id)?.createState()
+		val id = ResourceLocation.tryParse(tag.getString("type"))
+		id?.let { HookTypeRegistry.byId(it) }?.createState()
 	}
 
-	/** The encasement wrapping this whole segment, or `null` if it carries none. */
+	/**
+	 * The encasement wrapping this whole segment, or `null` if it carries none.
+	 *
+	 * `tryParse`, not `parse`, for the reason [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState]'s
+	 * own factory documents: a nested factory is called unguarded from `NestedNBTHolder.loadFrom`,
+	 * so it has to answer for a tag with no `type` in it rather than throwing. A segment with no
+	 * encasement no longer reaches here at all - an unset nested holder saves as an absent key
+	 * instead of an empty compound - but a save written before that fix, or one damaged any other
+	 * way, still does, and `parse` would take the whole block entity down with it.
+	 */
 	@Sync
 	val encasement: NestedNBTHolder<EncasementHolderState> by nestedField { tag ->
-		val id = ResourceLocation.parse(tag.getString("type"))
-		EncasementTypeRegistry.byId(id)?.createState()
+		val id = ResourceLocation.tryParse(tag.getString("type"))
+		id?.let { EncasementTypeRegistry.byId(it) }?.createState()
 	}
 
 	/**

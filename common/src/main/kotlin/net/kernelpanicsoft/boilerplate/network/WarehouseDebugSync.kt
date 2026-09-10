@@ -1,11 +1,12 @@
 package net.kernelpanicsoft.boilerplate.network
 
+import net.kernelpanicsoft.boilerplate.debug.DebugFlag
 import net.kernelpanicsoft.boilerplate.debug.DebugOverlayViewers
 import net.kernelpanicsoft.boilerplate.network.WarehouseDebugSnapshotPacket.JobKind
 import net.kernelpanicsoft.boilerplate.network.WarehouseDebugSnapshotPacket.JobStage
 import net.kernelpanicsoft.boilerplate.warehouse.GantryJob
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseBlockEventListener
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 
@@ -34,7 +35,7 @@ object WarehouseDebugSync {
 	private const val MAX_JOBS = 256
 
 	fun tickLevel(level: ServerLevel) {
-		if (!DebugOverlayViewers.enabled) return
+		if (!DebugOverlayViewers.enabled(DebugFlag.WAREHOUSE)) return
 		if (level.players().isEmpty()) return
 		if (level.gameTime % SEND_INTERVAL_TICKS != 0L) return
 		push(level)
@@ -42,7 +43,7 @@ object WarehouseDebugSync {
 
 	/** Immediately broadcasts one snapshot, so a player toggling the overlay on doesn't wait a full send interval for the first frame. */
 	fun pushNow(level: ServerLevel) {
-		if (!DebugOverlayViewers.enabled) return
+		if (!DebugOverlayViewers.enabled(DebugFlag.WAREHOUSE)) return
 		if (level.players().isEmpty()) return
 		push(level)
 	}

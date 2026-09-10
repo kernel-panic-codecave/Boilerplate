@@ -2,11 +2,10 @@ package net.kernelpanicsoft.boilerplate
 
 import dev.architectury.platform.Platform
 import dev.nyon.klf.MOD_BUS
+import net.kernelpanicsoft.boilerplate.client.NeoForgeDebugCommands
 import net.kernelpanicsoft.boilerplate.client.NeoForgeDebugRendering
 import net.kernelpanicsoft.boilerplate.compat.jei.registerNeoForgeJeiResourceStacks
-import net.kernelpanicsoft.boilerplate.compat.mekanism.ChemicalNetworkTypeRegistry
-import net.kernelpanicsoft.boilerplate.compat.mekanism.ChemicalResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.compat.mekanism.registerMekanismResourceStacks
+import net.kernelpanicsoft.boilerplate.compat.mekanism.*
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
@@ -33,6 +32,7 @@ object BoilerplateNeoForge {
 		MOD_BUS.addListener<FMLClientSetupEvent> {
 			Boilerplate.initClient()
 			NeoForgeDebugRendering.register()
+			NeoForgeDebugCommands.register()
 			// JEI's fluid ingredient type can only be named from here - see JeiResourceStacks.
 			// Guarded on JEI actually being present, since naming it at all loads its classes.
 			if (Platform.isModLoaded("jei")) registerNeoForgeJeiResourceStacks()

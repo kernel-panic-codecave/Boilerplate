@@ -1,10 +1,13 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
 import earth.terrarium.common_storage_lib.item.ItemApi
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.hook.ExtractionHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookType
@@ -13,17 +16,21 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.ProviderHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.ProviderHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.ParallelStocking
 import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.SyncHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionState
 import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.pipe.gui.reachableStock
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
@@ -33,6 +40,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.DyeColor
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
 
@@ -78,7 +86,7 @@ class SubnetBoundaryGameTest {
 		// corner of this compact layout), which is a legal target for the interface's own
 		// self-push (InterfaceHookType.tick) too, muddying which mechanism delivered what. Staying
 		// tight (a single hop each way) also matters on its own: RequesterHookType.tryRequest has
-		// no in-flight-request tracking, so a delivery slower than REQUEST_INTERVAL_TICKS lets a
+		// no in-flight-request tracking, so a delivery slower than the requester interval lets a
 		// second periodic check re-request the same shortfall before the first arrives - confirmed
 		// the hard way with a wider layout (three hops) double-delivering.
 		val destPos = BlockPos(1, 2, -1)
@@ -143,68 +151,495 @@ class SubnetBoundaryGameTest {
 		}
 	}
 
-	/** The whole point of [InterfaceHookType.providesItems] - an interface's own stock, reachable across the very boundary it anchors, shows up as a pullable source the same way an ordinary [ProviderHookType]-tagged chest would. */
-	@GameTest(template = SMALL, timeoutTicks = 60)
-	fun GameTestHelper.testInterfaceStockIsAValidProviderSourceAcrossTheBoundary() {
+	/**
+	 * An interface's stock is reached **through the hook facing it**, and the interface itself is not
+	 * a provider source.
+	 *
+	 * It used to be one, and that defeated the boundary it anchors. [RequestFulfillment.reachablePipes]
+	 * includes a boundary-adjacent position, so the source was visible from the far side as well as
+	 * the near; an [InterfaceHookState] is not a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState], so nothing filtered the pull; and
+	 * because the source *was* the interface, the pull never went through the facing hook at all - a
+	 * network could reach straight past a provider into the stock whatever that provider's filter
+	 * said. What this pins is the shape that replaced it: the provider is the source, and its own
+	 * neighbouring inventory is the interface's stock.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testInterfaceStockIsReachedThroughTheFacingHookNotAsASourceOfItsOwn() {
 		val providerPos = BlockPos(0, 2, 0)
 		val interfacePos = BlockPos(0, 2, 1)
 
 		val provider = hookAt(providerPos)
-		provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() }
+		val providerState = provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
 
 		val interfaceTile = hookAt(interfacePos)
 		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
 		interfaceState.stock.insert(ItemResource.of(ItemStack(Items.DIAMOND)), 7, false)
 
 		succeedWhen {
-			val sources = RequestFulfillment.reachableProviders(level as ServerLevel, absolutePos(providerPos))
-			val interfaceSource = sources.firstOrNull { it.hookState === interfaceState }
-			assertTrue(interfaceSource != null) { "Expected the interface's own hook to register as a reachable provider source, got $sources" }
-			assertTrue(interfaceSource!!.storage(level as ServerLevel, ResourceKindRegistry.Item)?.getAmount(0) == 7L) {
-				"Expected the interface source's own storage() to read its stock directly, got ${interfaceSource.storage(level as ServerLevel, ResourceKindRegistry.Item)}"
+			val serverLevel = level as ServerLevel
+			val sources = RequestFulfillment.reachableProviders(serverLevel, absolutePos(providerPos))
+			assertTrue(sources.none { it.hookState === interfaceState }) {
+				"Expected the interface itself not to be a provider source, got $sources"
+			}
+			val providerSource = sources.firstOrNull { it.hookState === providerState }
+			assertTrue(providerSource != null) { "Expected the facing provider hook to be the source, got $sources" }
+			assertTrue(providerSource!!.storage(serverLevel, ResourceKindRegistry.Item)?.getAmount(0) == 7L) {
+				"Expected the provider's own neighbour to read the interface's stock, got ${providerSource.storage(serverLevel, ResourceKindRegistry.Item)}"
+			}
+		}
+	}
+
+	@GameTest(template = SMALL, timeoutTicks = 600)
+	fun GameTestHelper.testRequestCrossesTheBoundaryAndIsAnsweredByTheFarNetwork() {
+		val providerPos = BlockPos(0, 2, 0)
+		val requesterPos = BlockPos(1, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val destPos = BlockPos(1, 2, -1)
+		val farProviderPos = BlockPos(0, 2, 2)
+		val farSourcePos = BlockPos(0, 2, 3)
+
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+		setBlock(farSourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(farSourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 20))
+
+		val provider = hookAt(providerPos)
+		val providerState = provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		// Opt-in: without this the provider reads the interface as a plain inventory and asks the far
+		// network for nothing at all.
+		providerState.recursive = true
+
+		val requester = hookAt(requesterPos)
+		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 5)
+		placeCreativePressureSource(requesterPos.above())
+
+		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
+
+		val farProvider = hookAt(farProviderPos)
+		val farProviderState = farProvider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		farProviderState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(farProviderPos.above())
+
+		succeedWhen {
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 5) {
+				"Expected 5 diamonds to have crossed the boundary from the far network, got ${dest.getItem(0)}"
+			}
+			val farSource = getBlockEntity(farSourcePos) as ChestBlockEntity
+			assertTrue(farSource.getItem(0).count == 15) {
+				"Expected the far chest to have given up exactly 5, got ${farSource.getItem(0)}"
 			}
 		}
 	}
 
 	/**
-	 * A resource sitting *beyond* the interface - reachable from it via ordinary network-B
-	 * topology, not through the boundary itself - must stay invisible to a network-A request. Only
-	 * what the interface's own [InterfaceHookState.stock] directly exposes crosses the seam; the
-	 * rest of network B does not (`docs/design/m2-sorting-routing.md`'s subnet boundary section).
+	 * With [net.kernelpanicsoft.boilerplate.pipe.hook.ProviderHookState.recursive] off - the default -
+	 * the same layout does nothing at all.
+	 *
+	 * The interface is read as an ordinary neighbouring inventory, which is empty, and the far
+	 * network is never asked. The pair of tests is the whole of the toggle: identical worlds, one
+	 * flag apart, opposite outcomes.
 	 */
-	@GameTest(template = SMALL, timeoutTicks = 100)
-	fun GameTestHelper.testResourcesBeyondInterfaceStayUnreachableFromOuterNetwork() {
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testANonRecursiveProviderLeavesTheFarNetworkAlone() {
 		val providerPos = BlockPos(0, 2, 0)
 		val requesterPos = BlockPos(1, 2, 0)
 		val interfacePos = BlockPos(0, 2, 1)
-		val destPos = BlockPos(1, 2, 1)
-		val deeperProviderPos = BlockPos(0, 2, 2)
-		val deeperSourcePos = BlockPos(0, 2, 3)
+		val destPos = BlockPos(1, 2, -1)
+		val farProviderPos = BlockPos(0, 2, 2)
+		val farSourcePos = BlockPos(0, 2, 3)
+
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
-		setBlock(deeperSourcePos, Blocks.CHEST.defaultBlockState())
-		(getBlockEntity(deeperSourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.GOLD_INGOT, 8))
+		setBlock(farSourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(farSourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 20))
 
 		val provider = hookAt(providerPos)
 		val providerState = provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
 		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
 
 		val requester = hookAt(requesterPos)
-		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.target(ItemResource.of(ItemStack(Items.GOLD_INGOT)), 5)
+		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 5)
+		placeCreativePressureSource(requesterPos.above())
 
 		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
 
-		// deeperProviderPos sits on network B's own ordinary topology (adjacent to interfacePos via
-		// a ordinary pipe connection, not a boundary edge), exposing gold - not through the
-		// interface's own stock at all.
-		val deeperProvider = hookAt(deeperProviderPos)
-		val deeperProviderState = deeperProvider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
-		deeperProviderState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		val farProvider = hookAt(farProviderPos)
+		val farProviderState = farProvider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		farProviderState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(farProviderPos.above())
 
-		runAfterDelay(100) {
+		runAfterDelay(160) {
+			val farSource = getBlockEntity(farSourcePos) as ChestBlockEntity
+			assertTrue(farSource.getItem(0).count == 20) {
+				"Expected a non-recursive provider to have asked the far network for nothing, got ${farSource.getItem(0)}"
+			}
+			assertTrue(providerState.relays.isEmpty()) { "Expected no relay claims at all, got ${providerState.relays}" }
+			succeed()
+		}
+	}
+
+	/**
+	 * A **sync** hook relays exactly as a provider does - recursion belongs to being a source, not to
+	 * one hook type.
+	 *
+	 * Same crossing, same claim, same two legs; the only difference is which hook is holding the
+	 * near side of the seam. A sync hook is [providesItems][net.kernelpanicsoft.boilerplate.pipe.hook.PipeHookType.providesItems]
+	 * and filtered, so it qualifies on both counts.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 600)
+	fun GameTestHelper.testASyncHookRelaysAcrossTheBoundaryToo() {
+		val syncPos = BlockPos(0, 2, 0)
+		val requesterPos = BlockPos(1, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val destPos = BlockPos(1, 2, -1)
+		val farProviderPos = BlockPos(0, 2, 2)
+		val farSourcePos = BlockPos(0, 2, 3)
+
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+		setBlock(farSourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(farSourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 20))
+
+		val sync = hookAt(syncPos)
+		val syncState = sync.hooks.getOrPut(Direction.SOUTH.name) { SyncHookType.createState() } as SortingHookState
+		syncState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		syncState.recursive = true
+
+		val requester = hookAt(requesterPos)
+		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.target(ItemResource.of(ItemStack(Items.DIAMOND)), 5)
+		placeCreativePressureSource(requesterPos.above())
+
+		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
+
+		val farProvider = hookAt(farProviderPos)
+		val farProviderState = farProvider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		farProviderState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(farProviderPos.above())
+
+		succeedWhen {
 			val dest = getBlockEntity(destPos) as ChestBlockEntity
-			assertTrue(dest.getItem(0).isEmpty) {
-				"Expected gold beyond the interface to stay unreachable from the outer network, got ${dest.getItem(0)}"
+			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 5) {
+				"Expected a sync hook to have relayed 5 diamonds across the boundary, got ${dest.getItem(0)}"
+			}
+			val farSource = getBlockEntity(farSourcePos) as ChestBlockEntity
+			assertTrue(farSource.getItem(0).count == 15) {
+				"Expected the far chest to have given up exactly 5, got ${farSource.getItem(0)}"
+			}
+		}
+	}
+
+	/**
+	 * A terminal *lists* what a recursive hook can reach beyond its interface, not merely what sits
+	 * in the interface's own stock.
+	 *
+	 * Crossing and listing are two halves of one feature and were not wired together: requests
+	 * crossed the seam from the first, but the grid was built only from the local network, so a
+	 * terminal could not show - and so could not be asked for - resources it would have fetched
+	 * perfectly well.
+	 *
+	 * The near hook's filter is composed into the walk as well (a resource no crossing on the way
+	 * would carry is not reachable), but this pins only the reach: the hook here is an unfiltered
+	 * blacklist, so both of the far chest's resources should appear.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 100)
+	fun GameTestHelper.testARecursiveHookMakesTheFarNetworkVisibleToATerminal() {
+		val providerPos = BlockPos(0, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val farProviderPos = BlockPos(0, 2, 2)
+		val farSourcePos = BlockPos(0, 2, 3)
+
+		setBlock(farSourcePos, Blocks.CHEST.defaultBlockState())
+		val farChest = getBlockEntity(farSourcePos) as ChestBlockEntity
+		farChest.setItem(0, ItemStack(Items.DIAMOND, 9))
+		farChest.setItem(1, ItemStack(Items.GOLD_INGOT, 4))
+
+		val provider = hookAt(providerPos)
+		val providerState = provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		providerState.recursive = true
+		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(providerPos.above())
+
+		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
+
+		val farProvider = hookAt(farProviderPos)
+		val farProviderState = farProvider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		farProviderState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(farProviderPos.above())
+
+		succeedWhen {
+			val listed = reachableStock(level as ServerLevel, absolutePos(providerPos))
+			val diamonds = listed.firstOrNull { (it.resource as? ItemResource)?.item == Items.DIAMOND }
+			assertTrue(diamonds != null && diamonds.amount == 9L) {
+				"Expected the far network's 9 diamonds to be listed across the recursive boundary, got $listed"
+			}
+			val gold = listed.firstOrNull { (it.resource as? ItemResource)?.item == Items.GOLD_INGOT }
+			assertTrue(gold != null && gold.amount == 4L) {
+				"Expected the far network's 4 gold ingots to be listed too, got $listed"
+			}
+		}
+	}
+
+	/**
+	 * A delivery crosses **inward** to the destination it was addressed to, not to whichever one the
+	 * far network's routing likes best.
+	 *
+	 * The mirror of the outward relay, and the half that makes a far pattern provider feedable. Leg 1
+	 * is an ordinary delivery into the interface's stock on the sending side; leg 2 is the interface
+	 * pushing it on, down the far network's own pipes, to the addressed position - see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.InboundClaim].
+	 *
+	 * The geometry is what makes it a real test: **two** chests sit on the far network and the
+	 * *farther* one is addressed. An interface draining ordinary excess would prefer the nearer chest
+	 * at equal priority, so the resource arriving in the far one can only be the claim being honoured.
+	 * Leg 1 is stood in for by inserting into the stock directly, so this pins the addressing rather
+	 * than re-testing delivery.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testAnInwardCrossingDeliversToTheAddressedDestination() {
+		val syncPos = BlockPos(0, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val nearFarPipe = BlockPos(0, 2, 2)
+		val deepFarPipe = BlockPos(0, 2, 3)
+		val wrongChest = BlockPos(1, 2, 2)
+		val addressedChest = BlockPos(1, 2, 3)
+
+		setBlock(wrongChest, Blocks.CHEST.defaultBlockState())
+		setBlock(addressedChest, Blocks.CHEST.defaultBlockState())
+
+		val sync = hookAt(syncPos)
+		val syncState = sync.hooks.getOrPut(Direction.SOUTH.name) { SyncHookType.createState() } as SortingHookState
+		syncState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		syncState.recursive = true
+		placeCreativePressureSource(syncPos.above())
+
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+
+		hookAt(nearFarPipe)
+		hookAt(deepFarPipe)
+		placeCreativePressureSource(deepFarPipe.above())
+
+		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
+		// A hook's `active` is set on its own tick, so the crossing does not exist until the hooks
+		// have drawn pressure at least once - addressing one on the setup tick finds nothing.
+		runAfterDelay(20) {
+			val leg1 = RequestFulfillment.pushAcrossBoundaries(
+				level as ServerLevel,
+				absolutePos(syncPos),
+				ResourceStack(diamond as ResourceComponent, 5),
+				absolutePos(addressedChest),
+			)
+			assertTrue(leg1 != null) { "Expected a push-capable crossing to offer a first leg toward the far chest" }
+			// Leg 1 having landed.
+			interfaceState.stock.insert(diamond, 5, false)
+		}
+
+		runAfterDelay(160) {
+			val addressed = getBlockEntity(addressedChest) as ChestBlockEntity
+			assertTrue(addressed.getItem(0).`is`(Items.DIAMOND) && addressed.getItem(0).count == 5) {
+				"Expected the addressed far chest to have received the 5 diamonds, got ${addressed.getItem(0)}"
+			}
+			val wrong = getBlockEntity(wrongChest) as ChestBlockEntity
+			assertTrue(wrong.getItem(0).isEmpty) {
+				"Expected the nearer far chest to have been left alone, got ${wrong.getItem(0)}"
+			}
+			succeed()
+		}
+	}
+
+	/**
+	 * A crossing reports **nothing** dispatched, and records a claim instead.
+	 *
+	 * The invariant the whole seam now rests on. "Dispatched" means a resource is on its way to the
+	 * caller's own destination and may be counted against what it asked for; a crossing has only
+	 * begun a journey that completes minutes later, across two networks and possibly a reload. A
+	 * caller told otherwise acts on a promise this cannot keep - a terminal mints a reservation for a
+	 * trip that has not started, and two legs later the arrival lands against a reservation nobody
+	 * owns and jams. That happened twice before the reservation was taken out of the crossing
+	 * altogether.
+	 *
+	 * What owns the order from here is the claim, and the caller simply asks again next cycle.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testACrossingReportsNothingDispatchedAndClaimsInstead() {
+		val providerPos = BlockPos(0, 2, 0)
+		val askerPos = BlockPos(1, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val destPos = BlockPos(1, 2, -1)
+		val farProviderPos = BlockPos(0, 2, 2)
+		val farSourcePos = BlockPos(0, 2, 3)
+
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+		setBlock(farSourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(farSourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 20))
+
+		val provider = hookAt(providerPos)
+		val providerState = provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		providerState.recursive = true
+
+		hookAt(askerPos)
+		placeCreativePressureSource(askerPos.above())
+
+		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
+
+		val farProvider = hookAt(farProviderPos)
+		val farProviderState = farProvider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		farProviderState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(farProviderPos.above())
+
+		val reported = mutableListOf<Long>()
+		runAfterDelay(20) {
+			val dispatched = RequestFulfillment.request(
+				level as ServerLevel,
+				absolutePos(askerPos),
+				ResourceStack(ItemResource.of(ItemStack(Items.DIAMOND)) as ResourceComponent, 5),
+				absolutePos(destPos),
+				null,
+				1L,
+			) { _, _, actual -> reported += actual }
+
+			assertTrue(dispatched == 0L) {
+				"Expected a crossing to report nothing dispatched - a caller that counts it acts on a promise the crossing cannot keep, got $dispatched"
+			}
+			assertTrue(reported.isEmpty()) {
+				"Expected no dispatch callback for a crossing, got $reported"
+			}
+			// It did happen, though: the order is now the claim's.
+			val relays = (provider.hooks[Direction.SOUTH.name] as ProviderHookState).relays
+			assertTrue(relays.any { it.amount > 0 }) {
+				"Expected the crossing to have recorded a claim owning the order, got $relays"
+			}
+			assertTrue(relays.none { it.deliverTo != absolutePos(destPos) }) {
+				"Expected the claim to carry the caller's own destination, got $relays"
+			}
+			succeed()
+		}
+	}
+
+	/**
+	 * The far side of a crossing served by a **warehouse** rather than a provider-backed chest.
+	 *
+	 * A different code path end to end: a warehouse queues a gantry job, and only once the crane has
+	 * fetched the cargo does the controller try to ship it down a pipe. That shipment used to be
+	 * attempted exactly once, so a route unavailable at that instant stranded the retrieval in the
+	 * outbound buffer with nothing to retry it - which is what this test found when it was first
+	 * written, and why [WarehouseControllerBlockEntity] now keeps shipments queued.
+	 *
+	 * The other crossing tests all use a provider hook, which is served synchronously; without this
+	 * one, the entire asynchronous half of the feature went untested.
+	 */
+	@GameTest(template = MEDIUM, timeoutTicks = 800)
+	fun GameTestHelper.testACrossingIsServedByAWarehouseOnTheFarSide() {
+		val providerPos = BlockPos(0, 2, 0)
+		val askerPos = BlockPos(1, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val destPos = BlockPos(1, 2, -1)
+		val farPipePos = BlockPos(0, 2, 2)
+		val controllerPos = BlockPos(0, 2, 3)
+		val rackPos = BlockPos(0, 2, 4)
+
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(rackPos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 12))
+
+		val provider = hookAt(providerPos)
+		val providerState = provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		providerState.recursive = true
+
+		hookAt(askerPos)
+		placeCreativePressureSource(askerPos.above())
+
+		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
+		hookAt(farPipePos)
+		placeCreativePressureSource(farPipePos.above())
+
+		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())
+		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
+		controller.bounds = Bounds.of(absolutePos(controllerPos), absolutePos(rackPos))
+		placeCreativePressureSource(controllerPos.above())
+
+		runAfterDelay(40) {
+			RequestFulfillment.request(
+				level as ServerLevel,
+				absolutePos(askerPos),
+				ResourceStack(ItemResource.of(ItemStack(Items.DIAMOND)) as ResourceComponent, 5),
+				absolutePos(destPos),
+			)
+		}
+
+		succeedWhen {
+			val dest = getBlockEntity(destPos) as ChestBlockEntity
+			assertTrue(dest.getItem(0).`is`(Items.DIAMOND) && dest.getItem(0).count == 5) {
+				"Expected 5 diamonds fetched by the far warehouse to have crossed, got ${dest.getItem(0)}"
+			}
+		}
+	}
+
+	/**
+	 * A second identical **one-shot** request orders that much again, rather than being capped
+	 * against the first.
+	 *
+	 * A standing order asks for a level to be *held*, so what is already crossing counts against it -
+	 * that is what stops a requester re-asking mid-delivery and ordering a second lot. A withdrawal is
+	 * the opposite: each click is its own order for that much more. Conflating the two made an
+	 * identical second request appear to do nothing at all, including after the first had already
+	 * arrived, because a discharged claim lingers briefly to cover the delivery still in the pipe.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 200)
+	fun GameTestHelper.testASecondOneShotRequestIsNotCappedAgainstTheFirst() {
+		val providerPos = BlockPos(0, 2, 0)
+		val askerPos = BlockPos(1, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val destPos = BlockPos(1, 2, -1)
+		val farProviderPos = BlockPos(0, 2, 2)
+		val farSourcePos = BlockPos(0, 2, 3)
+
+		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+		setBlock(farSourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(farSourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.DIAMOND, 40))
+
+		val provider = hookAt(providerPos)
+		val providerState = provider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		providerState.recursive = true
+
+		hookAt(askerPos)
+		placeCreativePressureSource(askerPos.above())
+
+		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
+
+		val farProvider = hookAt(farProviderPos)
+		val farProviderState = farProvider.hooks.getOrPut(Direction.SOUTH.name) { ProviderHookType.createState() } as ProviderHookState
+		farProviderState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(farProviderPos.above())
+
+		fun GameTestHelper.ask(oneShot: Boolean) = RequestFulfillment.request(
+			level as ServerLevel,
+			absolutePos(askerPos),
+			ResourceStack(ItemResource.of(ItemStack(Items.DIAMOND)) as ResourceComponent, 5),
+			absolutePos(destPos),
+			oneShot = oneShot,
+		)
+
+		runAfterDelay(20) {
+			ask(oneShot = true)
+			ask(oneShot = true)
+			val claimed = (provider.hooks[Direction.SOUTH.name] as ProviderHookState).relays.sumOf { it.amount + it.settling }
+			assertTrue(claimed == 10L) {
+				"Expected two one-shot requests to have ordered 5 each, got $claimed claimed"
+			}
+
+			// A standing order asked twice is still the same order, and must not double up.
+			val before = (provider.hooks[Direction.SOUTH.name] as ProviderHookState).relays.sumOf { it.amount + it.settling }
+			ask(oneShot = false)
+			val after = (provider.hooks[Direction.SOUTH.name] as ProviderHookState).relays.sumOf { it.amount + it.settling }
+			assertTrue(after == before) {
+				"Expected a standing re-ask to add nothing while $before is already crossing, got $after"
 			}
 			succeed()
 		}
@@ -352,37 +787,112 @@ class SubnetBoundaryGameTest {
 		}
 	}
 
-	@GameTest(template = SMALL, timeoutTicks = 400)
-	fun GameTestHelper.testRequesterHookSuppliesInterface() {
-		val interfacePos = BlockPos(0, 2, 0)
-		val requesterPos = BlockPos(0, 2, 1)
-		val sourcePos = BlockPos(1, 2, 1)
+	/**
+	 * A requester facing an interface stocks the far subnet's **destinations**, not the seam.
+	 *
+	 * An interface is a junction, not a machine. Stocking it fills a reservoir on the boundary that
+	 * the far side then has to distribute for itself - a row saying "keep 64 netherite" left all 64
+	 * sitting on the seam while the chests behind it stayed empty. What the row means is "keep the
+	 * things behind here supplied", so both far chests are stocked in parallel and the interface's
+	 * own stock is only ever a staging post the deliveries pass through.
+	 */
+	@GameTest(template = MEDIUM, timeoutTicks = 800)
+	fun GameTestHelper.testARequesterStocksTheFarSubnetsDestinationsNotTheSeam() {
+		val requesterPos = BlockPos(0, 2, 0)
+		val sourcePos = BlockPos(1, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val farPipePos = BlockPos(0, 2, 2)
+		val farChestA = BlockPos(1, 2, 2)
+		val farChestB = BlockPos(-1, 2, 2)
+
 		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
 		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.NETHERITE_INGOT, 64))
-
-		val interfaceTile = hookAt(interfacePos)
-		val interfaceState = interfaceTile.hooks.getOrPut(Direction.SOUTH.name) { InterfaceHookType.createState() } as InterfaceHookState
-		// Deliberately left with no targets of its own. A requester facing an interface is what
-		// decides that boundary's contents (see RequesterHookType), and this test is what pins that:
-		// the stocking below happens entirely off the requester's row.
+		setBlock(farChestA, Blocks.CHEST.defaultBlockState())
+		setBlock(farChestB, Blocks.CHEST.defaultBlockState())
 
 		val requester = hookAt(requesterPos)
-		val requesterState = requester.hooks.getOrPut(Direction.NORTH.name) { RequesterHookType.createState() } as RequesterHookState
-		requesterState.target(ItemResource.of(ItemStack(Items.NETHERITE_INGOT)), 64)
-		// A provider on the requester's own tile, facing sourcePos, gives RequestFulfillment
-		// something to actually pull the shortfall from - a plain chest by itself isn't a source
-		// until something opts it into being one (`docs/design/m3-warehouse-storage.md`).
+		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.target(ItemResource.of(ItemStack(Items.NETHERITE_INGOT)), 4)
+		// A provider on the requester's own tile, facing sourcePos, gives RequestFulfillment something
+		// to pull the shortfall from - a plain chest is not a source until something opts it in.
 		val providerState = requester.hooks.getOrPut(Direction.EAST.name) { ProviderHookType.createState() } as ProviderHookState
 		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
 		placeCreativePressureSource(requesterPos.above())
 
+		val interfaceTile = hookAt(interfacePos)
+		val interfaceState = interfaceTile.hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() } as InterfaceHookState
+		hookAt(farPipePos)
+		placeCreativePressureSource(farPipePos.above())
+
+		// `setBlock` skips placement logic, so every pipe lands with its connection bits false and
+		// nothing routes between them until they are recomputed - see placeCraftingBuffer.
+		for (pipe in listOf(requesterPos, interfacePos, farPipePos)) {
+			val at = absolutePos(pipe)
+			val serverLevel = level as ServerLevel
+			serverLevel.setBlock(at, Block.updateFromNeighbourShapes(serverLevel.getBlockState(at), serverLevel, at), Block.UPDATE_ALL)
+		}
+
 		succeedWhen {
-			val source = getBlockEntity(sourcePos) as ChestBlockEntity
-			assertTrue(source.getItem(0).isEmpty || source.getItem(0).count < 64) {
-				"Expected the requester to have started pulling netherite ingots from its own source to supply the interface, got ${source.getItem(0)}"
+			val a = (getBlockEntity(farChestA) as ChestBlockEntity).getItem(0)
+			val b = (getBlockEntity(farChestB) as ChestBlockEntity).getItem(0)
+			assertTrue(a.`is`(Items.NETHERITE_INGOT) && a.count == 4) {
+				"Expected the first far chest to have been stocked to the row's own amount, got $a"
 			}
-			assertTrue(interfaceState.stock.getAmount(0) == 64L) {
-				"Expected the interface's netherite slot to have been topped up to the requester's own target (64), got ${interfaceState.stock.getAmount(0)}"
+			assertTrue(b.`is`(Items.NETHERITE_INGOT) && b.count == 4) {
+				"Expected the second far chest to have been stocked in parallel, got $b"
+			}
+			assertTrue(interfaceState.stock.getAmount(0) == 0L) {
+				"Expected the interface to be a staging post, not the thing stocked, got ${interfaceState.stock.getAmount(0)}"
+			}
+		}
+	}
+
+	/**
+	 * [ParallelStocking.SPLIT] reads the row's amount as a total for the far subnet rather than a
+	 * level to hold at each of its destinations.
+	 *
+	 * The same world as the test above, one setting apart: six netherite between two chests instead
+	 * of six in each. Which reading a build wants is genuinely a preference - a row of furnaces each
+	 * wants its own buffer, while something scarce should not have twice as much of it committed as
+	 * the process needs in flight - so it is a choice rather than a rule.
+	 */
+	@GameTest(template = MEDIUM, timeoutTicks = 800)
+	fun GameTestHelper.testSplitStockingSharesTheRowAcrossTheFarSubnet() {
+		val requesterPos = BlockPos(0, 2, 0)
+		val sourcePos = BlockPos(1, 2, 0)
+		val interfacePos = BlockPos(0, 2, 1)
+		val farPipePos = BlockPos(0, 2, 2)
+		val farChestA = BlockPos(1, 2, 2)
+		val farChestB = BlockPos(-1, 2, 2)
+
+		setBlock(sourcePos, Blocks.CHEST.defaultBlockState())
+		(getBlockEntity(sourcePos) as ChestBlockEntity).setItem(0, ItemStack(Items.NETHERITE_INGOT, 64))
+		setBlock(farChestA, Blocks.CHEST.defaultBlockState())
+		setBlock(farChestB, Blocks.CHEST.defaultBlockState())
+
+		val requester = hookAt(requesterPos)
+		val requesterState = requester.hooks.getOrPut(Direction.SOUTH.name) { RequesterHookType.createState() } as RequesterHookState
+		requesterState.target(ItemResource.of(ItemStack(Items.NETHERITE_INGOT)), 6)
+		requesterState.parallel = ParallelStocking.SPLIT
+		val providerState = requester.hooks.getOrPut(Direction.EAST.name) { ProviderHookType.createState() } as ProviderHookState
+		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
+		placeCreativePressureSource(requesterPos.above())
+
+		hookAt(interfacePos).hooks.getOrPut(Direction.NORTH.name) { InterfaceHookType.createState() }
+		hookAt(farPipePos)
+		placeCreativePressureSource(farPipePos.above())
+
+		for (pipe in listOf(requesterPos, interfacePos, farPipePos)) {
+			val at = absolutePos(pipe)
+			val serverLevel = level as ServerLevel
+			serverLevel.setBlock(at, Block.updateFromNeighbourShapes(serverLevel.getBlockState(at), serverLevel, at), Block.UPDATE_ALL)
+		}
+
+		succeedWhen {
+			val a = (getBlockEntity(farChestA) as ChestBlockEntity).getItem(0)
+			val b = (getBlockEntity(farChestB) as ChestBlockEntity).getItem(0)
+			assertTrue(a.count == 3 && b.count == 3) {
+				"Expected 6 shared out as 3 and 3 across the far subnet, got $a and $b"
 			}
 		}
 	}
@@ -618,9 +1128,9 @@ class SubnetBoundaryGameTest {
 	}
 
 	private fun buildItemCard(stack: ItemStack): ItemStack {
-		val itemCard = ItemStack(ItemRegistry.ItemFilterCard)
+		val itemCard = ItemStack(ItemRegistry.ResourceFilterCard)
 		FilterCardState(itemCard).apply {
-			(currentState() as ItemConditionState).itemMatches[0] = ItemResource.of(stack)
+			(currentState() as ResourceConditionState).resourceMatches[0] = ItemResource.of(stack)
 			touchCurrentState()
 		}
 		return itemCard

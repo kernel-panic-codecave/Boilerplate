@@ -6,8 +6,8 @@ import net.kernelpanicsoft.boilerplate.crafting.CraftStep
 import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
-import net.kernelpanicsoft.boilerplate.util.resourceCell
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.item.ItemStack

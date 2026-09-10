@@ -8,6 +8,7 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.crafting.*
 import net.kernelpanicsoft.boilerplate.network.*
+import net.kernelpanicsoft.boilerplate.resource.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.hook.CraftingTerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternTerminalHookState
@@ -88,16 +89,23 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 		BoilerplateNetworkChannel.toPlayer(player as ServerPlayer, PatternGridPreviewPacket(InstantCrafting.match(level, grid)))
 	}
 
-	/** [direction]'s current pattern kind, read once when the screen opens - same "not wired into live sync" reasoning as [currentGhostInputs]. */
+	/** [direction]'s current pattern kind - live, for the reason [currentGhostInputs] gives. */
 	fun currentPatternKind(): PatternKind = (tile.hooks[direction.name] as? PatternTerminalHookState)?.patternKind ?: PatternKind.CRAFTING
 
-	/** [direction]'s current ghost input grid, read once when the screen opens - same "not wired into live sync" reasoning as [net.kernelpanicsoft.boilerplate.pipe.gui.SortingHookMenu.currentFilter]. */
+	/**
+	 * [direction]'s current ghost input grid.
+	 *
+	 * Answers from the hook state, which is `@Sync`'d - so this is live on the client and worth
+	 * asking again, not a snapshot taken when the screen opened. [PatternTerminalHookScreen] polls
+	 * it for exactly that reason: a grid changed from outside the screen - a pattern loaded into the
+	 * result slot, another player, the server correcting an edit - reaches it no other way.
+	 */
 	fun currentGhostInputs(): List<Pair<ResourceComponent, Long>> {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK to 1L }
 		return state.ghostInputs.zip(state.ghostInputAmounts)
 	}
 
-	/** [direction]'s current (up to 9) ghost outputs, read once when the screen opens - same caveat as [currentGhostInputs]. Only meaningful in [PatternKind.PROCESSING]. */
+	/** [direction]'s current (up to 9) ghost outputs - live, as [currentGhostInputs] is. Only meaningful in [PatternKind.PROCESSING]. */
 	fun currentGhostOutputs(): List<Pair<ResourceComponent, Long>> {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return List(PatternTerminalHookState.GRID_SIZE) { ItemResource.BLANK to 1L }
 		return state.ghostOutputs.zip(state.ghostOutputAmounts)
@@ -109,9 +117,8 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 	 *
 	 * Readable on either side: the slot is a real vanilla-[net.minecraft.world.inventory.Slot]-backed
 	 * one over [PatternTerminalHookState.patternOutput], so its contents reach the client through
-	 * ordinary menu syncing rather than through the hooks map (which the screen only ever reads
-	 * once - see [currentGhostInputs]). That is what lets the *screen* notice a pattern being put
-	 * back in and load it, without any new packet in either direction.
+	 * ordinary menu syncing rather than through the hooks map. That is what lets the *screen* notice
+	 * a pattern being put back in and load it, without any new packet in either direction.
 	 */
 	fun encodedPatternInOutput(): Pattern? {
 		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return null

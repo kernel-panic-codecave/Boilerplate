@@ -3,6 +3,7 @@ package net.kernelpanicsoft.boilerplate.network
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftTreeMenu
 import net.minecraft.client.Minecraft
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /**
  * One node of a [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob]'s tree, built by

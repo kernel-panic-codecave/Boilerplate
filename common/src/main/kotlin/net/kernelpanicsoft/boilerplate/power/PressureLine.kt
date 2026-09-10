@@ -53,21 +53,56 @@ object PressureLine {
 			manager.networkIdAt(from.relative(direction))?.let { networkIds += it }
 		}
 
+		if (level.gameTime != cachedTick) {
+			endpointsByNetwork.clear()
+			cachedTick = level.gameTime
+		}
 		for (networkId in networkIds) {
-			val network = manager.network(networkId) ?: continue
-			for (memberPos in network.members) {
-				// A tank/compressor encasement *is* a member itself (unlike an item pipe's own
-				// endpoints, always a separate non-pipe neighbor) - check the member's own position
-				// first, then its neighbors for a hypothetical external (non-`PressurePipeBlock`)
-				// energy-exposing block sitting adjacent to the network, symmetric to how item pipes
-				// reach an ordinary chest.
-				(PressureApi.BLOCK.find(level, memberPos, Direction.NORTH) as? ArchieEnergyStorage)?.let { return it }
-				for (probeDirection in Direction.entries) {
-					val storage = PressureApi.BLOCK.find(level, memberPos.relative(probeDirection), probeDirection.opposite) as? ArchieEnergyStorage ?: continue
-					return storage
-				}
+			if (networkId in endpointsByNetwork) {
+				endpointsByNetwork[networkId]?.let { return it }
+				continue
+			}
+			val found = endpointOf(level, manager, networkId)
+			endpointsByNetwork[networkId] = found
+			if (found != null) return found
+		}
+		return null
+	}
+
+	/** The first endpoint reachable on [networkId], scanning its members - the uncached body of [find]. */
+	private fun endpointOf(level: ServerLevel, manager: PressurePipeNetworkManager, networkId: UUID): ArchieEnergyStorage? {
+		val network = manager.network(networkId) ?: return null
+		for (memberPos in network.members) {
+			// A tank/compressor encasement *is* a member itself (unlike an item pipe's own
+			// endpoints, always a separate non-pipe neighbor) - check the member's own position
+			// first, then its neighbors for a hypothetical external (non-`PressurePipeBlock`)
+			// energy-exposing block sitting adjacent to the network, symmetric to how item pipes
+			// reach an ordinary chest.
+			(PressureApi.BLOCK.find(level, memberPos, Direction.NORTH) as? ArchieEnergyStorage)?.let { return it }
+			for (probeDirection in Direction.entries) {
+				val storage = PressureApi.BLOCK.find(level, memberPos.relative(probeDirection), probeDirection.opposite) as? ArchieEnergyStorage ?: continue
+				return storage
 			}
 		}
 		return null
 	}
+
+	/**
+	 * [endpointOf]'s answer per network, for the one server tick [cachedTick] names.
+	 *
+	 * A scan walks every member of a network doing up to seven capability lookups apiece, and the
+	 * callers are per-tick ones asking on behalf of every hook and every consumer on the same
+	 * network - so the same walk was being repeated dozens of times per tick for an answer that
+	 * cannot differ between them. Held for a single tick rather than until the topology changes,
+	 * because an endpoint can appear or vanish without the network's own membership changing at all
+	 * (a compressor placed against a pipe run is not a member of it); one tick's staleness is
+	 * indistinguishable from the ordering that already decides which consumer asks first.
+	 *
+	 * Keyed by network id alone, with no level in the key: ids are unique per network across every
+	 * level, so two dimensions ticking at the same game time cannot collide. Cleared wholesale on
+	 * the first call of each tick, which is also what keeps dead networks from accumulating.
+	 */
+	private val endpointsByNetwork = HashMap<UUID, ArchieEnergyStorage?>()
+
+	private var cachedTick = Long.MIN_VALUE
 }

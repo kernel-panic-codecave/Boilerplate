@@ -3,6 +3,7 @@ package net.kernelpanicsoft.boilerplate.network
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.boilerplate.crafting.gui.CraftingBufferMenu
 import net.minecraft.client.Minecraft
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /** One [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob] currently running on the cluster a [CraftingBufferMenu] is open on - [tree] is its own [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob.toTree], `null` for a steps-empty (pure stock) job. */
 @Serializable

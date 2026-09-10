@@ -6,6 +6,7 @@ import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 
 /** Client -> server: withdraw [stack]'s resource/count from whichever [AbstractTerminalHookMenu] the requesting player currently has open. */
 @Serializable

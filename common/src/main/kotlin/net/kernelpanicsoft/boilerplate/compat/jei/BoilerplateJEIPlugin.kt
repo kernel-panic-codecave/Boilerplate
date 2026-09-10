@@ -25,7 +25,6 @@ import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
-import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.renderer.Rect2i
 import net.minecraft.network.chat.Component

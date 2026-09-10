@@ -5,14 +5,11 @@ import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import earth.terrarium.common_storage_lib.storage.base.StorageSlot
-import net.kernelpanicsoft.archie.transfer.ArchieFluidStorage
-import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.network.RoutingDemand
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.power.PressureConsumer
 import net.minecraft.core.BlockPos
@@ -142,11 +139,6 @@ abstract class CraftingCpuMemberState(defaultType: ResourceLocation) : Encasemen
 
 	/** See [basePressureCost]. */
 	override val maxPressureDraw: Long get() = if (activeJob != null) BoilerplateConfig.Gameplay.Crafting.cpuMaxPressureDraw else 0
-
-	companion object {
-		private const val BASE_PRESSURE_COST = 10L
-		private const val MAX_PRESSURE_DRAW = 20L
-	}
 }
 
 /** The Crafting CPU member (buffer or tank) wrapping the pipe segment at [pos], or `null` if that segment carries neither. */

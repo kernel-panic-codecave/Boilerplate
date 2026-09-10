@@ -6,8 +6,8 @@ import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
 import net.kernelpanicsoft.archie.serialization.Sync
 import net.kernelpanicsoft.archie.serialization.field
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
-import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
-import net.kernelpanicsoft.boilerplate.network.SItemResource
+import net.kernelpanicsoft.boilerplate.resource.ItemResourceSerializer
+import net.kernelpanicsoft.boilerplate.resource.SItemResource
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
 import net.kernelpanicsoft.boilerplate.registry.TileRegistry

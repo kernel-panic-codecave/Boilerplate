@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
-import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
+import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
 

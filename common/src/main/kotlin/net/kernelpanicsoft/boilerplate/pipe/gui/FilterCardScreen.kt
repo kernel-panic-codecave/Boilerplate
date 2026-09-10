@@ -3,7 +3,7 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import androidx.compose.runtime.Composable
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.composables.containers.ContainerPanel
-import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
+import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FILTER_CARD_CONTENT_WIDTH
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardEditor
 import net.minecraft.network.chat.Component

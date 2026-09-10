@@ -5,7 +5,6 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
@@ -25,7 +24,7 @@ import net.minecraft.world.item.ItemStack
  * it into a container is a click the player makes when they want to.
  *
  * Both directions ask the *kinds* what a container is
- * ([net.kernelpanicsoft.boilerplate.network.ResourceStorageKind.findInItem]) rather than matching
+ * ([net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind.findInItem]) rather than matching
  * against any list of items, so a bucket, a Mekanism tank and another mod's canister all work here
  * without Boilerplate knowing what any of them are.
  */
@@ -57,12 +56,33 @@ fun fillContainerFromInbox(state: TerminalHookState, column: Int, carried: ItemS
 }
 
 /**
- * Sends everything the container [carried] is holding out into the network, returning the emptied
- * stack - a bare bucket for a water one - or `null` if it holds nothing routable.
+ * What a drain attempt found - three outcomes, not two, because the caller has to treat them
+ * differently.
+ *
+ * "Not a container at all" is a mistaken gesture and falls back to storing the item; "a container
+ * with nowhere to send its contents" is the gesture working exactly as asked and finding no route,
+ * and must **not** fall back to storing it. Collapsing the two into `null` is what had a
+ * right-click over a full chemical tank quietly deposit the tank itself the moment its chemical had
+ * no reachable destination.
+ */
+sealed interface DrainResult {
+	/** [carried] is not a container of any registered kind - there was nothing here to drain. */
+	data object NotAContainer : DrainResult
+
+	/** A container, but nothing in it has anywhere to go right now - the network cannot route it. */
+	data object NothingRoutable : DrainResult
+
+	/** Drained, leaving the player holding [emptied]. */
+	data class Drained(val emptied: ItemStack) : DrainResult
+}
+
+/**
+ * Sends everything the container [carried] is holding out into the network.
  *
  * Each kind goes over its own network, exactly as an ordinary deposit does. A container whose
  * contents have nowhere to go is left alone rather than partly drained: the extract only happens
- * once a route exists.
+ * once a route exists, and the result says so rather than looking like "this was never a container"
+ * - see [DrainResult].
  */
 fun drainContainerIntoNetwork(
 	level: ServerLevel,
@@ -70,13 +90,17 @@ fun drainContainerIntoNetwork(
 	direction: Direction,
 	tile: MultipartBlockEntity,
 	carried: ItemStack,
-): ItemStack? {
-	if (carried.isEmpty) return null
+): DrainResult {
+	if (carried.isEmpty) return DrainResult.NotAContainer
 	val holder = carrying(carried)
+	// Whether anything at all recognised the carried stack as its own kind of container - what tells
+	// "nothing to drain" apart from "nothing routable" at the end.
+	var isContainer = false
 	var moved = false
 	for (kind in ResourceKindRegistry.storageKinds()) {
 		val storageKind = kind.storage ?: continue
 		val container = storageKind.findInItem(holder, 0) ?: continue
+		isContainer = true
 		for (index in 0 until container.size()) {
 			val resource = container.getResource(index) as ResourceComponent
 			if (resource.isBlank) continue
@@ -85,17 +109,21 @@ fun drainContainerIntoNetwork(
 			val route = networkType.route(level, pos, ResourceStack(resource, held)) ?: continue
 			val sent = storageKind.extract(container, resource, held, false)
 			if (sent <= 0L) continue
-			tile.travelingItems += TravelingItem(ResourceStack(resource, sent), direction, 0f, route)
+			tile.acceptEntry(ResourceStack(resource, sent), direction, route)
 			ResourceTrace.moved(pos, "terminal.dump", resource, held, sent, "to" to route.last())
 			moved = true
 		}
 	}
-	return if (moved) holder[0].getItem() else null
+	return when {
+		moved -> DrainResult.Drained(holder[0].getItem())
+		isContainer -> DrainResult.NothingRoutable
+		else -> DrainResult.NotAContainer
+	}
 }
 
 /**
  * [stack] in a one-slot storage, which is the shape
- * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind.findInItem] resolves a container
+ * [net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind.findInItem] resolves a container
  * against.
  *
  * A holder rather than the bare stack because filling or draining a container *rewrites the item* -

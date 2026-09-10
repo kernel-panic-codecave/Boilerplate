@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.networking.IPacketContext
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /**
  * Client -> server: request [amount] of [resource] via [net.kernelpanicsoft.boilerplate.crafting.CraftingRequest]

@@ -2,7 +2,6 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.Scrollable
 import net.kernelpanicsoft.archie.gui.composables.input.Button
@@ -16,13 +15,12 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.height
 import net.kernelpanicsoft.archie.gui.modifiers.input.hoverable
 import net.kernelpanicsoft.archie.gui.modifiers.width
-import net.kernelpanicsoft.boilerplate.network.SItemResource
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
-import net.kernelpanicsoft.boilerplate.network.displayName
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.displayName
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 private const val COLUMNS = 9

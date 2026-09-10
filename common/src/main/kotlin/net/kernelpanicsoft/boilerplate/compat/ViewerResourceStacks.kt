@@ -4,7 +4,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 
 /**
- * How a resource of some [net.kernelpanicsoft.boilerplate.network.ResourceKind] is handed to a
+ * How a resource of some [net.kernelpanicsoft.boilerplate.resource.ResourceKind] is handed to a
  * recipe viewer, so "view recipes" works on every row the terminal lists rather than only the item
  * ones.
  *
@@ -13,7 +13,7 @@ import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
  * neutral handle to convert to. What *is* shared is the shape of the problem: a lookup from kind to
  * that viewer's own representation, which an addon kind can add itself.
  *
- * Keyed by [net.kernelpanicsoft.boilerplate.network.ResourceKind.kindTag] rather than by the kind
+ * Keyed by [net.kernelpanicsoft.boilerplate.resource.ResourceKind.kindTag] rather than by the kind
  * instance so registration order does not matter and an addon needs no reference to the kind object
  * it is describing.
  *

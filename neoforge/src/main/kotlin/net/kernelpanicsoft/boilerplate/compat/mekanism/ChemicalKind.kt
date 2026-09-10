@@ -2,7 +2,8 @@ package net.kernelpanicsoft.boilerplate.compat.mekanism
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import kotlinx.serialization.KSerializer
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceMeasure
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.tags.TagKey
@@ -11,8 +12,8 @@ import net.minecraft.tags.TagKey
  * Mekanism chemicals, as a [ResourceKind] - registered as `chemical` by [ChemicalResourceKindRegistry].
  *
  * A named object in a file of its own, the same shape
- * [net.kernelpanicsoft.boilerplate.registry.ItemKind] and
- * [net.kernelpanicsoft.boilerplate.registry.FluidKind] take, and beside the [ChemicalStorageKind]
+ * [net.kernelpanicsoft.boilerplate.resource.ItemKind] and
+ * [net.kernelpanicsoft.boilerplate.resource.FluidKind] take, and beside the [ChemicalStorageKind]
  * and [ChemicalDisplayKind] it points at.
  *
  * NeoForge-only, because Mekanism is. Nothing in `common` knows this exists.
@@ -21,6 +22,9 @@ object ChemicalKind : ResourceKind() {
 	override val kindTag: String get() = "chemical"
 
 	override val resourceClass: Class<out ResourceComponent> get() = ChemicalResource::class.java
+
+	/** Measured in the same millibuckets a fluid is - see [ResourceMeasure.UNIT]. */
+	override val measure get() = ResourceMeasure.UNIT
 
 	override val storage get() = ChemicalStorageKind
 

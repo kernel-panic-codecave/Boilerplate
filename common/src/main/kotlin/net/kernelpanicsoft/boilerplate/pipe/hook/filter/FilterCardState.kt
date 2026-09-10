@@ -24,7 +24,7 @@ class FilterCardState(stack: ItemStack) {
 	private val holder: NBTHolder = NBTHolder.item(stack)
 
 	/** Which registered [FilterConditionType] this card evaluates - fixed by [stack]'s own item. */
-	val type: ResourceLocation = (stack.item as? FilterCardItem)?.conditionTypeId ?: ItemConditionType.ID
+	val type: ResourceLocation = (stack.item as? FilterCardItem)?.conditionTypeId ?: ResourceConditionType.ID
 
 	var mode: FilterMode by holder.field(FilterModeSerializer) { FilterMode.WHITELIST }
 

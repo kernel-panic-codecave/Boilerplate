@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import kotlinx.serialization.Serializable
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /**
  * A request/withdrawal [TerminalHookState.output] doesn't have the real item for yet - dispatched,

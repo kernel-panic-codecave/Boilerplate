@@ -6,7 +6,7 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "minecraft:air"
+          "name": "boilerplate:fluid_tank"
         }
       ],
       "rolls": 1.0

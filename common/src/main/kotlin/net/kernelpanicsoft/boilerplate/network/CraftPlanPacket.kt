@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftPlanMenu
 import net.minecraft.client.Minecraft
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /** One line of a [CraftPlanPacket]: [amount] of [resource], either crafted by a planned step or pulled from stock. */
 @Serializable

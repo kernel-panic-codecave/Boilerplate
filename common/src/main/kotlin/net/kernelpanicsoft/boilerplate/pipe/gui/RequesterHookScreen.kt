@@ -15,9 +15,12 @@ import net.kernelpanicsoft.archie.gui.composables.containers.Panel
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
-import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
+import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.RequesterStatusPacket
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
+import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
+import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
+import net.kernelpanicsoft.boilerplate.pipe.hook.ParallelStocking
 import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.UNBOUNDED_STOCK
 import net.kernelpanicsoft.boilerplate.pipe.hook.configuredFilterOn
@@ -71,6 +74,8 @@ class RequesterHookScreen(private val menu: RequesterHookMenu, playerInventory: 
 			menu.setStockingTarget(index, resource, amount)
 		}
 
+		var parallel by remember { mutableStateOf(menu.parallel) }
+
 		BoilerplateTheme {
 			ContainerPanel {
 				Column(verticalArrangement = Arrangement.spacedBy(4)) {
@@ -87,6 +92,19 @@ class RequesterHookScreen(private val menu: RequesterHookMenu, playerInventory: 
 						Component.literal("Scroll a target to set how many; below 1 is ∞ (just export)"),
 						dropShadow = false,
 						color = LocalTheme.current.darkTextColor,
+					)
+
+					// Only means anything facing an interface, where there may be many destinations
+					// behind the seam - see ParallelStocking. Shown always rather than probed for,
+					// since what a hook faces can change under the player without the screen knowing.
+					Text(Component.literal("Behind an interface"), dropShadow = false)
+					RadioGroup(
+						options = listOf(
+							RadioOption(ParallelStocking.EACH, Component.literal("This many at each")),
+							RadioOption(ParallelStocking.SPLIT, Component.literal("This many shared out")),
+						),
+						selected = parallel,
+						onSelected = { parallel = it; menu.requestParallel(it) },
 					)
 
 					StatusPanel(menu.status, targets.first, targets.second)

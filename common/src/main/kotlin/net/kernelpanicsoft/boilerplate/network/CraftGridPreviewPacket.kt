@@ -4,6 +4,8 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SItemStack
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
 import net.minecraft.client.Minecraft
+import net.kernelpanicsoft.boilerplate.resource.SItemResource
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 
 /**
  * Server -> client: reply to [RequestCraftGridPreviewPacket] - what

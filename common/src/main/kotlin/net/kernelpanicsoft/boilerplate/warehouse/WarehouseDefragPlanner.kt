@@ -3,6 +3,7 @@ package net.kernelpanicsoft.boilerplate.warehouse
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.server.level.ServerLevel
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
  * Plans a warehouse's own consolidation pass ("defrag" - see `docs/design/m3-warehouse-storage.md`'s

@@ -8,10 +8,10 @@ import net.kernelpanicsoft.archie.serialization.ArchieStorageMap
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackResourceStorageExposer
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
@@ -121,9 +121,6 @@ class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID), Fa
 
 	companion object {
 		const val SLOT_COUNT = 9
-
-		/** How many runs' worth of a single pattern [patternBuffers] holds before refusing more. TODO M5: derive from the target's own pressure capacity - a flat baseline until then. */
-		const val MAX_BUFFERED_RUNS_PER_PATTERN = 4
 	}
 }
 
@@ -135,7 +132,7 @@ class PatternProviderHookState : HookHolderState(PatternProviderHookType.ID), Fa
  *
  * [insert] distributes [resource] across every pattern slot whose own [Pattern.requiredInputs]
  * wants more of it, round-robin rather than filling earlier slots (in [PatternProviderHookState.patterns]'
- * own order) to their own full [PatternProviderHookState.MAX_BUFFERED_RUNS_PER_PATTERN] cap before
+ * own order) to their own full configured cap before
  * ever touching the next one - each pass only tops a slot up to its own *next* single-run
  * boundary, cycling through every still-demanding slot before starting a second pass. A single
  * `insert` call has no idea whether some *other*, separate call (a different job step's own

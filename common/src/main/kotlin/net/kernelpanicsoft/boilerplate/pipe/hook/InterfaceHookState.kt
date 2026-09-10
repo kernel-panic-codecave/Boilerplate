@@ -1,14 +1,12 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import earth.terrarium.common_storage_lib.storage.base.StorageSlot
 import kotlinx.serialization.builtins.serializer
-import net.kernelpanicsoft.boilerplate.network.ResourceComponentSerializer
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.ResourceComponentSerializer
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FluidStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ResourceStorageExposer
@@ -17,9 +15,9 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.boilerplate.network.ResourceStorage
-import net.kernelpanicsoft.boilerplate.network.resourceField
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceStorage
+import net.kernelpanicsoft.boilerplate.resource.resourceField
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
 
@@ -64,7 +62,7 @@ internal fun acceptedAtRouteEnd(level: ServerLevel, from: BlockPos, route: List<
  * "hold whatever arrives", or a configured filter card to stand for a whole class of resources.
  *
  * The whole exposed surface ([exposedStorage], and the two typed faces built on it) is pass-through
- * ([InterfacePassThroughStorage]): any insert - a machine, a hopper, or another hook pushing across
+ * ([net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage]): any insert - a machine, a hopper, or another hook pushing across
  * the subnet boundary this hook anchors - is never staged in [stock] at all; it's either routed
  * straight into the network immediately or rejected with a `0` return. Request-completions are the one exception, landing
  * directly in [stock] via [net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity]'s
@@ -91,6 +89,16 @@ class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExp
 	 * *for*.
 	 */
 	val stock: ResourceStorage by resourceField(SLOTS, capacity = BoilerplateConfig.Gameplay.Capacities.interfaceStockMillibuckets)
+
+	/**
+	 * Deliveries the other side has addressed *through* this interface, waiting to be passed on -
+	 * see [InboundClaim].
+	 *
+	 * Persisted for the same reason [HookHolderState.relays] is: leg 1 lands in [stock] whether or
+	 * not this hook was ticking, and a claim forgotten in between would leave the arrival looking
+	 * like ordinary excess and be pushed somewhere nobody asked for.
+	 */
+	val inbound: MutableList<InboundClaim> by listField(InboundClaim.serializer()) { emptyList() }
 
 	@Suppress("UNCHECKED_CAST")
 	override fun exposedItemStorage(tile: MultipartBlockEntity): CommonStorage<ItemResource>? =
@@ -155,8 +163,5 @@ class InterfaceHookState : HookHolderState(InterfaceHookType.ID), ItemStorageExp
 
 	companion object {
 		const val SLOTS = 9
-
-		/** How much of a fluid-like kind one [stock] column holds, in millibuckets - stated loader-independently and converted by whichever kind claims the column, never read from a `FluidAmounts` constant (they all read `0` in Common Storage Lib 0.0.5). */
-		const val FLUID_STOCK_MILLIBUCKETS = 8_000L
 	}
 }

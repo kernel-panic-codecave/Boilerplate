@@ -3,7 +3,6 @@ package net.kernelpanicsoft.boilerplate.crafting.gui
 import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import kotlinx.coroutines.delay
 import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
@@ -21,12 +20,11 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.height
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
-import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
+import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.CraftingBufferActiveJobView
 import net.kernelpanicsoft.boilerplate.network.CraftingBufferBacklogEntryView
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTreeView
-import net.kernelpanicsoft.boilerplate.pipe.gui.FakeSlot
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.kernelpanicsoft.boilerplate.pipe.gui.ResourceFakeSlot
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory

@@ -12,7 +12,7 @@ import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
-import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
+import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.UpdateRackRoutingPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode

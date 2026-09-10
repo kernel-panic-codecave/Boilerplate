@@ -1,6 +1,6 @@
 package net.kernelpanicsoft.boilerplate.warehouse.rack
 
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.acceptsByFilter
@@ -25,11 +25,15 @@ interface RackBlockEntity {
 	 * own mode), and the rack then decides whether it wants matches or non-matches. Nesting a
 	 * blacklist card in a blacklist rack double-inverts, same as it does for a sorting hook.
 	 *
+	 * Takes any [ResourceComponent], not only an item: the conditions a card is built from are
+	 * kind-agnostic already ([net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterRule]), and a
+	 * rack that pools fluids and chemicals alongside items filters them the same way.
+	 *
 	 * The one deliberate difference from a sorting hook: **no card at all accepts everything,
 	 * whichever mode is set**, rather than a whitelist-with-nothing-in-it accepting nothing. A
 	 * sorting hook's empty whitelist is a deliberately configured state; a rack's is just a rack
 	 * nobody has filtered yet, and every rack starts that way - reading it as "reject everything"
 	 * would stop an unconfigured warehouse storing anything at all.
 	 */
-	fun acceptsByFilter(resource: ItemResource): Boolean = acceptsByFilter(filter, routing, resource)
+	fun acceptsByFilter(resource: ResourceComponent): Boolean = acceptsByFilter(filter, routing, resource)
 }

@@ -4,14 +4,16 @@ import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import com.mojang.blaze3d.vertex.PoseStack
 import dev.engine_room.flywheel.api.model.IndexSequence
 import dev.engine_room.flywheel.api.model.Mesh
+import dev.engine_room.flywheel.api.model.Model
 import dev.engine_room.flywheel.lib.material.Materials
 import dev.engine_room.flywheel.api.material.Material
 import dev.engine_room.flywheel.api.vertex.MutableVertexList
 import dev.engine_room.flywheel.lib.math.MoreMath
+import dev.engine_room.flywheel.lib.model.SingleMeshModel
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.render.AFluidRenderPlatform
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.ItemBlockRenderTypes
@@ -26,6 +28,7 @@ import org.joml.Vector3f
 import org.joml.Vector4f
 import org.joml.Vector4fc
 import org.lwjgl.system.MemoryUtil
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.sqrt
 
 /**
@@ -43,19 +46,48 @@ import kotlin.math.sqrt
  * resource is not reliably usable as a map key.
  */
 object InstancedMeshes {
-	/** One baked mesh per distinct resource, built on first sight and kept for the session. */
-	private val cache = HashMap<Any, Mesh>()
+	/**
+	 * One baked mesh per distinct resource, built on first sight and kept for the session.
+	 *
+	 * Concurrent because the sites that ask for a mesh are Flywheel *frame plans*, and Flywheel
+	 * distributes those across its task pool - so a busy pipe network has many visuals asking at
+	 * once. A plain `HashMap` resizing under that is not merely a lost entry: a reader can spin.
+	 */
+	private val cache = ConcurrentHashMap<Any, Mesh>()
 
-	/** [stack]'s own item model, baked flat with its ground transform already applied - see [buildItemMesh]. */
-	fun itemMesh(stack: ItemStack): Mesh =
-		cache.getOrPut(ResourceIdentity.of(ItemResource.of(stack))) { buildItemMesh(stack) }
+	/**
+	 * One [Model] per [Mesh], so every site drawing the same geometry asks for the same instancer.
+	 *
+	 * Flywheel keys its instancers by `(environment, instance type, model, bias)` in a plain record,
+	 * and [SingleMeshModel] inherits identity equality - so a *fresh* model per instance gives every
+	 * instance its own instancer, its own GPU buffer and its own draw call, which is precisely the
+	 * per-object cost instancing exists to remove. A pipe full of droplets made a thousand of them
+	 * and re-sorted the whole draw list every frame as they came and went.
+	 *
+	 * Keyed by the mesh itself, which for everything built here means identity - the meshes [cache]
+	 * hands out live for the session. Concurrent for the same reason [cache] is.
+	 */
+	private val models = ConcurrentHashMap<Mesh, Model>()
+
+	/**
+	 * The shared model wrapping [mesh], drawn with the material [mesh] itself asks for - what an
+	 * instancing site passes to `instancer` instead of building a model of its own.
+	 *
+	 * Only for meshes that live as long as the session, which is every mesh [cache] hands out. A
+	 * mesh rebuilt per frame (a gantry rod clipped to its current extension, say) must not come
+	 * through here: the map is keyed by identity and would grow without bound.
+	 */
+	fun modelOf(mesh: Mesh): Model =
+		models[mesh] ?: SingleMeshModel(mesh, mesh.preferredMaterial()).let { models.putIfAbsent(mesh, it) ?: it }
+
+	/** [item]'s own item model, baked flat with its ground transform already applied - see [buildItemMesh]. */
+	fun itemMesh(item: ItemResource): Mesh = cached(ResourceIdentity.of(item)) { buildItemMesh(item.toStack(1)) }
 
 	/** [fluid]'s droplet, an icosahedron skinned with its own still sprite - see [dropletMesh]. */
-	fun fluidMesh(fluid: FluidResource): Mesh? {
+	fun fluidMesh(fluid: FluidResource): Mesh? = dropletMesh(ResourceIdentity.of(fluid)) {
 		val type = fluid.type
-		return dropletMesh(
-			ResourceIdentity.of(fluid),
-			AFluidRenderPlatform.getStillSprite(type) ?: return null,
+		DropletSkin(
+			AFluidRenderPlatform.getStillSprite(type) ?: return@dropletMesh null,
 			AFluidRenderPlatform.getTintColor(type),
 			// The fluid's *own* render layer, which is where a fluid's transparency actually lives.
 			// Water's tint is fully opaque `0xFF3F76E4`; what makes water see-through is its still
@@ -66,17 +98,43 @@ object InstancedMeshes {
 		)
 	}
 
+	/** The look of one droplet: which sprite skins it, what tints it, and whether it needs blending. */
+	data class DropletSkin(val sprite: TextureAtlasSprite, val tint: Int, val translucent: Boolean = false)
+
 	/**
-	 * A droplet skinned with [sprite] and tinted by [tint], cached under [key] - what a fluid looks
-	 * like tumbling down a pipe, and what any other kind drawn from an atlas sprite gets to look
-	 * like for free.
+	 * The droplet cached under [key], baking one from [skin] on first sight - what a fluid looks like
+	 * tumbling down a pipe, and what any other kind drawn from an atlas sprite gets to look like for
+	 * free.
 	 *
 	 * Public and sprite-shaped rather than fluid-shaped because a fluid is not the only such kind:
 	 * Mekanism's chemicals are a sprite and a tint too, and their display kind lives in the NeoForge
 	 * module, which cannot reach a private fluid-only builder.
+	 *
+	 * @param skin consulted only on a cache miss - resolving a sprite means an atlas lookup and a
+	 *   render-layer probe, and a pipe asks for the same droplet once per droplet per frame
+	 * @return the baked droplet, or null when [skin] has no sprite to skin one with
 	 */
-	fun dropletMesh(key: Any, sprite: TextureAtlasSprite, tint: Int, translucent: Boolean = false): Mesh =
-		cache.getOrPut(key) { buildDropletMesh(sprite, tint, translucent) }
+	fun dropletMesh(key: Any, skin: () -> DropletSkin?): Mesh? {
+		cache[key]?.let { return it }
+		val (sprite, tint, translucent) = skin() ?: return null
+		return cached(key) { buildDropletMesh(sprite, tint, translucent) }
+	}
+
+	/**
+	 * [cache]'s entry for [key], baking one with [build] if there is none.
+	 *
+	 * Built outside the map rather than inside a `computeIfAbsent`, and published with
+	 * `putIfAbsent` so a race has exactly one winner: baking a mesh walks the item renderer and the
+	 * texture atlas, and holding a map bin locked across that would serialise every other visual
+	 * asking for an unrelated mesh. Two threads racing the same key each bake one and one is
+	 * discarded, which is a single wasted bake rather than a stalled frame - and every caller still
+	 * gets the *same* mesh back, which is what [modelOf] needs to be true.
+	 */
+	private inline fun cached(key: Any, build: () -> Mesh): Mesh {
+		cache[key]?.let { return it }
+		val mesh = build()
+		return cache.putIfAbsent(key, mesh) ?: mesh
+	}
 
 	/**
 	 * [itemStack]'s baked model re-baked into a plain triangle list, with

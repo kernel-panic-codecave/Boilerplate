@@ -5,8 +5,8 @@ import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import net.kernelpanicsoft.boilerplate.crafting.PatternKindSerializer
-import net.kernelpanicsoft.boilerplate.network.ResourceComponentSerializer
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.ResourceComponentSerializer
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /**
  * A [TerminalHookState] upgraded with a *ghost* 3x3 input grid ([ghostInputs]) plus, depending on
@@ -27,7 +27,7 @@ class PatternTerminalHookState : TerminalHookState(PatternTerminalHookType.ID) {
 	/**
 	 * The pattern's own input cells. [SResourceComponent], not items: a `PROCESSING` pattern may
 	 * name a fluid (or any other registered
-	 * [net.kernelpanicsoft.boilerplate.network.ResourceKind]) in a cell, so `1000mB water + 1 clay`
+	 * [net.kernelpanicsoft.boilerplate.resource.ResourceKind]) in a cell, so `1000mB water + 1 clay`
 	 * is expressible. A `CRAFTING` pattern is still matched against a real vanilla recipe, which
 	 * only knows items - [net.kernelpanicsoft.boilerplate.crafting.PatternEncoder] rejects a
 	 * non-item cell in that mode rather than silently dropping it.

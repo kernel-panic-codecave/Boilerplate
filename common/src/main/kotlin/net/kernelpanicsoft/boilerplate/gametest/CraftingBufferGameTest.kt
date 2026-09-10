@@ -11,10 +11,9 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.ProviderHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
-import net.kernelpanicsoft.boilerplate.util.resourceCell
-import net.kernelpanicsoft.boilerplate.util.resourceStack
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries

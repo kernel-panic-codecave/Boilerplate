@@ -5,8 +5,8 @@ import dev.architectury.platform.Platform
 import dev.engine_room.flywheel.api.model.Mesh
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.util.buildComponent
-import net.kernelpanicsoft.archie.util.minecraftClient
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.archie.util.requireMinecraftClient
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
@@ -14,11 +14,11 @@ import net.minecraft.network.chat.TextColor
 import net.minecraft.world.item.ItemStack
 
 /**
- * How a [net.kernelpanicsoft.boilerplate.network.ResourceKind] is **drawn** - in a slot, moving
+ * How a [net.kernelpanicsoft.boilerplate.resource.ResourceKind] is **drawn** - in a slot, moving
  * through a pipe, and riding the warehouse crane.
  *
  * The rendering counterpart of
- * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind], and the other half of what makes
+ * [net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind], and the other half of what makes
  * "register a kind and it works" true: without one, an addon's resource is stored, routed, filtered
  * and crafted correctly and then shows up as an empty slot and invisible cargo, because every
  * surface that draws a resource would have had to name it.
@@ -27,7 +27,7 @@ import net.minecraft.world.item.ItemStack
  * ([worldMesh]). Everything Boilerplate draws goes through Flywheel, so the world half is geometry
  * handed to an instancer rather than a draw call issued per frame.
  *
- * Reached only through [net.kernelpanicsoft.boilerplate.network.ResourceKind.display], which is
+ * Reached only through [net.kernelpanicsoft.boilerplate.resource.ResourceKind.display], which is
  * `null` by default - a kind that provides none is simply not drawn, exactly as an unrecognised
  * resource was not drawn before. **Client-only**: nothing on a dedicated server reads that
  * property, so the implementation class is never loaded there.
@@ -44,7 +44,7 @@ interface ResourceDisplayKind {
 	 * is what lets a fluid's sprite fill the frame edge to edge while an item sits inset inside it.
 	 * [countText] is the corner label the caller wants shown, already formatted; a kind whose face
 	 * draws its own amount (see
-	 * [net.kernelpanicsoft.boilerplate.network.ResourceKind.drawsOwnAmount]) will be handed `null`.
+	 * [net.kernelpanicsoft.boilerplate.resource.ResourceKind.drawsOwnAmount]) will be handed `null`.
 	 * [enabled] is the surrounding control's own state - a terminal greys its whole grid out when
 	 * the network has no pressure, and a face that ignores it simply stays lit.
 	 *
@@ -143,7 +143,7 @@ fun resourceTooltip(resource: ResourceComponent, additionalLines: List<Component
 	val kind = ResourceKindRegistry.forResource(resource)!!
 	add(resource.displayName())
 	addAll(additionalLines)
-	if (minecraftClient.options.advancedItemTooltips) {
+	if (requireMinecraftClient.options.advancedItemTooltips) {
 		add(buildComponent {
 			style { color = TextColor.fromLegacyFormat(ChatFormatting.DARK_GRAY) }
 			text(kind.registryId(resource).toString())

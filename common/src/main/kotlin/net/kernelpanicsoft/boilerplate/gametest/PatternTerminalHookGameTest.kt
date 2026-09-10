@@ -21,7 +21,7 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import net.kernelpanicsoft.boilerplate.util.resourceCell
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 
 /**
  * GameTest coverage for [PatternEncoder.encodeAndConsume] as wired up by

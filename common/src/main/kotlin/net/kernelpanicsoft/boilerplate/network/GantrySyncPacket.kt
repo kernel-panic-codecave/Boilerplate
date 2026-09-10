@@ -4,12 +4,14 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.kernelpanicsoft.archie.serialization.serializers.SVec3
 import net.kernelpanicsoft.boilerplate.warehouse.GantryClientCache
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 
 /**
  * Server -> client sync of one warehouse controller's gantry position/path and currently-carried
  * items, broadcast periodically (and only while actually moving) rather than every tick. Doesn't
  * carry the bound volume itself -
- * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.bounds] is already
+ * [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity.bounds] is already
  * `@Sync`'d independently, so [WarehouseControllerVisual][net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual]
  * reads it straight off the block entity instead.
  *

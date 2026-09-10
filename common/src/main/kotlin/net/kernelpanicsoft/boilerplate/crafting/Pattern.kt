@@ -9,9 +9,9 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 
 /**
  * Whether a [Pattern] was encoded from a matching vanilla [net.minecraft.world.item.crafting.CraftingRecipe]
@@ -44,7 +44,7 @@ object PatternKindSerializer : KSerializer<PatternKind> {
  * already-encoded pattern, the same tradeoff AE2's own pattern encoding makes.
  *
  * Both sides are [SResourceComponent], not items: a `PROCESSING` pattern's slots may hold **any**
- * registered [net.kernelpanicsoft.boilerplate.network.ResourceKind] - a fluid, an addon's gas -
+ * registered [net.kernelpanicsoft.boilerplate.resource.ResourceKind] - a fluid, an addon's gas -
  * on either side, so `1000mB water + 1 clay -> 1 slurry` is one pattern rather than something the
  * crafting layer cannot express at all. A `CRAFTING` pattern is still item-only in practice, since
  * it has to match a real vanilla recipe ([PatternEncoder] enforces that at encode time), but it

@@ -10,6 +10,8 @@ import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.input.Button
 import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
 import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
+import net.kernelpanicsoft.archie.gui.layer.LayerStackManager
+import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.gui.layout.*
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.size
@@ -44,16 +46,38 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 	@Composable
 	override fun additionalContent()
 	{
+		val layers = LocalLayerManager.current
+		var kind by remember { mutableStateOf(menu.currentPatternKind()) }
+		var inputs by remember { mutableStateOf(menu.currentGhostInputs()) }
+		var outputs by remember { mutableStateOf(menu.currentGhostOutputs()) }
+
+		// What the synced hook state last said, as distinct from what this screen is showing. The
+		// two differ for the moment between an edit here and the server echoing it back.
+		var syncedKind by remember { mutableStateOf(kind) }
+		var syncedInputs by remember { mutableStateOf(inputs) }
+		var syncedOutputs by remember { mutableStateOf(outputs) }
+
 		LaunchedEffect(Unit) {
 			while (true)
 			{
 				BoilerplateNetworkChannel.toServer(RequestPatternGridPreviewPacket)
+
+				// The grid is held in the hook state, which is @Sync'd - so the client's copy is
+				// already current and this only has to look at it. Read once at open, as it was,
+				// anything that changed the grid from outside this screen (loading a pattern into
+				// the result slot, a second player, the server correcting an edit) showed up only
+				// after a close and reopen.
+				//
+				// Adopted on *change* rather than every pass, which is what keeps an edit made here
+				// from being reverted by a poll landing before the server has echoed it: while the
+				// two disagree the synced value has not moved, so there is nothing to adopt.
+				menu.currentPatternKind().let { if (it != syncedKind) { syncedKind = it; kind = it } }
+				menu.currentGhostInputs().let { if (it != syncedInputs) { syncedInputs = it; inputs = it } }
+				menu.currentGhostOutputs().let { if (it != syncedOutputs) { syncedOutputs = it; outputs = it } }
+
 				delay(GRID_PREVIEW_POLL_MILLIS.milliseconds)
 			}
 		}
-		var kind by remember { mutableStateOf(menu.currentPatternKind()) }
-		var inputs by remember { mutableStateOf(menu.currentGhostInputs()) }
-		var outputs by remember { mutableStateOf(menu.currentGhostOutputs()) }
 
 		fun setInput(index: Int, resource: ResourceComponent, amount: Long)
 		{
@@ -138,6 +162,7 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 								clickHandler = clickHandler,
 								handleClick = { null },
 								amounts = inputs.map { it.second },
+								countText = { index -> cellLabel(inputs.getOrNull(index)) },
 								onAmountScroll = null,
 							)
 						} else {
@@ -150,9 +175,14 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 								clickHandler = clickHandler,
 								handleClick = { null },
 								amounts = inputs.map { it.second },
+								countText = { index -> cellLabel(inputs.getOrNull(index)) },
 								onAmountScroll = { index, delta ->
 									val (resource, amount) = inputs.getOrNull(index) ?: return@ResourceGhostSlotGrid
 									if (!resource.isBlank) setInput(index, resource, stepCellAmount(resource, amount, delta))
+								},
+								onEditAmount = { index ->
+									val (resource, amount) = inputs.getOrNull(index) ?: return@ResourceGhostSlotGrid
+									editCellAmount(layers, resource, amount) { setInput(index, resource, it) }
 								},
 							)
 						}
@@ -181,9 +211,14 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 									clickHandler = clickHandler,
 									handleClick = { null },
 									amounts = outputs.map { it.second },
+									countText = { index -> cellLabel(outputs.getOrNull(index)) },
 									onAmountScroll = { index, delta ->
 										val (resource, amount) = outputs.getOrNull(index) ?: return@ResourceGhostSlotGrid
 										if (!resource.isBlank) setOutput(index, resource, stepCellAmount(resource, amount, delta))
+									},
+									onEditAmount = { index ->
+										val (resource, amount) = outputs.getOrNull(index) ?: return@ResourceGhostSlotGrid
+										editCellAmount(layers, resource, amount) { setOutput(index, resource, it) }
 									},
 								)
 							}
@@ -228,12 +263,44 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 			return kind?.defaultAuthored ?: 1L
 		}
 
-		/** [amount] moved [delta] notches, at whatever step and ceiling [resource]'s own kind uses. */
+		/**
+		 * [amount] moved [delta] notches, at whatever step the held modifiers make of [resource]'s own
+		 * kind (see [scrollStepFor]) and up to that kind's ceiling.
+		 *
+		 * The floor is the *finer* of the notch and the kind's plain one, so a modifier that sharpens
+		 * the step also opens up the amounts below the plain notch it exists to reach - and a coarse
+		 * Ctrl step scrolled down off the bottom still lands on the plain notch rather than on itself.
+		 */
 		private fun stepCellAmount(resource: ResourceComponent, amount: Long, delta: Int): Long {
 			val kind = ResourceKindRegistry.forResource(resource)
-			val step = kind?.authoredStep ?: 1L
+			val step = scrollStepFor(kind)
+			val floor = minOf(step, kind?.authoredStep ?: 1L)
 			val max = kind?.maxAuthored ?: 64L
-			return (amount + delta * step).coerceIn(step, max)
+			return (amount + delta * step).coerceIn(floor, max)
 		}
+
+		/**
+		 * Opens [setAmountDialog] on a cell, for the amounts the wheel reaches slowly: 64 sand is 64
+		 * notches away and 32000mB of water is 320.
+		 *
+		 * Bounded by the same [net.kernelpanicsoft.boilerplate.resource.ResourceKind.maxAuthored]
+		 * ceiling [stepCellAmount] scrolls up to, so neither gesture can author a cell the other
+		 * cannot reach.
+		 */
+		private fun editCellAmount(layers: LayerStackManager, resource: ResourceComponent, amount: Long, onSet: (Long) -> Unit) {
+			val max = ResourceKindRegistry.forResource(resource)?.maxAuthored ?: 64L
+			layers.setAmountDialog(resource, amount, max, onSet)
+		}
+
+		/**
+		 * A ghost cell's corner label.
+		 *
+		 * These cells hold **authored** amounts right up until [PatternTerminalHookMenu.encode]
+		 * converts them, so the label comes from [authoredAmountLabelFor] rather than the
+		 * platform-amount [amountLabelFor] every other resource grid in the GUI wants - which on
+		 * Fabric, where a fluid is counted in droplets, had a 1000mB cell reading "12".
+		 */
+		private fun cellLabel(cell: Pair<ResourceComponent, Long>?): String? =
+			cell?.let { authoredAmountLabelFor(it.first, it.second) }
 	}
 }

@@ -21,14 +21,14 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.filter.BooleanOperator
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ModConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ModConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.core.RegistryAccess
@@ -629,12 +629,12 @@ class PipeExtractionGameTest {
 		}
 	}
 
-	/** Builds an item filter card matching a custom-named diamond pickaxe, with [ItemConditionState.matchComponents] set as requested. */
-	/** An [ItemRegistry.ItemFilterCard] matching [stack] by base item - a sorting hook's filter slot only accepts real filter cards now (see [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState.filter]), so plain-item identity filtering goes through one of these rather than dropping the item itself into a ghost grid. */
+	/** Builds an item filter card matching a custom-named diamond pickaxe, with [ResourceConditionState.matchComponents] set as requested. */
+	/** An [ItemRegistry.ResourceFilterCard] matching [stack] by base item - a sorting hook's filter slot only accepts real filter cards now (see [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState.filter]), so plain-item identity filtering goes through one of these rather than dropping the item itself into a ghost grid. */
 	private fun buildItemCard(stack: ItemStack): ItemStack {
-		val itemCard = ItemStack(ItemRegistry.ItemFilterCard)
+		val itemCard = ItemStack(ItemRegistry.ResourceFilterCard)
 		FilterCardState(itemCard).apply {
-			(currentState() as ItemConditionState).itemMatches[0] = ItemResource.of(stack)
+			(currentState() as ResourceConditionState).resourceMatches[0] = ItemResource.of(stack)
 			touchCurrentState()
 		}
 		return itemCard
@@ -644,10 +644,10 @@ class PipeExtractionGameTest {
 		val namedPickaxe = ItemStack(Items.DIAMOND_PICKAXE)
 		namedPickaxe.set(DataComponents.CUSTOM_NAME, Component.literal("Special"))
 
-		val itemCard = ItemStack(ItemRegistry.ItemFilterCard)
+		val itemCard = ItemStack(ItemRegistry.ResourceFilterCard)
 		FilterCardState(itemCard).apply {
-			(currentState() as ItemConditionState).apply {
-				itemMatches[0] = ItemResource.of(namedPickaxe)
+			(currentState() as ResourceConditionState).apply {
+				resourceMatches[0] = ItemResource.of(namedPickaxe)
 				this.matchComponents = matchComponents
 			}
 			touchCurrentState()
@@ -655,7 +655,7 @@ class PipeExtractionGameTest {
 		return itemCard
 	}
 
-	/** With [ItemConditionState.matchComponents] on, a plain (unnamed) diamond pickaxe doesn't satisfy a card matching a custom-*named* one - same base item, different components. */
+	/** With [ResourceConditionState.matchComponents] on, a plain (unnamed) diamond pickaxe doesn't satisfy a card matching a custom-*named* one - same base item, different components. */
 	@GameTest(template = SMALL, timeoutTicks = 200)
 	fun GameTestHelper.testFilterCardItemMatchComponentsRejectsDifferentComponents() {
 		val sourcePos = BlockPos(0, 2, 0)

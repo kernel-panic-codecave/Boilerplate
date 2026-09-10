@@ -4,6 +4,7 @@ import dev.architectury.event.EventResult
 import dev.architectury.event.events.common.BlockEvent
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 object WarehouseBlockEventListener {
 	val activeControllers = mutableSetOf<BlockPos>()

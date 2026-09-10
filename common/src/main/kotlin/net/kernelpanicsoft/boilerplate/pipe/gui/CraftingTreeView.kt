@@ -2,7 +2,6 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.archie.gui.composables.basic.ProgressBar
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.*
@@ -12,7 +11,7 @@ import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.ThemeVariants
 import net.kernelpanicsoft.archie.gui.util.KColor
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.kernelpanicsoft.boilerplate.network.CraftJobTreeNode
 import net.minecraft.network.chat.Component
 

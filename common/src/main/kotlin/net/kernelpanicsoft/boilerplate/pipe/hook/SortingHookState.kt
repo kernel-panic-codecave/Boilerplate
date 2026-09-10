@@ -25,8 +25,8 @@ abstract class SortingHookState(defaultType: ResourceLocation) : HookHolderState
 	 * A card placed here is genuinely consumed from the player's inventory and can be taken back
 	 * out again.
 	 *
-	 * Filtering on plain item identity is still possible - that's what an
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionType] card's own ghost grid is
+	 * Filtering on plain resource identity is still possible - that's what a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionType] card's own ghost grid is
 	 * for - and several conditions still combine through a
 	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType] card.
 	 */
@@ -41,9 +41,11 @@ abstract class SortingHookState(defaultType: ResourceLocation) : HookHolderState
 	 *
 	 * [resource] is any registered kind, not just an item: one plain pipe carries the item and fluid
 	 * networks at once, so a fluid routed past a sorting hook is evaluated here too. Which
-	 * conditions can actually judge it is the card's own business - a mod/tag/regex card is
-	 * kind-agnostic, an item ghost grid never matches a fluid (see
-	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionType]).
+	 * conditions can actually judge it is the card's own business, and every one of them can judge
+	 * any kind - a mod, tag or regex card describes a resource without naming it, and a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionType] card names resources
+	 * of whatever kinds are put in its grid, an item and a fluid side by side if that is what the
+	 * line carries.
 	 *
 	 * [color] is the traveling item's own consignment color, if any - see [FilterContext.color].
 	 * Shared by [net.kernelpanicsoft.boilerplate.pipe.network.PipeRouter]'s push-routing search

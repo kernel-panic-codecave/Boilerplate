@@ -6,8 +6,7 @@ import net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob
 import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
-import net.kernelpanicsoft.boilerplate.util.resourceCell
-import net.kernelpanicsoft.boilerplate.util.resourceStack
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper

@@ -14,10 +14,12 @@ import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.gui.layout.*
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.size
-import net.kernelpanicsoft.boilerplate.gui.BoilerplateTheme
+import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.*
+import net.kernelpanicsoft.boilerplate.resource.*
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.util.resourceStack
+import net.kernelpanicsoft.boilerplate.resource.displayName
+import net.kernelpanicsoft.boilerplate.resource.resourceStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory

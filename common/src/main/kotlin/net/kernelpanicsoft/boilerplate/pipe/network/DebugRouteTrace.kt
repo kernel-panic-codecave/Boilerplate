@@ -1,5 +1,6 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
+import net.kernelpanicsoft.boilerplate.debug.DebugFlag
 import net.kernelpanicsoft.boilerplate.debug.DebugOverlayViewers
 import net.minecraft.core.BlockPos
 
@@ -57,8 +58,8 @@ object DebugRouteTrace {
 
 	private val recent = ArrayList<RouteSearchTrace>()
 
-	/** Whether route-search tracing is active at all - just [DebugOverlayViewers]' own gate, since tracing is only ever wanted while somebody is looking at the overlay that draws it. */
-	val enabled: Boolean get() = DebugOverlayViewers.enabled
+	/** Whether route-search tracing is active at all - [DebugFlag.NETWORK]'s own gate, since tracing is only ever wanted while somebody is looking at the overlay that draws it. */
+	val enabled: Boolean get() = DebugOverlayViewers.enabled(DebugFlag.NETWORK)
 
 	/** Starts a fresh trace for a search rooted at [from], bounding the kept history to the most recent [TRACE_CAP] searches. */
 	fun startSearch(from: BlockPos): RouteSearchTrace {

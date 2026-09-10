@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
+import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType
 import net.minecraft.core.BlockPos
@@ -49,4 +50,20 @@ object SubnetBoundary {
 	 */
 	fun requesterAt(level: ServerLevel, pos: BlockPos, direction: Direction): RequesterHookState? =
 		hookFacing(level, pos, direction) as? RequesterHookState
+
+	/**
+	 * The hook attached to [pos]'s [direction] face that is waiting on a boundary crossing, if any -
+	 * [requesterAt]'s extract-side twin.
+	 *
+	 * An interface needs this for the same reason it needs [requesterAt]: a hook facing it is
+	 * relaying requests across the seam, and what lands in the interface's stock on that hook's
+	 * account is spoken for. Without the check, the interface's own excess drain would push it
+	 * straight back into the far network between the two legs of the delivery - the far side would
+	 * fetch it, the interface would return it, forever.
+	 *
+	 * Any hook type, not the provider alone: whichever of them holds
+	 * [claims][net.kernelpanicsoft.boilerplate.pipe.hook.RelayClaim] is the one waiting.
+	 */
+	fun relayingHookAt(level: ServerLevel, pos: BlockPos, direction: Direction): HookHolderState? =
+		hookFacing(level, pos, direction)?.takeIf { it.relays.isNotEmpty() }
 }

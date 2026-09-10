@@ -8,13 +8,11 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.CombinedConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionType
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ModConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ModConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionType
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionType
@@ -28,8 +26,7 @@ object FilterConditionTypeRegistry : ADeferredRegistryHolder<FilterConditionType
 	Boilerplate.MOD,
 	Registrars.FILTER_CONDITION_TYPE.key() as ResourceKey<Registry<FilterConditionType<out FilterConditionState>>>,
 ) {
-	val Item: FilterConditionType<ItemConditionState> by register(ItemConditionType.ID) { ItemConditionType }
-	val Fluid: FilterConditionType<FluidConditionState> by register(FluidConditionType.ID) { FluidConditionType }
+	val Resource: FilterConditionType<ResourceConditionState> by register(ResourceConditionType.ID) { ResourceConditionType }
 	val Mod: FilterConditionType<ModConditionState> by register(ModConditionType.ID) { ModConditionType }
 	val Tag: FilterConditionType<TagConditionState> by register(TagConditionType.ID) { TagConditionType }
 	val Color: FilterConditionType<ColorConditionState> by register(ColorConditionType.ID) { ColorConditionType }

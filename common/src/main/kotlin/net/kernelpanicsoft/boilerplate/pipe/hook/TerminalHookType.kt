@@ -22,7 +22,7 @@ import net.minecraft.world.phys.shapes.VoxelShape
 
 /**
  * Turns the attached face into a search/withdraw window over every
- * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity] reachable on the
+ * [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity] reachable on the
  * network - see `docs/design/m3-warehouse-storage.md`. Also polls [TerminalHookState.submittedJobs]
  * forward a step per tick via [advanceTerminalJobs] - see `docs/design/m4-crafting-automation.md`'s
  * "Terminal" section. That function is a plain top-level one, not a method here, so

@@ -9,7 +9,7 @@ import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
 import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
+import net.kernelpanicsoft.boilerplate.resource.ItemResourceSerializer
 import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlotGrid
 import net.kernelpanicsoft.boilerplate.pipe.gui.filterCardEditor
@@ -79,7 +79,7 @@ object CombinedConditionType : FilterConditionType<CombinedConditionState>() {
 			// Only another filter card is meaningful here - evaluateGhostSlot's plain-item
 			// identity fallback would silently "work" but defeats the point of a *combined*
 			// condition, which exists to compose other conditions, not re-express a single item
-			// match a plain ItemConditionType card already covers.
+			// match a plain ResourceConditionType card already covers.
 			filter = { it.item is FilterCardItem },
 		)
 	}

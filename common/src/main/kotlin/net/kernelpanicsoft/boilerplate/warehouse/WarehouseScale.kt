@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
 import net.minecraft.server.level.ServerLevel
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
  * A tier's own gantry throughput, both halves of it: [baseSpeedPerTick] (the [GantryState.tick]

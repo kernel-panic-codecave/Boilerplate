@@ -6,10 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.Panel
-import net.kernelpanicsoft.archie.gui.composables.containers.Surface
 import net.kernelpanicsoft.archie.gui.composables.input.Button
 import net.kernelpanicsoft.archie.gui.layer.LayerStackManager
 import net.kernelpanicsoft.archie.gui.layout.Alignment
@@ -21,10 +19,9 @@ import net.kernelpanicsoft.archie.gui.modifiers.position.padding
 import net.kernelpanicsoft.archie.gui.modifiers.sizeIn
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.minecraft.network.chat.Component
-import net.minecraft.world.item.ItemStack
 import kotlin.math.min
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 
 /**
@@ -58,10 +55,10 @@ private fun RequestQuantityDialogContent(stack: ResourceStack<ResourceComponent>
 	// One "unit" of whatever this is - a stack for an item, a bucket for a fluid - so the dialog
 	// opens on a sensible default for any kind rather than on an item-only stack size.
 	val defaultAmount = kind?.defaultAuthored ?: 1L
-	// A kind's own notch, and two coarser multiples of it: 1/10/64 for items, 100mB/1000mB/6400mB
-	// for fluids, so the buttons move by amounts that mean something for the kind in hand.
-	val step = kind?.authoredStep ?: 1L
-	val steps = listOf(step, step * 10L, step * 64L)
+	// The kind's own scroll ladder: 1/4/16/64 for items, 1/10/100/1000mB for fluids, so the buttons
+	// move by amounts that mean something for the kind in hand and by the same ones its cells scroll
+	// by elsewhere.
+	val steps = stepperStepsFor(kind)
 	var amount by remember(stack) { mutableStateOf(min(max, defaultAmount)) }
 
 	Panel(modifier = Modifier.sizeIn(minWidth = 150), contentAlignment = Alignment.Center) {

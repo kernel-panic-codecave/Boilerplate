@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.attachment
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage
 import net.minecraft.core.Direction

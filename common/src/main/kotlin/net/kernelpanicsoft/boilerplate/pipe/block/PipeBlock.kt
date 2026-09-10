@@ -85,7 +85,7 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	 * through whichever [net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType] its
 	 * resource kind resolves to ([PipeBlockEntity.tick]).
 	 */
-	open val primaryNetworkTypes: Set<NetworkType> get() = registeredPrimaryCarriage()
+	open val primaryNetworkTypes: Set<NetworkType> by lazy { registeredPrimaryCarriage() }
 
 	/**
 	 * Every other [NetworkType] this pipe type also conducts (registers into, see
@@ -97,9 +97,22 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 	 * overrides this back to empty (nothing needs an item pipe's own attachments to also flow
 	 * through it).
 	 */
-	open val secondaryNetworkTypes: Set<NetworkType> get() = registeredSecondaryCarriage()
+	open val secondaryNetworkTypes: Set<NetworkType> by lazy { registeredSecondaryCarriage() }
 
-	val allNetworkTypes: Set<NetworkType> get() = primaryNetworkTypes + secondaryNetworkTypes
+	/**
+	 * Every [NetworkType] this pipe carries or conducts.
+	 *
+	 * All three of these are resolved once per block rather than per read, and that matters more
+	 * than it looks: [net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter.isPipe] asks for
+	 * them once per *neighbour* in every flood fill and every route search, and computing them means
+	 * walking the whole `network_type` registry twice and allocating three sets to answer a single
+	 * `contains`.
+	 *
+	 * Resolved lazily rather than at construction because a block is built while the registries are
+	 * still filling; the first read comes from world interaction, by which point every kind - a
+	 * loader's own included - has registered. They are fixed from then on.
+	 */
+	val allNetworkTypes: Set<NetworkType> by lazy { primaryNetworkTypes + secondaryNetworkTypes }
 
 	/** This pipe type's own core cross-section - see [CORE_SHAPE] for the default every pipe but [PressurePipeBlock] uses. */
 	open val coreShape: VoxelShape get() = CORE_SHAPE
@@ -404,10 +417,10 @@ open class PipeBlock(properties: Properties) : BaseEntityBlock(properties) {
 			Direction.DOWN to BlockStateProperties.DOWN,
 		)
 
-		/** 6x6 (`0.3125..0.6875`, pixels 5-11), matching the pipe model's own core cross-section - same numbers as [net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock.CORE_SHAPE], which uses an identical connecting-block shape. */
+		/** 6x6 (`0.3125..0.6875`, pixels 5-11), matching the pipe model's own core cross-section - same numbers as [net.kernelpanicsoft.boilerplate.warehouse.block.GantryRailBlock.CORE_SHAPE], which uses an identical connecting-block shape. */
 		val CORE_SHAPE: VoxelShape = Shapes.box(0.3125, 0.3125, 0.3125, 0.6875, 0.6875, 0.6875)
 
-		/** Same 6x6 cross-section as [CORE_SHAPE], reaching from each face to the core's own boundary - see [net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock.ARM_SHAPES]. */
+		/** Same 6x6 cross-section as [CORE_SHAPE], reaching from each face to the core's own boundary - see [net.kernelpanicsoft.boilerplate.warehouse.block.GantryRailBlock.ARM_SHAPES]. */
 		val ARM_SHAPES: Map<Direction, VoxelShape> = Shapes.box(0.3125, 0.3125, 0.0, 0.6875, 0.6875, 0.3125).byDirection
 	}
 }

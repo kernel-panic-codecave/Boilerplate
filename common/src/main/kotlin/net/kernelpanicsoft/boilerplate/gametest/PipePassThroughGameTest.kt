@@ -13,7 +13,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.util.resourceCell
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.Direction
@@ -42,7 +42,7 @@ class PipePassThroughGameTest {
 	 * pass-through every face does.
 	 *
 	 * [exposedStorageFor] is what every kind's face resolves through - each of them registered in one
-	 * go by [net.kernelpanicsoft.boilerplate.network.exposeResourceStorage] - and it had no
+	 * go by [net.kernelpanicsoft.boilerplate.resource.exposeResourceStorage] - and it had no
 	 * pass-through fallback at all: a face with no hook that knew about that kind answered `null`,
 	 * so a Mekanism machine pointed at a bare pipe found no capability to push chemicals into.
 	 * Exercised here with kinds this module can name, since it is the *path* that was missing, not

@@ -4,12 +4,11 @@ import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.storage.base.StorageSlot
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.boilerplate.network.ResourceStorage
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceStorage
 import net.kernelpanicsoft.boilerplate.pipe.hook.acceptedAtRouteEnd
 import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
 import net.kernelpanicsoft.boilerplate.pipe.network.networkTypeForResource
-import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import java.util.concurrent.ConcurrentHashMap
@@ -26,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * [backing] is what reads and extractions hit - an interface hook's own stock, so a machine can
  * pull stocked resources out of it like any inventory. A bare pipe has nothing to offer and passes
- * [EMPTY_FACE], which reports one empty slot: **not** zero slots, because a machine that inserts
+ * [emptyFace], which reports one empty slot: **not** zero slots, because a machine that inserts
  * per-slot (which most do) sees a storage with no slots as having nowhere to put anything and never
  * offers it a thing.
  *
@@ -35,8 +34,8 @@ import java.util.concurrent.ConcurrentHashMap
  * because anything pushed at it belongs on the far side of the subnet boundary it anchors. A Pattern
  * Provider is the case that wants it: the pattern's ingredient buffer keeps what that pattern
  * actually consumes, and the machine's own *result*, which the buffer refuses, routes onto the
- * network instead of having nowhere to go. Letting the hook answer alone, with no pass-through at
- * all, is what used to leave a machine's output stuck in the machine.
+ * network instead of having nowhere to go. A hook answering alone, with no pass-through behind it,
+ * leaves that result stuck in the machine with nowhere to be put.
  *
  * Insertion is otherwise pass-through on every write path a machine can reach: the whole-storage
  * insert, slot-indexed inserts, and individual [StorageSlot] writes alike (Common Storage Lib's own
@@ -106,12 +105,12 @@ class PassThroughStorage(
 			// whole multiple of any batch the destination demands, so a pass-through cannot deliver
 			// the partial an extraction would have withheld.
 			val deliverable = batchedForRoute(
-				level, pos, route, amount,
+				level, pos, route, resource, amount,
 				room = acceptedAtRouteEnd(level, pos, route, resource, amount),
 			)
 			if (deliverable <= 0) return 0
 			if (simulate) return deliverable
-			tile.travelingItems += TravelingItem(ResourceStack(resource, deliverable), face, 0f, route, null)
+			tile.acceptEntry(ResourceStack(resource, deliverable), face, route)
 			return deliverable
 		}
 		finally {

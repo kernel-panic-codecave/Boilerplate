@@ -1,38 +1,8 @@
 package net.kernelpanicsoft.boilerplate.pipe.gui
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import earth.terrarium.common_storage_lib.resources.ResourceStack
-import kotlinx.coroutines.delay
-import net.kernelpanicsoft.archie.gui.ComposeContainerScreen
 import net.kernelpanicsoft.archie.gui.Slots
-import net.kernelpanicsoft.archie.gui.composables.containers.TabContainerPanel
-import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
-import net.kernelpanicsoft.archie.gui.layout.Alignment
-import net.kernelpanicsoft.archie.gui.layout.Arrangement
-import net.kernelpanicsoft.archie.gui.layout.Box
-import net.kernelpanicsoft.archie.gui.layout.Column
-import net.kernelpanicsoft.archie.gui.layout.Row
-import net.kernelpanicsoft.archie.gui.modifiers.Modifier
-import net.kernelpanicsoft.archie.gui.modifiers.size
-import net.kernelpanicsoft.archie.gui.theme.Theme
-import net.kernelpanicsoft.boilerplate.network.RequestCraftJobTreePacket
-import net.kernelpanicsoft.boilerplate.network.RequestCraftableListPacket
-import net.kernelpanicsoft.boilerplate.network.RequestTerminalSearchResultsPacket
-import net.kernelpanicsoft.boilerplate.network.RequestWarehouseDefragPacket
-import net.kernelpanicsoft.boilerplate.network.SItemResource
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
-import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
-import net.kernelpanicsoft.boilerplate.util.itemStack
-import net.kernelpanicsoft.boilerplate.util.resourceStack
-import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * A single "Store" tab over everything [menu] can currently reach (see [AbstractTerminalHookMenu]), plus a

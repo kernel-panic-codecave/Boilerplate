@@ -15,7 +15,7 @@ import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
 import net.kernelpanicsoft.boilerplate.warehouse.DeliveryTarget
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseIndex
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseScale
 import net.minecraft.core.BlockPos
@@ -31,7 +31,7 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
 import net.minecraft.world.phys.Vec3
 
-/** GameTest coverage for [net.kernelpanicsoft.boilerplate.warehouse.WarehouseWandItem]'s bind flow. */
+/** GameTest coverage for [net.kernelpanicsoft.boilerplate.warehouse.item.WarehouseWandItem]'s bind flow. */
 @Suppress("unused")
 class WarehouseGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 20)

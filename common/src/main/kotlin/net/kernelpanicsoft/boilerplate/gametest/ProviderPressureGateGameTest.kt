@@ -26,7 +26,7 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity
  * GameTest coverage for [RequestFulfillment.fulfillFromProvider]'s own
  * [net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState.active] check - a
  * [ProviderHookType]/[SyncHookType] hook's passive stock exposure is gated by pressure the same way
- * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.hasPressure] gates a
+ * [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity.hasPressure] gates a
  * warehouse retrieve (see [WarehousePressureGateGameTest]) - previously a request against either
  * hook still extracted and dispatched regardless of whether the hook itself had any pressure to
  * operate on. Resolution/search visibility ([RequestFulfillment.reachableProviders]) stays ungated

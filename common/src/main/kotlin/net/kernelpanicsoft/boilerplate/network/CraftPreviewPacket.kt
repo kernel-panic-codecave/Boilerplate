@@ -3,7 +3,7 @@ package net.kernelpanicsoft.boilerplate.network
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
 import net.minecraft.client.Minecraft
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /** Server -> client: reply to [RequestCraftPreviewPacket] - [resource] is currently craftable up to [maxCraftable]. Applied to whichever [AbstractTerminalHookMenu] the receiving player currently has open, if any. */
 @Serializable

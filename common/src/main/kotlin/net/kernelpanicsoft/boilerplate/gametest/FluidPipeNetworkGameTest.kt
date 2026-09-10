@@ -15,8 +15,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ModConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.RegexConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.TagConditionState
@@ -29,7 +28,7 @@ import net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -208,7 +207,7 @@ class FluidPipeNetworkGameTest {
 	 * A fluid tank standing inside a bound warehouse volume is indexed like any other storage - the
 	 * warehouse indexes whatever capability a position exposes, not items specifically.
 	 *
-	 * This is what forced [net.kernelpanicsoft.boilerplate.network.ResourceIdentity] to exist:
+	 * This is what forced [net.kernelpanicsoft.boilerplate.resource.ResourceIdentity] to exist:
 	 * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseIndex.locations] is a map keyed by
 	 * resource, and a raw `FluidResource` key never matches itself on lookup, so the tank would be
 	 * scanned, stored, and then be permanently unfindable.
@@ -286,14 +285,14 @@ class FluidPipeNetworkGameTest {
 		val water = FluidResource.of(Fluids.WATER)
 		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
 
-		val whitelist = sortingHook(ItemStack(ItemRegistry.ItemFilterCard), FilterMode.WHITELIST) {
-			(it as ItemConditionState).itemMatches[0] = diamond
+		val whitelist = sortingHook(ItemStack(ItemRegistry.ResourceFilterCard), FilterMode.WHITELIST) {
+			(it as ResourceConditionState).resourceMatches[0] = diamond
 		}
 		assertTrue(whitelist.accepts(diamond)) { "Expected the item card to still accept its own item" }
 		assertTrue(!whitelist.accepts(water)) { "Expected a whitelist of items to deny a fluid it cannot express" }
 
-		val blacklist = sortingHook(ItemStack(ItemRegistry.ItemFilterCard), FilterMode.BLACKLIST) {
-			(it as ItemConditionState).itemMatches[0] = diamond
+		val blacklist = sortingHook(ItemStack(ItemRegistry.ResourceFilterCard), FilterMode.BLACKLIST) {
+			(it as ResourceConditionState).resourceMatches[0] = diamond
 		}
 		assertTrue(!blacklist.accepts(diamond)) { "Expected the blacklist to reject its own item" }
 		assertTrue(blacklist.accepts(water)) { "Expected a blacklist of items to pass a fluid it cannot express" }
@@ -317,7 +316,7 @@ class FluidPipeNetworkGameTest {
 	}
 
 	/**
-	 * [FluidConditionType] names fluids outright, the way an item card names items - the one card
+	 * [ResourceConditionType] names fluids outright, the way an item card names items - the one card
 	 * that can say "this exact fluid" rather than describing it by mod, tag or pattern.
 	 *
 	 * The blank-slot assertion is not filler: the grid is nine slots of `FluidResource.BLANK`, and
@@ -328,13 +327,13 @@ class FluidPipeNetworkGameTest {
 		val water = FluidResource.of(Fluids.WATER)
 		val lava = FluidResource.of(Fluids.LAVA)
 
-		val card = sortingHook(ItemStack(ItemRegistry.FluidFilterCard)) {
-			(it as FluidConditionState).fluidMatches[0] = lava
+		val card = sortingHook(ItemStack(ItemRegistry.ResourceFilterCard)) {
+			(it as ResourceConditionState).resourceMatches[0] = lava
 		}
 		assertTrue(card.accepts(lava)) { "Expected the fluid card to accept the fluid it names" }
 		assertTrue(!card.accepts(water)) { "Expected the fluid card to reject a fluid it does not name" }
 
-		val empty = sortingHook(ItemStack(ItemRegistry.FluidFilterCard)) { }
+		val empty = sortingHook(ItemStack(ItemRegistry.ResourceFilterCard)) { }
 		assertTrue(!empty.accepts(water)) { "Expected an unconfigured fluid card's blank slots to match nothing" }
 		succeed()
 	}
@@ -353,8 +352,8 @@ class FluidPipeNetworkGameTest {
 		val tested = FluidResource.of(Fluids.WATER)
 		assertTrue(configured !== tested) { "Test needs two distinct instances to be meaningful" }
 
-		val card = sortingHook(ItemStack(ItemRegistry.FluidFilterCard)) {
-			(it as FluidConditionState).fluidMatches[0] = configured
+		val card = sortingHook(ItemStack(ItemRegistry.ResourceFilterCard)) {
+			(it as ResourceConditionState).resourceMatches[0] = configured
 		}
 		assertTrue(card.accepts(tested)) {
 			"Expected the card to match an equal-but-distinct FluidResource - a plain == comparison " +

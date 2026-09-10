@@ -9,7 +9,7 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.RoutingModule
  * Whether [resource] passes [filterStorage]'s single filter-card slot under [routing]'s own
  * [RoutingModule.mode] - shared by every destination that carries a filter card and a routing
  * module ([RackBlockEntity][net.kernelpanicsoft.boilerplate.warehouse.rack.RackBlockEntity] and
- * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity] alike), so the
+ * [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity] alike), so the
  * whitelist/blacklist toggle means the same thing everywhere. Composes exactly like
  * [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState.accepts]: the card itself answers
  * whether its condition matches (under its *own* mode), and the caller decides whether it wants

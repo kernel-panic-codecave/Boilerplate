@@ -12,12 +12,12 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.registry.Registrars
 import net.minecraft.core.BlockPos
 import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
-import net.kernelpanicsoft.boilerplate.network.roomFor
+import net.kernelpanicsoft.boilerplate.resource.roomFor
 import net.minecraft.core.Direction
 import net.minecraft.world.item.DyeColor
 import net.minecraft.resources.ResourceLocation
@@ -212,6 +212,14 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 	 * The route is resolved *before* the real extraction, and [sourcePos] is excluded from it, so a
 	 * pull that has nowhere to go leaves the source untouched rather than stranding the resource in
 	 * the pipe - and a route can never hand a resource straight back where it came from.
+	 *
+	 * @param accepts which resources the caller will take at all - a hook's own filter, evaluated
+	 *   per slot before anything is simulated, so a filtered-out resource costs nothing. Defaults to
+	 *   everything, which is what every caller but a configured hook wants.
+	 * @param limitFor the most of a given resource to pull in one go, asked per resource rather than
+	 *   passed as a number: a caller that lets the player set an amount holds it in that kind's own
+	 *   authored unit and can only convert it once it knows what it is looking at. Defaults to this
+	 *   kind's own [extractionBatch].
 	 */
 	fun extractRoutable(
 		level: ServerLevel,
@@ -220,13 +228,17 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 		face: Direction,
 		color: DyeColor?,
 		avoid: Set<BlockPos> = emptySet(),
+		accepts: (ResourceComponent) -> Boolean = { true },
+		limitFor: (ResourceComponent) -> Long = { extractionBatch },
 	): RoutedExtraction? {
 		val storage = api.find(level, sourcePos, face) ?: return null
 		for (slotIndex in 0 until storage.size()) {
 			val resource = storage.getResource(slotIndex)
 			if (resource.isBlank) continue
+			if (!accepts(resource as ResourceComponent)) continue
 
-			val available = storage.extract(resource, extractionBatch, true)
+			val limit = limitFor(resource).coerceAtLeast(1L)
+			val available = storage.extract(resource, limit, true)
 			if (available <= 0) continue
 
 			// [avoid] carries the destinations already served this cycle, so a source with several
@@ -244,7 +256,7 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 			// Capped at what the destination will actually take, then rounded down to a whole
 			// multiple - see batchedForRoute, the rule every push site shares.
 			val room = acceptedAtRouteEnd(level, from, route, resource, available)
-			val batched = batchedForRoute(level, from, route, available, room)
+			val batched = batchedForRoute(level, from, route, resource, available, room)
 			if (batched <= 0) continue
 
 			val extracted = storage.extract(resource, batched, false)
@@ -292,9 +304,6 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
  * `SResourceStack<*>` envelope) without ever naming the concrete resource type.
  */
 data class RoutedExtraction(val stack: SResourceStack<*>, val route: List<BlockPos>)
-
-/** [ItemNetworkType.extractionBatch] - one stack's worth, the quantity every item extraction has always pulled. */
-private const val ITEM_EXTRACTION_BATCH = 64L
 
 /** One bucket in millibuckets - the loader-independent way to name [FluidNetworkType.extractionBatch]'s volume, converted per-platform through [FluidAmounts.toPlatformAmount]. */
 private const val MILLIBUCKETS_PER_BUCKET = 1000L

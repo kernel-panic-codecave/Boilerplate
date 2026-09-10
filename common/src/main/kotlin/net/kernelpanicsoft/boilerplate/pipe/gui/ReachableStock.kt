@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
@@ -33,18 +33,28 @@ fun reachableStock(level: ServerLevel, from: BlockPos): List<ResourceStack<Resou
 		totals[key] = ResourceStack(resource, (totals[key]?.amount ?: 0L) + amount)
 	}
 
-	for (source in RequestFulfillment.reachableProviders(level, from)) {
-		if (!source.hookState.active) continue
-		for (kind in ResourceKindRegistry.storageKinds()) {
-			val storage = source.storage(level, kind) ?: continue
-			for (i in 0 until storage.size()) add(storage.getResource(i) as ResourceComponent, storage.getAmount(i))
+	// One walk, shared with the crafting resolver and with what a request will actually cross for -
+	// see RequestFulfillment.walkReachable. [allows] is every crossing's filter composed, so a
+	// resource no hook on the way would carry is not listed however much sits at the far end.
+	RequestFulfillment.walkReachable(level, from) { reachable, allows ->
+		for (source in reachable.providers) {
+			if (!source.hookState.active) continue
+			for (kind in ResourceKindRegistry.storageKinds()) {
+				val storage = source.storage(level, kind) ?: continue
+				for (i in 0 until storage.size()) {
+					val resource = storage.getResource(i) as ResourceComponent
+					if (allows(resource)) add(resource, storage.getAmount(i))
+				}
+			}
+		}
+		for (warehouse in reachable.warehouses) {
+			if (!warehouse.hasPressure()) continue
+			for ((key, entries) in warehouse.index.locations) {
+				val resource = key.resource as ResourceComponent
+				if (allows(resource)) add(resource, entries.sumOf { it.amount })
+			}
 		}
 	}
-	for (warehouse in RequestFulfillment.reachableWarehouses(level, from)) {
-		if (!warehouse.hasPressure()) continue
-		for ((key, entries) in warehouse.index.locations) {
-			add(key.resource as ResourceComponent, entries.sumOf { it.amount })
-		}
-	}
+
 	return totals.values.toList()
 }

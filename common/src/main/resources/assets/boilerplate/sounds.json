@@ -1,0 +1,28 @@
+{
+  "pipe.thunk": {
+    "subtitle": "subtitles.boilerplate.pipe.thunk",
+    "sounds": [
+      "boilerplate:pipe/thunk1",
+      "boilerplate:pipe/thunk2",
+      "boilerplate:pipe/thunk3"
+    ]
+  },
+  "gantry.start": {
+    "subtitle": "subtitles.boilerplate.gantry.move",
+    "sounds": [
+      "boilerplate:gantry/start"
+    ]
+  },
+  "gantry.loop": {
+    "subtitle": "subtitles.boilerplate.gantry.move",
+    "sounds": [
+      "boilerplate:gantry/loop"
+    ]
+  },
+  "gantry.stop": {
+    "subtitle": "subtitles.boilerplate.gantry.move",
+    "sounds": [
+      "boilerplate:gantry/stop"
+    ]
+  }
+}

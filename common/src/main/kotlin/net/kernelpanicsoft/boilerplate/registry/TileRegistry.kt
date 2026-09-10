@@ -1,8 +1,7 @@
 package net.kernelpanicsoft.boilerplate.registry
 
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer
-import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.transfer.exposeEnergyStorage
@@ -11,11 +10,8 @@ import net.kernelpanicsoft.archie.transfer.exposeItemStorage
 import net.kernelpanicsoft.archie.util.blockEntityType
 import net.kernelpanicsoft.archie.util.onClient
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackFluidStorageExposer
-import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
-import net.kernelpanicsoft.boilerplate.pipe.attachment.FluidStorageExposer
-import net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer
+import net.kernelpanicsoft.boilerplate.creative.CreativeProviderBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.attachment.exposedStorageFor
 import net.kernelpanicsoft.boilerplate.pipe.client.GlassPipeVisual
 import net.kernelpanicsoft.boilerplate.pipe.client.MultipartBlockEntityVisual
 import net.kernelpanicsoft.boilerplate.pipe.entity.GlassPipeBlockEntity
@@ -24,15 +20,12 @@ import net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.power.*
 import net.kernelpanicsoft.boilerplate.power.entity.CreativePressureSourceBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.exposeResourceStorage
 import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual
-import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.rack.*
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
-import net.kernelpanicsoft.boilerplate.network.exposeResourceStorage
-import net.kernelpanicsoft.boilerplate.pipe.attachment.exposedStorageFor
-import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -81,6 +74,24 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 		}
 	}
 
+	val DistributedMultiTank: BlockEntityType<DistributedMultiTankBlockEntity> by register("distributed_multi_tank") {
+		blockEntityType(::DistributedMultiTankBlockEntity) {
+			add(BlockRegistry.DistributedMultiTank)
+		}
+	}
+
+	val DistributedMultiBuffer: BlockEntityType<DistributedMultiBufferBlockEntity> by register("distributed_multi_buffer") {
+		blockEntityType(::DistributedMultiBufferBlockEntity) {
+			add(BlockRegistry.DistributedMultiBuffer)
+		}
+	}
+
+	val Omnibuffer: BlockEntityType<OmnibufferBlockEntity> by register("omnibuffer") {
+		blockEntityType(::OmnibufferBlockEntity) {
+			add(BlockRegistry.Omnibuffer)
+		}
+	}
+
 	val PressurePipe: BlockEntityType<PipeBlockEntity> by register("pressure_pipe") {
 		blockEntityType({ pos, state -> PipeBlockEntity(PressurePipe, pos, state) }) {
 			add(BlockRegistry.PressurePipe)
@@ -90,6 +101,12 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 	val FluidTank: BlockEntityType<FluidTankBlockEntity> by register("fluid_tank") {
 		blockEntityType(::FluidTankBlockEntity) {
 			add(BlockRegistry.FluidTank)
+		}
+	}
+
+	val CreativeProvider: BlockEntityType<CreativeProviderBlockEntity> by register("creative_provider") {
+		blockEntityType(::CreativeProviderBlockEntity) {
+			add(BlockRegistry.CreativeProvider)
 		}
 	}
 
@@ -106,9 +123,8 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 				// Every registered kind at once, through the one resolution they all share - not a
 				// hand-written lambda per kind. That is what makes a kind registered by a *loader*
 				// (chemicals, on NeoForge) reachable from the outside without a registration of its
-				// own: it used to need one, and the two it did not have were exactly the two bugs
-				// that followed. Safe to enumerate the registry here because `listen` runs after
-				// every kind has registered, which is not true of `init` itself.
+				// own to write and remember. Safe to enumerate the registry here because `listen`
+				// runs after every kind has registered, which is not true of `init` itself.
 				exposeResourceStorage { tile, direction, kind -> tile.exposedStorageFor<ResourceComponent>(kind, direction) }
 				exposePressureStorage { tile, direction ->
 					val hookAtFace = direction?.let { tile.hooks[it.name] }
@@ -131,15 +147,11 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 			// A plain pipe has no hooks to consult - every face of it is a pass-through, which is the
 			// whole point: a machine's own auto-output should reach the network by being pointed at
 			// a pipe, with no hook in between. See PassThroughStorage.
-			@Suppress("UNCHECKED_CAST")
 			Pipe.apply {
-				exposeItemStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Item) as CommonStorage<ItemResource>? }
-				exposeFluidStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Fluid) as CommonStorage<FluidResource>? }
+				exposeResourceStorage { tile, direction, kind -> passThroughFace(tile, direction, kind) }
 			}
-			@Suppress("UNCHECKED_CAST")
 			GlassPipe.apply {
-				exposeItemStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Item) as CommonStorage<ItemResource>? }
-				exposeFluidStorage { tile, direction -> passThroughFace(tile, direction, ResourceKindRegistry.Fluid) as CommonStorage<FluidResource>? }
+				exposeResourceStorage { tile, direction, kind -> passThroughFace(tile, direction, kind) }
 			}
 
 			GeneralRack.exposeItemStorage(GeneralRackBlockEntity::storage)
@@ -147,7 +159,19 @@ object TileRegistry : ADeferredRegistryHolder<BlockEntityType<*>>(Boilerplate.MO
 			UnstackableRack.exposeItemStorage(UnstackableRackBlockEntity::storage)
 			FluidTank.exposeFluidStorage(FluidTankBlockEntity::storage)
 
+			// The pooled racks answer for every kind their own pool takes, and for none it doesn't:
+			// `viewOf` returns null for a refused kind, so a Distributed Multi Tank simply does not
+			// expose the item capability at all rather than exposing an item storage that says no.
+			DistributedMultiTank.exposeResourceStorage { tile, _, kind -> tile.storage.viewOf(kind) }
+			DistributedMultiBuffer.exposeResourceStorage { tile, _, kind -> tile.storage.viewOf(kind) }
+			Omnibuffer.exposeResourceStorage { tile, _, kind -> tile.storage.viewOf(kind) }
+
 			CreativePressureSource.exposePressureStorage(CreativePressureSourceBlockEntity::pressure)
+
+			// Only the kind it is actually set to provide: `viewOf` answers null for every other,
+			// and for a block nobody has configured yet, so an unset one exposes nothing at all
+			// rather than an empty storage the network would keep asking.
+			CreativeProvider.exposeResourceStorage { tile, _, kind -> tile.storage.viewOf(kind) }
 
 			onClient {
 				SimpleBlockEntityVisualizer.builder(Multipart)

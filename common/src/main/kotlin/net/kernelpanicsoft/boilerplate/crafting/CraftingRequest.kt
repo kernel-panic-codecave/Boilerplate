@@ -2,17 +2,17 @@ package net.kernelpanicsoft.boilerplate.crafting
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 
 /**
  * Ties [CraftingResolver]'s generic algorithm to the real network: stock is summed across every
- * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity] reachable from
+ * [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity] reachable from
  * [from] plus every
  * [providesItems][net.kernelpanicsoft.boilerplate.pipe.hook.PipeHookType.providesItems]-tagged
  * hook reachable the same way ([RequestFulfillment.reachableProviders] - exactly the sources a
@@ -28,14 +28,14 @@ import net.minecraft.server.level.ServerLevel
  */
 object CraftingRequest {
 	fun resolve(level: ServerLevel, from: BlockPos, target: ResourceComponent, amount: Long): CraftingResolver.Result {
-		val warehouses = RequestFulfillment.reachableWarehouses(level, from)
-		val providers = RequestFulfillment.reachableProviders(level, from)
-		val patterns = RequestFulfillment.reachablePatternProviders(level, from).flatMap { it.state.heldPatterns() }
+		// Across a two-way boundary as well as locally - see RequestFulfillment.reachablePatterns for
+		// why a one-way seam's patterns are deliberately not offered.
+		val patterns = RequestFulfillment.reachablePatterns(level, from).flatMap { it.state.heldPatterns() }
 
 		val result = CraftingResolver.resolve(
 			target = target,
 			amount = amount,
-			stockOf = { resource -> stockOf(level, warehouses, providers, resource, from) },
+			stockOf = { resource -> stockOf(level, from, resource, from) },
 			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.produces(resource) } },
 			observer = { resource, demand, fromStock, shortfall, plan ->
 				ResourceTrace.resolved(from, resource, demand, fromStock, shortfall, plan)
@@ -58,14 +58,12 @@ object CraftingRequest {
 
 	/** [CraftingResolver.maxCraftable] wired the same way [resolve] is - see its own KDoc. */
 	fun maxCraftable(level: ServerLevel, from: BlockPos, target: ResourceComponent, upperBound: Long): Long {
-		val warehouses = RequestFulfillment.reachableWarehouses(level, from)
-		val providers = RequestFulfillment.reachableProviders(level, from)
-		val patterns = RequestFulfillment.reachablePatternProviders(level, from).flatMap { it.state.heldPatterns() }
+		val patterns = RequestFulfillment.reachablePatterns(level, from).flatMap { it.state.heldPatterns() }
 
 		return CraftingResolver.maxCraftable(
 			target = target,
 			upperBound = upperBound,
-			stockOf = { resource -> stockOf(level, warehouses, providers, resource, from = null) },
+			stockOf = { resource -> stockOf(level, from, resource, from = null) },
 			patternFor = { resource -> patterns.firstOrNull { pattern -> pattern.produces(resource) } },
 		)
 	}
@@ -92,13 +90,11 @@ object CraftingRequest {
 	 */
 	private fun stockOf(
 		level: ServerLevel,
-		warehouses: List<WarehouseControllerBlockEntity>,
-		providers: List<RequestFulfillment.ProviderSource>,
+		origin: BlockPos,
 		resource: ResourceComponent,
 		from: BlockPos?,
 	): Long {
-		val onShelves = warehouses.sumOf { warehouse -> warehouse.index.slotsFor(resource).sumOf { it.amount } }
-
+		var onShelves = 0L
 		// Split by whether the source would actually hand it over, purely so the trace can say so.
 		// The *total* deliberately still counts both, because changing what the resolver plans
 		// against is a behaviour decision and this is an instrumentation pass - but a non-zero
@@ -106,14 +102,23 @@ object CraftingRequest {
 		// [RequestFulfillment.fulfillFromProvider] skips an unpowered hook that this counts.
 		var claimable = 0L
 		var unclaimable = 0L
-		for (source in providers) {
-			if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) continue
-			val kind = ResourceKindRegistry.forResource(resource) ?: continue
-			val storageKind = kind.storage ?: continue
-			val storage = source.storage(level, kind) ?: continue
-			val held = storageKind.extract(storage, resource, Int.MAX_VALUE.toLong(), true)
-			if (held <= 0L) continue
-			if (source.hookState.active) claimable += held else unclaimable += held
+
+		// Across recursive boundaries as well as on this network, because a request crosses them:
+		// counting only what is local made a plan give up on stock the very next
+		// [RequestFulfillment.request] would have fetched in two legs. Same walk the terminal lists
+		// from, so what a player is shown and what a plan believes are one number.
+		RequestFulfillment.walkReachable(level, origin) { reachable, allows ->
+			if (!allows(resource)) return@walkReachable
+			onShelves += reachable.warehouses.sumOf { warehouse -> warehouse.index.slotsFor(resource).sumOf { it.amount } }
+			for (source in reachable.providers) {
+				if (source.hookState is SortingHookState && !source.hookState.accepts(resource)) continue
+				val kind = ResourceKindRegistry.forResource(resource) ?: continue
+				val storageKind = kind.storage ?: continue
+				val storage = source.storage(level, kind) ?: continue
+				val held = storageKind.extract(storage, resource, Int.MAX_VALUE.toLong(), true)
+				if (held <= 0L) continue
+				if (source.hookState.active) claimable += held else unclaimable += held
+			}
 		}
 
 		if (from != null) ResourceTrace.stock(from, resource, onShelves, claimable + unclaimable, unclaimable)

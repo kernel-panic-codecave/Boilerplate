@@ -1,21 +1,25 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
-import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
+import net.kernelpanicsoft.boilerplate.pipe.gui.ExtractionHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
 import net.kernelpanicsoft.boilerplate.pipe.network.primaryNetworkTypesAt
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.registry.Registrars
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.player.Inventory
+import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
 
 /**
@@ -56,14 +60,19 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 
 	override fun createState(): ExtractionHookState = ExtractionHookState()
 
+	override val hasMenu: Boolean = true
+
+	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
+		ExtractionHookMenu(id, inventory, tile, direction)
+
 	/**
 	 * Gated by [basePressureCost] in [MultipartBlockEntity.tick]'s own draw/gate, which skips this
 	 * call outright without it (the segment is simply unpowered) - otherwise this ticks at the flat
-	 * [EXTRACTION_INTERVAL_TICKS], with no separate speed-bonus draw of its own.
+	 * its configured interval, with no separate speed-bonus draw of its own.
 	 */
 	override fun tick(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: ExtractionHookState) {
 		state.ticksSinceExtraction++
-		if (state.ticksSinceExtraction < BoilerplateConfig.Gameplay.Hooks.extractionIntervalTicks) return
+		if (state.ticksSinceExtraction < state.intervalTicks.coerceAtLeast(1)) return
 		state.ticksSinceExtraction = 0
 		tryExtract(level, pos, direction, tile, state)
 	}
@@ -83,22 +92,50 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 		// has always had across an inventory's slots, now extended across the segment's own carrier
 		// kinds. A kind with nothing routable on the face costs one capability lookup and falls
 		// through to the next.
+		val roundRobin = state.distribution == ExtractionDistribution.ROUND_ROBIN
+
 		for (carrier in carriersAt(level, pos)) {
-			// Round-robin: skip whatever this hook has already served, and when that leaves nothing
-			// willing, start the round again rather than stalling - the cycle has simply come back
+			fun pull(avoid: Set<BlockPos>) = carrier.extractRoutable(
+				level, pos, neighborPos, direction.opposite, color, avoid,
+				accepts = state::accepts,
+				limitFor = { resource -> amountFor(carrier, state, resource) },
+			)
+
+			// Round-robin skips whatever this hook has already served, and when that leaves nothing
+			// willing, starts the round again rather than stalling - the cycle has simply come back
 			// to the top. One retry, never a loop: the second pass excludes nothing, so if it also
 			// finds no destination then genuinely none will take this resource right now.
-			var extraction = carrier.extractRoutable(level, pos, neighborPos, direction.opposite, color, state.servedThisCycle)
-			if (extraction == null && state.servedThisCycle.isNotEmpty()) {
+			//
+			// Nearest-first excludes nothing in the first place. Note that this is the *only*
+			// difference between the two: the exclusion narrows the router's candidate set, it does
+			// not change how the router ranks what remains, so priority still orders a round-robin
+			// round rather than being switched off by it.
+			var extraction = pull(if (roundRobin) state.servedThisCycle else emptySet())
+			if (extraction == null && roundRobin && state.servedThisCycle.isNotEmpty()) {
 				state.servedThisCycle.clear()
-				extraction = carrier.extractRoutable(level, pos, neighborPos, direction.opposite, color)
+				extraction = pull(emptySet())
 			}
 			if (extraction == null) continue
 
-			extraction.route.lastOrNull()?.let { state.servedThisCycle += it }
-			tile.travelingItems += TravelingItem(extraction.stack, direction, 0f, extraction.route, color)
+			if (roundRobin) extraction.route.lastOrNull()?.let { state.servedThisCycle += it }
+			tile.acceptEntry(extraction.stack, direction, extraction.route, color)
 			return
 		}
+	}
+
+	/**
+	 * How much of [resource] one pull of this hook moves, in [carrier]'s own platform count.
+	 *
+	 * [ExtractionHookState.amountAuthored] is held in the unit a player types, because one hook
+	 * pulls whatever is on the face and cannot know in advance which kind that will be - so the
+	 * conversion can only happen here, once the resource is in hand. Unset falls back to the
+	 * carrier's own batch, which is what this hook moved before the amount was settable at all.
+	 */
+	private fun amountFor(carrier: ResourceNetworkType<*>, state: ExtractionHookState, resource: ResourceComponent): Long {
+		val authored = state.amountAuthored
+		if (authored <= ExtractionHookState.KIND_DEFAULT_AMOUNT) return carrier.extractionBatch
+		val kind = ResourceKindRegistry.forResource(resource) ?: return authored
+		return kind.toPlatform(authored).coerceAtLeast(1L)
 	}
 
 	/**
@@ -115,7 +152,6 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 			.filterIsInstance<ResourceNetworkType<*>>()
 			.sortedBy { it.id.toString() }
 
-	const val EXTRACTION_INTERVAL_TICKS = 10
 
 	override fun asItem(): Item = ItemRegistry.ExtractionHook
 }

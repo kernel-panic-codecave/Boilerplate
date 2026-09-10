@@ -6,7 +6,7 @@ import net.kernelpanicsoft.boilerplate.crafting.CraftingRequest
 import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper

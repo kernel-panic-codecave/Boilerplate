@@ -5,6 +5,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
  * Client-side cache of the last synced [GantryState] per warehouse controller, with [get]
@@ -64,6 +65,9 @@ object GantryClientCache {
 		if (elapsedTicks > 0.0) state.advance(elapsedTicks * entry.speedPerTick)
 		return state
 	}
+
+	/** Every controller this client has heard from - what [net.kernelpanicsoft.boilerplate.warehouse.client.GantrySounds] walks to find the ones running. */
+	fun positions(): Set<BlockPos> = entries.keys.toSet()
 
 	fun remove(pos: BlockPos) {
 		entries.remove(pos)

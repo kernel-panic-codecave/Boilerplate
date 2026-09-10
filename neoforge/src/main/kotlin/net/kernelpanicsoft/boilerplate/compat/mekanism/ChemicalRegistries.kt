@@ -5,14 +5,21 @@ import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import mekanism.api.MekanismAPI
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.serialization.CodecSerializer
+import net.kernelpanicsoft.archie.util.itemProperties
 import net.kernelpanicsoft.archie.util.rem
+import net.kernelpanicsoft.archie.util.tab
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterConditionType
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
+import net.kernelpanicsoft.boilerplate.registry.CreativeTabRegistry
 import net.kernelpanicsoft.boilerplate.registry.Registrars
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
 import net.minecraft.core.Registry
+import net.minecraft.core.registries.Registries
 import net.minecraft.resources.ResourceKey
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.item.Item
 
 /**
  * Registers Mekanism's chemicals as a Boilerplate [ResourceKind], so pipes carry them, the warehouse

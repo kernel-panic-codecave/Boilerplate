@@ -23,9 +23,13 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 			clientbound(PendingDeliveriesPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(DebugNetworkSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
 			clientbound(WarehouseDebugSnapshotPacket::class) { packet, _ -> packet.handleOnClient() }
+			clientbound(DebugTracePacket::class) { packet, _ -> packet.handleOnClient() }
 		}
 		serverbound(UpdateSortingRoutingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(UpdateFilterBatchPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(UpdateExtractionConfigPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(UpdateProviderRecursionPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(UpdateParallelStockingPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestTerminalSearchResultsPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestWarehouseDefragPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(TerminalItemWithdrawRequestPacket::class) { packet, context -> packet.handleOnServer(context) }
@@ -50,12 +54,13 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(RequestCraftingBufferStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestRequesterStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetStockingTargetPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(SetCreativeProvidedPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(CancelCraftingBufferJobPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestPendingDeliveriesPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound<CancelPendingDeliveryPacket> { packet, context -> packet.handleOnServer(context) }
 		serverbound<UpdateRackRoutingPacket> { packet, context -> packet.handleOnServer(context) }
 		serverbound<UpdateWarehouseRoutingPacket> { packet, context -> packet.handleOnServer(context) }
-		serverbound(DebugOverlayTogglePacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(DebugFlagsPacket::class) { packet, context -> packet.handleOnServer(context) }
 		register()
 	}
 }

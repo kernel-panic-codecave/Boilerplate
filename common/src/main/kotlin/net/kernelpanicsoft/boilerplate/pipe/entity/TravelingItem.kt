@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.entity
 
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 import net.kernelpanicsoft.boilerplate.util.SDirection
 import net.kernelpanicsoft.boilerplate.util.SDyeColor
 
@@ -41,4 +41,37 @@ data class TravelingItem(
 	val color: SDyeColor? = null,
 	val targetFace: SDirection? = null,
 	val reservationId: Long? = null,
-)
+) {
+	/**
+	 * This delivery as the client needs to see it - the same item with [path] cut to
+	 * [CLIENT_PATH_LOOKAHEAD] hops.
+	 *
+	 * The route is by far the largest thing on the wire and the only part that grows without bound:
+	 * a delivery crossing a base carries a hop for every segment it has left, and every one of them
+	 * was being re-sent for every item in every pipe within
+	 * [net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity.SYNC_RADIUS], up to twice a tick
+	 * each. The renderer never looks past the second hop, so the rest is bytes to encode, ship and
+	 * decode for nothing.
+	 */
+	fun forClient(): TravelingItem =
+		if (path.size <= CLIENT_PATH_LOOKAHEAD) this else copy(path = path.take(CLIENT_PATH_LOOKAHEAD))
+
+	companion object {
+		/**
+		 * How many hops of [path] a client is sent - the exact depth its own reads reach.
+		 *
+		 * [net.kernelpanicsoft.boilerplate.pipe.client.TravelingItemInstances] reads `path[0]` to
+		 * aim the leg it is drawing, and
+		 * [net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache] hands an item to the
+		 * next segment by dropping one hop - so that copy's own `path[0]` is `path[1]`, and its
+		 * "am I on my final leg" test (`size <= 1`) is this item's `size <= 2`. Three hops answers
+		 * every one of those identically to the whole route: any path of three or more reads as
+		 * "more than one leg left" at both levels, which is the only distinction either makes.
+		 *
+		 * Change this and [net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache]'s
+		 * own duplicate check has to move with it - it compares routes seen from two sides that are
+		 * truncated at different points along them.
+		 */
+		const val CLIENT_PATH_LOOKAHEAD = 3
+	}
+}

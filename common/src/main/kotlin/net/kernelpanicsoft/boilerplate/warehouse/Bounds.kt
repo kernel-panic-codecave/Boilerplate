@@ -1,15 +1,13 @@
 package net.kernelpanicsoft.boilerplate.warehouse
 
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet
-import it.unimi.dsi.fastutil.longs.LongSet
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SBlockPos
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.levelgen.structure.BoundingBox
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
- * The warehouse volume a [WarehouseWandItem] binds to a [WarehouseControllerBlockEntity] - always
+ * The warehouse volume a [net.kernelpanicsoft.boilerplate.warehouse.item.WarehouseWandItem] binds to a [WarehouseControllerBlockEntity] - always
  * normalized so [min]/[max] are the actual lower/upper corners regardless of the order the two
  * clicks that produced them came in (see [of]).
  */
@@ -57,11 +55,11 @@ data class Bounds(val min: SBlockPos, val max: SBlockPos) {
 	/** [min]/[max] as a vanilla [BoundingBox], for APIs that expect one. */
 	fun toBoundingBox(): BoundingBox = BoundingBox(min.x, min.y, min.z, max.x, max.y, max.z)
 
-	/** Whether [pos] sits on this footprint's border, inline with the outer rail lines - where [WarehouseControllerBlock] is required to bind (see [railPerimeter]). */
+	/** Whether [pos] sits on this footprint's border, inline with the outer rail lines - where [net.kernelpanicsoft.boilerplate.warehouse.block.WarehouseControllerBlock] is required to bind (see [railPerimeter]). */
 	fun isOnBorder(pos: BlockPos): Boolean = pos.x == min.x || pos.x == max.x || pos.z == min.z || pos.z == max.z
 
 	/**
-	 * The hollow rectangle [GantryRailBlock] frame traces around this footprint's border, at [max]'s
+	 * The hollow rectangle [net.kernelpanicsoft.boilerplate.warehouse.block.GantryRailBlock] frame traces around this footprint's border, at [max]'s
 	 * y (rail height) - every position with `x`/`z` on the min/max edge, inclusive of corners, each
 	 * listed once.
 	 */

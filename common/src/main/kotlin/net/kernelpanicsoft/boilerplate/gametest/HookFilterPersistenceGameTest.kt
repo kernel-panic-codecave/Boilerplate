@@ -43,7 +43,7 @@ class HookFilterPersistenceGameTest {
 
 		val level = level as ServerLevel
 		val absoluteHookPos = absolutePos(hookPos)
-		val card = ItemResource.of(ItemStack(ItemRegistry.ItemFilterCard))
+		val card = ItemResource.of(ItemStack(ItemRegistry.ResourceFilterCard))
 		hook.filterFor(Direction.NORTH).insert(card, 1, false)
 		level.getChunkAt(absoluteHookPos).isUnsaved = false
 
@@ -55,6 +55,44 @@ class HookFilterPersistenceGameTest {
 				"Expected the hook's own tick to have marked the chunk dirty for saving - otherwise a placed filter card never actually persists, it only looks right until the block entity is reconstructed"
 			}
 		}
+	}
+
+	/**
+	 * A multipart's whole persisted state survives a real NBT round trip: its hooks (with each
+	 * one's own nested contents), its encasement, and its pipe type.
+	 *
+	 * Where [testFilterCardInFilterSlotPersists] pins that a write makes the chunk *save-worthy*,
+	 * this pins what the save itself is worth - it writes the block entity out and reads it back,
+	 * which is the step nothing else here covered. Worth having on its own terms, and specifically
+	 * because the failure it would catch is indistinguishable from the outside from a rebuild
+	 * landing under a live game: every field back at its declared default, the block entity still
+	 * there and empty. That has happened, and being able to tell the two apart afterwards is the
+	 * whole point of pinning it.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testMultipartStateSurvivesAnNbtRoundTrip() {
+		val hookPos = BlockPos(0, 2, 0)
+		val tile = placeCraftingBuffer(hookPos)
+		val hook = tile.hooks.getOrPut(Direction.NORTH.name) { FilterHookType.createState() } as SortingHookState
+		val card = ItemResource.of(ItemStack(ItemRegistry.ResourceFilterCard))
+		tile.filterFor(Direction.NORTH).insert(card, 1, false)
+		hook.routing = hook.routing.copy(priority = 7)
+		tile.hooks.touch()
+		val pipeId = tile.pipeBlockId
+
+		val saved = tile.saveWithoutMetadata(level.registryAccess())
+		tile.loadWithComponents(saved, level.registryAccess())
+
+		assertTrue(tile.hooks.size == 1) { "Expected the one hook back after a round trip, got ${tile.hooks.size}" }
+		assertTrue(tile.filterFor(Direction.NORTH).get(0).resource == card) {
+			"Expected the hook's own filter card back, got ${tile.filterFor(Direction.NORTH).get(0).resource}"
+		}
+		assertTrue((tile.hooks[Direction.NORTH.name] as SortingHookState).routing.priority == 7) {
+			"Expected the hook's own nested routing back, got ${(tile.hooks[Direction.NORTH.name] as SortingHookState).routing.priority}"
+		}
+		assertTrue(tile.encasement.value != null) { "Expected the encasement back after a round trip, got nothing" }
+		assertTrue(tile.pipeBlockId == pipeId) { "Expected the pipe type back after a round trip, got ${tile.pipeBlockId}" }
+		succeed()
 	}
 
 	/** A non-[net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem] is refused outright - the slot only ever holds filter cards, which is what lets [SortingHookState.accepts] treat its contents as one unconditionally. */

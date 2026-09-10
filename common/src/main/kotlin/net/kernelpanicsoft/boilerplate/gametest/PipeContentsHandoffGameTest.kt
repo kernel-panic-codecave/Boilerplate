@@ -123,4 +123,81 @@ class PipeContentsHandoffGameTest {
 		}
 		succeed()
 	}
+
+	/**
+	 * The same hand-off, over a route long enough that [TravelingItem.forClient] actually truncates
+	 * it - which is the only case where the two segments' copies of one delivery disagree.
+	 *
+	 * Each segment sends the route as measured from *itself*, cut to
+	 * [TravelingItem.CLIENT_PATH_LOOKAHEAD]. So the departing segment's copy and the receiving
+	 * segment's copy of the same item end at different points along it, and a duplicate check
+	 * comparing the whole of each would call them two different deliveries and draw the item twice.
+	 * Short routes cannot catch that: nothing is cut, so both copies agree exactly.
+	 */
+	@GameTest(template = SMALL)
+	fun GameTestHelper.testALongRouteIsNotDrawnTwiceOnceItsPathIsTruncatedForTheClient() {
+		val from = BlockPos(400, 100, 600)
+		val to = from.south()
+		// Far more hops than the client is ever sent, so both copies are genuinely cut.
+		val onward = (2..8).map { from.south(it) }
+		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
+
+		// Exactly what each segment's own sync would put on the wire - see PipeBlockEntity.syncNow.
+		PipeContentsClientCache.update(
+			from,
+			listOf(TravelingItem(ResourceStack(diamond, 4), Direction.NORTH, 0.95f, listOf(to) + onward).forClient()),
+			1f,
+			0L,
+		)
+		PipeContentsClientCache.update(
+			to,
+			listOf(TravelingItem(ResourceStack(diamond, 4), Direction.NORTH, 0.05f, onward).forClient()),
+			1f,
+			1L,
+		)
+
+		try {
+			val arrived = PipeContentsClientCache.get(to, 2.0)
+			assertTrue(arrived.size == 1) {
+				"Expected exactly one item on the receiving segment while both packets are live - " +
+					"two means the truncated routes stopped matching each other, got $arrived"
+			}
+			assertTrue(PipeContentsClientCache.get(from, 2.0).isEmpty()) {
+				"Expected a truncated route to still read as having more than one leg left, so the " +
+					"departing segment hands it on rather than parking it at the face"
+			}
+		} finally {
+			PipeContentsClientCache.remove(from)
+			PipeContentsClientCache.remove(to)
+		}
+		succeed()
+	}
+
+	/**
+	 * A delivery on its final leg keeps its whole (one-hop) route, and still reads as final -
+	 * [TravelingItem.forClient] must not turn an arrival into something the renderer hands onward to
+	 * a segment that isn't expecting it.
+	 */
+	@GameTest(template = SMALL)
+	fun GameTestHelper.testAFinalLegSurvivesTruncationIntact() {
+		val at = BlockPos(400, 100, 700)
+		val destination = at.south()
+		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
+		val item = TravelingItem(ResourceStack(diamond, 1), Direction.NORTH, 0.95f, listOf(destination))
+
+		assertTrue(item.forClient() === item) {
+			"Expected a route already inside the lookahead to be sent as-is rather than copied"
+		}
+
+		PipeContentsClientCache.update(at, listOf(item.forClient()), 1f, 0L)
+		try {
+			// Past 1.0 and with nowhere further to go: held at the face mouth, not handed on.
+			val held = PipeContentsClientCache.get(at, 2.0)
+			assertTrue(held.size == 1) { "Expected a final-leg delivery to stay on its own segment, got $held" }
+			assertTrue(held[0].progress > 1f) { "Expected it to hold past the exit face, got ${held[0].progress}" }
+		} finally {
+			PipeContentsClientCache.remove(at)
+		}
+		succeed()
+	}
 }

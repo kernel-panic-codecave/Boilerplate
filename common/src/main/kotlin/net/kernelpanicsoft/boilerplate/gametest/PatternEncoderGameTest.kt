@@ -13,8 +13,8 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import net.kernelpanicsoft.boilerplate.util.resourceCell
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 
 /**
  * GameTest coverage for [PatternEncoder] - a pure query over a plain [ArchieItemStorage] grid/

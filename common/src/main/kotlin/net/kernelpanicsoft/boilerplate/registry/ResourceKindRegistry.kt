@@ -3,15 +3,18 @@ package net.kernelpanicsoft.boilerplate.registry
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.boilerplate.network.ResourceStorageKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind
+import java.util.concurrent.ConcurrentHashMap
 import net.minecraft.core.Registry
 import net.minecraft.resources.ResourceKey
+import net.kernelpanicsoft.boilerplate.resource.FluidKind
+import net.kernelpanicsoft.boilerplate.resource.ItemKind
 
 /**
  * Registers Boilerplate's own carrier [ResourceKind]s (item, fluid) into the custom
  * [Registrars.RESOURCE_KIND] registry, and resolves a live [ResourceComponent] or wire kind tag to
- * its registered kind - the lookup half of [net.kernelpanicsoft.boilerplate.network.ResourceStackSerializer]'s
+ * its registered kind - the lookup half of [net.kernelpanicsoft.boilerplate.resource.ResourceStackSerializer]'s
  * dispatch. A loader/addon's own kind (Mekanism gas, say) registers by subclassing
  * [ADeferredRegistryHolder] over the *same* [Registrars.RESOURCE_KIND] registry key and calling
  * `init()` from its own setup - no edit to Boilerplate's holder or serializer needed - mirroring
@@ -30,11 +33,32 @@ object ResourceKindRegistry : ADeferredRegistryHolder<ResourceKind>(
 
 	val Fluid: ResourceKind by register("fluid") { FluidKind }
 
-	/** The registered [ResourceKind] whose [ResourceKind.resourceClass] is a supertype of [resource], or null if none is. */
+	/**
+	 * The registered [ResourceKind] whose [ResourceKind.resourceClass] is a supertype of [resource],
+	 * or `null` if none is.
+	 *
+	 * Memoised on the resource's concrete class, because the answer depends on nothing else and this
+	 * is among the hottest lookups in the mod: [net.kernelpanicsoft.boilerplate.resource.ResourceIdentity.of]
+	 * goes through it for every identity it builds, including inside per-slot loops over a
+	 * fifty-four-slot rack. Uncached, each of those is a walk of the registry doing a reflective
+	 * `isInstance` per kind.
+	 *
+	 * Only *hits* are remembered, which is what makes the memo safe against an addon registering a
+	 * kind late: a miss is re-resolved every time, so the first call after that registration finds
+	 * it. A hit cannot go stale - two kinds claiming the same resource class would be a conflict in
+	 * its own right, and registration order is fixed once the registry has loaded.
+	 */
 	fun forResource(resource: ResourceComponent): ResourceKind? {
-		for (kind in Registrars.RESOURCE_KIND) if (kind.resourceClass.isInstance(resource)) return kind
+		kindByResourceClass[resource.javaClass]?.let { return it }
+		for (kind in Registrars.RESOURCE_KIND) if (kind.resourceClass.isInstance(resource)) {
+			kindByResourceClass[resource.javaClass] = kind
+			return kind
+		}
 		return null
 	}
+
+	/** [forResource]'s memo, keyed by the concrete class asked about. */
+	private val kindByResourceClass = ConcurrentHashMap<Class<*>, ResourceKind>()
 
 	/**
 	 * Every registered kind that can live in a storage, in registry order - what the warehouse
@@ -57,7 +81,7 @@ object ResourceKindRegistry : ADeferredRegistryHolder<ResourceKind>(
 
 	/**
 	 * [storageKinds] minus [excluded] - what a block that keeps a dedicated field for some kind
-	 * passes to its own [net.kernelpanicsoft.boilerplate.network.ResourceStorage], so a resource of
+	 * passes to its own [net.kernelpanicsoft.boilerplate.resource.ResourceStorage], so a resource of
 	 * that kind can never land somewhere the block will not look for it.
 	 */
 	fun storageKindsExcept(vararg excluded: ResourceKind): List<ResourceKind> =

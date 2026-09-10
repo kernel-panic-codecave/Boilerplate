@@ -20,7 +20,7 @@ import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
-import net.kernelpanicsoft.boilerplate.util.resourceCell
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper

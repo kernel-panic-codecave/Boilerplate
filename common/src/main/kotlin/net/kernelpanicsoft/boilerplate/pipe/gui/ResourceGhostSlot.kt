@@ -9,8 +9,11 @@ import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
+import net.kernelpanicsoft.archie.gui.modifiers.input.MouseButton
 import net.kernelpanicsoft.archie.gui.modifiers.input.onScroll
 import net.kernelpanicsoft.archie.gui.nodes.UINode
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.minecraft.client.gui.screens.Screen
 import net.minecraft.world.item.ItemStack
 import kotlin.math.sign
 
@@ -28,6 +31,13 @@ import kotlin.math.sign
  * other fluid slot in the ecosystem uses, and the only one that leaves fluids reachable at all.
  *
  * Ghost in the same sense as both: the carried stack is inspected, never consumed or modified.
+ *
+ * @param onAmountScroll Told which way the wheel turned over a filled cell, for a caller that
+ *   steps the amount by a notch - one of [scrollStepFor]'s, so the modifier keys held pick how
+ *   coarse that notch is. Omit it for a cell with no amount to adjust.
+ * @param onEditAmount Invoked on a **middle-click** over a filled cell, for a caller that opens
+ *   [setAmountDialog]. The typed way to reach an amount the wheel would take a hundred notches to
+ *   get to; omitted alongside [onAmountScroll] for the same reason.
  */
 @Composable
 fun ResourceGhostSlot(
@@ -40,6 +50,7 @@ fun ResourceGhostSlot(
 	amount: Long = 1,
 	countText: String? = null,
 	onAmountScroll: ((Int) -> Unit)? = null,
+	onEditAmount: (() -> Unit)? = null,
 	modifier: Modifier = Modifier,
 ) {
 	var effectiveModifier = modifier
@@ -48,20 +59,36 @@ fun ResourceGhostSlot(
 			if (!resource.isBlank) onAmountScroll(event.scrollY.sign.toInt())
 		}
 	}
+	// What the player is carrying, read as whichever registered kind claims it - a bucket of water
+	// names the water, not the bucket. Kinds are asked in [displayKinds] order, which puts the item
+	// kind last precisely because it claims any stack at all.
+	fun place() {
+		val held = carried()
+		val claimed = ResourceKindRegistry.displayKinds()
+			.firstNotNullOfOrNull { kind -> kind.display?.carriedIn(held) }
+		when {
+			claimed != null -> onPlace(claimed)
+			!resource.isBlank -> onClear()
+		}
+	}
 	Clickable(
-		onClick = {
-			// What the player is carrying, read as whichever registered kind claims it - a bucket
-			// of water names the water, not the bucket. Kinds are asked in [displayKinds] order,
-			// which puts the item kind last precisely because it claims any stack at all.
-			val held = carried()
-			val claimed = ResourceKindRegistry.displayKinds()
-				.firstNotNullOfOrNull { kind -> kind.display?.carriedIn(held) }
+		onClick = { place() },
+		modifier = effectiveModifier,
+		// The middle button is the amount gesture and the right one opens [handleClick]'s editor;
+		// anything else still places or clears, as every button did when they all went to [onClick] -
+		// vanilla's own ghost slots take either.
+		//
+		// Right-click has to be handled here and not only through [ClickHandler], which a host screen
+		// consumes the button with: the card editor is a *layer* and has no `mouseClicked` of its own
+		// to intercept from, so inside it the click fell through to [onClick] - clearing the very card
+		// the player right-clicked to configure.
+		onAuxClick = { _, button ->
 			when {
-				claimed != null -> onPlace(claimed)
-				!resource.isBlank -> onClear()
+				button == MouseButton.MIDDLE && !resource.isBlank -> onEditAmount?.invoke() ?: place()
+				button == MouseButton.RIGHT && handleClick != null -> handleClick()
+				else -> place()
 			}
 		},
-		modifier = effectiveModifier,
 	) { isHovered, _, _ ->
 		LaunchedEffect(isHovered, resource, handleClick) {
 			clickHandler.setHovered(if (isHovered) handleClick else null)
@@ -86,14 +113,17 @@ fun ResourceGhostSlotGrid(
 	clickHandler: ClickHandler,
 	handleClick: (Int) -> (() -> Unit)?,
 	amounts: List<Long>? = null,
+	/** Per-cell corner label. Omit it for [amountLabelFor] over the cell's own amount. */
 	countText: ((Int) -> String?)? = null,
 	onAmountScroll: ((Int, Int) -> Unit)? = null,
+	onEditAmount: ((Int) -> Unit)? = null,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(0)) {
 		resources.chunked(columns).forEachIndexed { rowIndex, row ->
 			Row(horizontalArrangement = Arrangement.spacedBy(0)) {
 				row.forEachIndexed { colIndex, resource ->
 					val index = rowIndex * columns + colIndex
+					val cellAmount = amounts?.getOrNull(index) ?: 1
 					ResourceGhostSlot(
 						resource = resource,
 						carried = carried,
@@ -101,12 +131,45 @@ fun ResourceGhostSlotGrid(
 						onClear = { onClear(index) },
 						clickHandler = clickHandler,
 						handleClick = handleClick(index),
-						amount = amounts?.getOrNull(index) ?: 1,
-						countText = countText?.invoke(index),
+						amount = cellAmount,
+						// Labelled unless the caller says otherwise, rather than unlabelled unless
+						// the caller says so: a grid of cells holding measured resources wants their
+						// amounts drawn, and leaving that to each caller is what left the pattern
+						// terminal showing fluids and chemicals with no number at all. A caller that
+						// passes [countText] keeps full control, nulls included - which is how
+						// [StockingRowGrid] draws ∞, and how a caller whose amounts are already
+						// authored avoids the second conversion this default would apply.
+						countText = if (countText != null) countText(index) else amountLabelFor(resource, cellAmount),
 						onAmountScroll = onAmountScroll?.let { callback -> { delta: Int -> callback(index, delta) } },
+						onEditAmount = onEditAmount?.let { callback -> { callback(index) } },
 					)
 				}
 			}
 		}
 	}
+}
+
+/**
+ * How far one scroll notch moves an authored amount of [kind], given the modifier keys held.
+ *
+ * The kind's own [ResourceKind.authoredStep] is the unmodified notch and its
+ * [ResourceKind.scrollSteps] are the three modified ones, so each kind brings the ladder that suits
+ * how it is counted: 1 / 10 / 100 / 1000 mB for a fluid, 1 / 4 / 16 / 64 for items. Either way both
+ * ends are reachable without a hundred notches - filling a multi-bucket cell, and correcting the
+ * last millibucket of it.
+ *
+ * Never finer than `1`, which is what keeps a kind that declares no ladder of its own from
+ * producing a scroll that moves nothing at all.
+ */
+internal fun scrollStepFor(kind: ResourceKind?): Long {
+	if (kind == null) return 1L
+	val steps = kind.scrollSteps
+	val shift = Screen.hasShiftDown()
+	val control = Screen.hasControlDown()
+	return when {
+		shift && control -> steps.shiftAndControl
+		control -> steps.control
+		shift -> steps.shift
+		else -> kind.authoredStep
+	}.coerceAtLeast(1L)
 }

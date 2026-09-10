@@ -148,17 +148,20 @@ class RequesterHookStatusGameTest {
 	}
 
 	/**
-	 * The behaviour behind that readout: a requester keeps the interface it faces stocked with **its
-	 * own** order, and the interface does not undo the work.
+	 * A requester facing an interface with **nothing behind it** parks nothing on the seam.
 	 *
-	 * The second half is the part that needs pinning. An interface ordinarily drains anything its own
-	 * ghost row does not name straight back out ([InterfaceHookType]'s `drainExcess`), which for a
-	 * requester-supplied resource means everything that arrives - the two would trade the same stack
-	 * back and forth forever. While a requester is driving it, the interface stands its own stocking
-	 * down and honours that order instead.
+	 * This used to assert the opposite - that the interface settled holding exactly the requester's
+	 * order - because stocking the interface *was* the behaviour. It is not any more: an interface is
+	 * a junction, and a row saying "keep 6 diamonds" means "keep the things behind here supplied",
+	 * not "pile 6 diamonds on the boundary" (see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookType]). With no destination on the far
+	 * side, the honest amount to send is none, and the requester's own network keeps its diamonds.
+	 *
+	 * `SubnetBoundaryGameTest.testARequesterStocksTheFarSubnetsDestinationsNotTheSeam` is the positive
+	 * half - two chests behind the interface, both stocked, the seam left empty.
 	 */
 	@GameTest(template = SMALL, timeoutTicks = 200)
-	fun GameTestHelper.testARequesterKeepsTheInterfaceStockedWithItsOwnOrder() {
+	fun GameTestHelper.testARequesterFacingAnEmptySubnetParksNothingOnTheSeam() {
 		val interfacePos = BlockPos(0, 2, 0)
 		val requesterPos = BlockPos(0, 2, 1)
 		val sourcePos = BlockPos(1, 2, 1)
@@ -181,11 +184,16 @@ class RequesterHookStatusGameTest {
 		providerState.routing = RoutingModule(mode = FilterMode.BLACKLIST)
 		placeCreativePressureSource(requesterPos.above())
 
-		succeedWhen {
+		runAfterDelay(160) {
 			val held = amountHeld(interfaceState, ItemResource.of(ItemStack(Items.DIAMOND)))
-			assertTrue(held == 6L) {
-				"Expected the interface to settle holding exactly the requester's order of 6 diamonds - no fewer (not supplied) and no more (drained back), got $held"
+			assertTrue(held == 0L) {
+				"Expected nothing parked on the seam when there is nothing behind it to stock, got $held"
 			}
+			val source = (getBlockEntity(sourcePos) as ChestBlockEntity).getItem(0)
+			assertTrue(source.count == 32) {
+				"Expected the requester's own source to be untouched, got $source"
+			}
+			succeed()
 		}
 	}
 

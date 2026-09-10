@@ -8,9 +8,9 @@ import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.archie.gui.blockentity.BlockEntityStateContainer
 import net.kernelpanicsoft.archie.gui.blockentity.getStateContainer
 import net.kernelpanicsoft.archie.transfer.ArchieFluidStorage
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FluidConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionState
 import net.kernelpanicsoft.boilerplate.pipe.gui.reachableStock
 import net.kernelpanicsoft.boilerplate.pipe.network.FluidPipeRouter
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
@@ -25,13 +25,14 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.material.Fluids
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
  * The warehouse is **resource-kind agnostic**: a tank inside a bound volume is an ordinary rack, and
  * the gantry moves fluid out of and into it exactly as it moves items.
  *
  * Nothing in the warehouse names items or fluids any more - it asks the registry which kinds have a
- * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind] and drives them all the same way.
+ * [net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind] and drives them all the same way.
  * These tests pin that from the outside: they only ever use the public warehouse API, so they would
  * pass unchanged for a third kind an addon registers.
  */
@@ -399,9 +400,9 @@ class WarehouseFluidGameTest {
 		val controller = getBlockEntity(controllerPos) as WarehouseControllerBlockEntity
 
 		// A fluid card naming lava, on a whitelist controller - so water is not wanted here.
-		val card = ItemStack(ItemRegistry.FluidFilterCard)
+		val card = ItemStack(ItemRegistry.ResourceFilterCard)
 		FilterCardState(card).apply {
-			(currentState() as FluidConditionState).fluidMatches[0] = FluidResource.of(Fluids.LAVA)
+			(currentState() as ResourceConditionState).resourceMatches[0] = FluidResource.of(Fluids.LAVA)
 			touchCurrentState()
 		}
 		controller.filter[0].set(card)

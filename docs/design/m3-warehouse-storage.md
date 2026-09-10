@@ -86,6 +86,20 @@ Three built-in rack block families (`warehouse/rack/`), distinguished by storage
 
 None of the three racks have their own GUI - `RackBlock`'s only direct interaction is echoing an action-bar summary (`RackBlockEntity.describeContents`) on right-click; real reads/writes go through the gantry, pipes, or the warehouse terminal, the same as any other rack. Plain cubes (`cubeAll`/`simpleBlockWithItem`), one flat-color texture each.
 
+## Shared-pool racks
+
+Three further rack blocks (`warehouse/rack/`) answer a problem none of the three above can: buffering a process that touches a *great many* resources in *small* amounts. A slotted rack runs out of slots long before it runs out of room - 1mB each of a thousand fluids needs a thousand tanks, and it was never the volume that ran out - and `UncappedItemStorage` only fixes half of it, since it pools item counts and so charges a shulker box the same as a cobblestone.
+
+These hold one **pooled capacity**, measured in *wholes*: a full stack of an item (that item's own stack size) against one bucket of a fluid, deliberately equated. 64 cobblestone, 16 ender pearls, one shulker box and 1000mB of water each cost one whole. A pool of 64 therefore holds 64 buckets, or 4096 cobblestone, or a millibucket each of 64,000 different fluids, or any mixture summing to the same - and the thousandth distinct resource costs no more to hold than the first.
+
+- **`DistributedMultiTankBlockEntity`** — every `ResourceMeasure.UNIT` kind (fluids, an addon's chemicals), denominated in buckets.
+- **`DistributedMultiBufferBlockEntity`** — every `ResourceMeasure.DISCRETE` kind (items), denominated in stacks.
+- **`OmnibufferBlockEntity`** — every registered kind at once, in one pool both draw on, so a process whose inputs and outputs are a mixture of both does not need the split decided in advance.
+
+All three are `PooledRackBlockEntity` over a `PooledResourceStorage`, which is `UncappedItemStorage`'s record model - one record per distinct resource, allocated on arrival and released when emptied - generalized to any kind and to a unit they can all be charged in. Capacity is counted in 64,000ths of a whole, that being the smallest figure divisible by both every vanilla stack size and the 1000 millibuckets in a bucket, and every total is recomputed from the records rather than accumulated so the flooring cannot drift. Records are matched by `ResourceIdentity`, since `FluidResource` has no value equality of its own.
+
+Which kinds a pool takes runs all the way down to `PooledResourceStorage.viewOf`, which answers `null` for a refused kind - so a Distributed Multi Tank exposes no item capability at all rather than an item storage that says no, and nothing offers it one. Capacities are `BoilerplateConfig.Gameplay.Capacities`, 64 wholes apiece by default. Their intrinsic put-away priority is `0`, the General Rack's baseline rather than a specialist's: they are a large general sink, and one outranking an ordinary rack by default would quietly become the only rack a warehouse ever used.
+
 ## Deferred to playtesting / not blocking
 
 - Multi-gantry parallelism as a later upgrade (not core M3 scope).

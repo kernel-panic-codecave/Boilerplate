@@ -57,10 +57,39 @@ object BoilerplateConfig : ConfigContainer(Boilerplate.MOD) {
 			)
 
 			/** How many items one extraction pulls at a time - a "stack", for the item kind. */
+			/** One stack's worth by default - the quantity every item extraction has always pulled. */
 			var itemExtractionBatch by long(
 				Component.literal("Item extraction batch"),
 				Component.literal("How many items one extraction moves at a time."),
 				default = 64L,
+			)
+
+			/**
+			 * How close along a segment two deliveries must be before they merge into one - see
+			 * [net.kernelpanicsoft.boilerplate.pipe.entity.coalesceTravelingItems].
+			 *
+			 * A fraction of one segment, so it is the same distance whatever `ticksPerSegment` is.
+			 * A quarter of a segment is roughly the radius vanilla merges dropped item entities
+			 * over. `0` turns merging off entirely.
+			 */
+			var mergeProgressWindow by double(
+				Component.literal("Merge window"),
+				Component.literal("How close together, as a fraction of one pipe segment, two deliveries must be to merge into one. 0 disables merging."),
+				default = 0.25,
+			)
+
+			/**
+			 * The largest a merged delivery may get, counted in whole units of its own kind - so a
+			 * stack for an item and a bucket for a fluid or chemical, whatever those are worth in
+			 * the platform's own count.
+			 *
+			 * One extraction already moves exactly one whole, so a limit of `1` leaves nothing to
+			 * merge; the default is what caps how much a saturated run can collapse by.
+			 */
+			var mergeMaxWholes by intSlider(
+				Component.literal("Merge limit"),
+				Component.literal("The most one merged delivery may carry, in stacks for items and buckets for fluids. 1 disables merging."),
+				min = 1, max = 64, default = 8,
 			)
 		}
 
@@ -77,6 +106,14 @@ object BoilerplateConfig : ConfigContainer(Boilerplate.MOD) {
 				min = 1, max = 400, default = 40,
 			)
 
+			/**
+			 * How much an [net.kernelpanicsoft.boilerplate.pipe.hook.UNBOUNDED_STOCK] entry asks for
+			 * per cycle.
+			 *
+			 * An unbounded target has no number to work toward, so it needs *some* ceiling per
+			 * request or the ask is meaningless. A stack's worth per cycle keeps an export bus
+			 * moving briskly without any single cycle trying to drain a whole network at once.
+			 */
 			var exportBatch by long(
 				Component.literal("Requester export batch"),
 				Component.literal("How much a requester hook moves in one go."),
@@ -89,7 +126,14 @@ object BoilerplateConfig : ConfigContainer(Boilerplate.MOD) {
 				min = 1, max = 400, default = 20,
 			)
 
-			/** How many runs' worth of a single pattern a provider buffers before refusing more. */
+			/**
+			 * How many runs' worth of a single pattern
+			 * [net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState.patternBuffers]
+			 * holds before refusing more.
+			 *
+			 * TODO M5: derive from the target's own pressure capacity - a flat baseline until then,
+			 * now tunable rather than fixed, which is not the same thing as derived.
+			 */
 			var patternBufferedRuns by intSlider(
 				Component.literal("Pattern buffered runs"),
 				Component.literal("How many runs' worth of ingredients a pattern provider stages ahead of the machine it feeds."),
@@ -108,12 +152,18 @@ object BoilerplateConfig : ConfigContainer(Boilerplate.MOD) {
 				default = 8_000L,
 			)
 
+			/**
+			 * Big enough for a withdrawal to land in one go, and stated loader-independently for the
+			 * reason [net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity.getCapacity]
+			 * documents.
+			 */
 			var terminalInboxMillibuckets by long(
 				Component.literal("Terminal inbox"),
 				Component.literal("Millibuckets one column of a terminal's inbox holds - big enough for a withdrawal to land in one go."),
 				default = 16_000L,
 			)
 
+			/** Sixteen buckets by default - the same as the Crafting Tank the buffer replaced. */
 			var craftingBufferMillibuckets by long(
 				Component.literal("Crafting buffer slot"),
 				Component.literal("Millibuckets one slot of a Crafting Buffer holds."),
@@ -124,6 +174,33 @@ object BoilerplateConfig : ConfigContainer(Boilerplate.MOD) {
 				Component.literal("Bulk rack"),
 				Component.literal("How much of its single resource a Bulk Rack holds."),
 				default = 1_000_000L,
+			)
+
+			/**
+			 * The three shared-pool racks, each stated in the *whole* their own pool is denominated
+			 * in - see [net.kernelpanicsoft.boilerplate.warehouse.rack.PooledResourceStorage], where
+			 * one whole is a bucket of a fluid or a full stack of an item, deliberately equated.
+			 *
+			 * 64 apiece: a double chest of stacks, or a large tank's worth of fluid, which is the
+			 * size at which one of these is worth building over the ordinary rack it replaces without
+			 * being worth building *instead* of a warehouse.
+			 */
+			var distributedMultiTankBuckets by long(
+				Component.literal("Distributed Multi Tank"),
+				Component.literal("Buckets a Distributed Multi Tank holds in total, shared across every fluid or chemical in it however many there are."),
+				default = 64L,
+			)
+
+			var distributedMultiBufferStacks by long(
+				Component.literal("Distributed Multi Buffer"),
+				Component.literal("Stacks a Distributed Multi Buffer holds in total, shared across every item in it - each item costing its share of its own stack size."),
+				default = 64L,
+			)
+
+			var omnibufferWholes by long(
+				Component.literal("Omnibuffer"),
+				Component.literal("Wholes an Omnibuffer holds in total, a stack and a bucket counting as one each, shared across every resource in it."),
+				default = 64L,
 			)
 		}
 

@@ -6,14 +6,13 @@ import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.crafting.CraftingResolver
 import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
-import net.kernelpanicsoft.boilerplate.util.resourceCell
-import net.kernelpanicsoft.boilerplate.util.resourceStack
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 
 /**
  * GameTest coverage for [CraftingResolver] - pure-function logic, so these don't touch the world at

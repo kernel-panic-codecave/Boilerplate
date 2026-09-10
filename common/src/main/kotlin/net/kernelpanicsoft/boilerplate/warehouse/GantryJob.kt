@@ -4,6 +4,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
  * One physical crane task, queued on [WarehouseControllerBlockEntity] and executed as two travel
@@ -15,7 +16,7 @@ sealed interface GantryJob {
 	 * What this job is carrying. A bare [ResourceComponent], so a crane leg moves a bucket of
 	 * lava exactly as it moves a stack of ingots - which storage it comes out of and goes into is
 	 * resolved from the resource's own kind (see
-	 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind]).
+	 * [net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind]).
 	 */
 	val stack: ResourceStack<ResourceComponent>
 

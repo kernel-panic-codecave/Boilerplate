@@ -1,13 +1,16 @@
 package net.kernelpanicsoft.boilerplate.pipe.network
 
+import earth.terrarium.common_storage_lib.fluid.FluidApi
 import earth.terrarium.common_storage_lib.lookup.BlockLookup
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
+import net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookType
 import net.kernelpanicsoft.boilerplate.registry.HookTypeRegistry
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -312,7 +315,7 @@ abstract class PipeRouter<T : ResourceComponent> {
 	}
 
 	/** Whether [tile] carries a [TerminalHookType] hook on any of its faces - see [step]'s hookless-face exclusion. */
-	private fun hasTerminal(tile: MultipartBlockEntity): Boolean {
+	internal fun hasTerminal(tile: MultipartBlockEntity): Boolean {
 		for ((_, entry) in tile.hooks) if (entry.type == TerminalHookType.ID) return true
 		return false
 	}
@@ -330,15 +333,15 @@ object ItemPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources.
 
 	override fun isPipe(level: LevelAccessor, pos: BlockPos): Boolean = ItemNetworkType in networkTypesAt(level, pos)
 
-	/** A Crafting CPU cluster mid-job - see [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery]. */
+	/** A Crafting CPU cluster mid-job - see [CraftingCpuRuntime.awaitsDelivery]. */
 	override fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: earth.terrarium.common_storage_lib.resources.item.ItemResource): Boolean =
-		net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery(level, pos, resource)
+		CraftingCpuRuntime.awaitsDelivery(level, pos, resource)
 }
 
 /** The fluid-pipe router - members are positions carrying the fluid network type; filters through the same cards items do (see [acceptsByFilter]). */
-object FluidPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources.fluid.FluidResource>() {
-	override val api: BlockLookup<CommonStorage<earth.terrarium.common_storage_lib.resources.fluid.FluidResource>, Direction?>
-		get() = earth.terrarium.common_storage_lib.fluid.FluidApi.BLOCK
+object FluidPipeRouter : PipeRouter<FluidResource>() {
+	override val api: BlockLookup<CommonStorage<FluidResource>, Direction?>
+		get() = FluidApi.BLOCK
 
 	/**
 	 * The same [SortingHookState.accepts] the item router uses. A fluid is a perfectly ordinary
@@ -347,7 +350,7 @@ object FluidPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources
 	 * grid simply never matches one, which the card's own mode then turns into the right answer
 	 * (a whitelist denies it, a blacklist passes it) exactly as it does for a non-matching item.
 	 */
-	override fun acceptsByFilter(hook: SortingHookState, resource: earth.terrarium.common_storage_lib.resources.fluid.FluidResource, color: DyeColor?): Boolean =
+	override fun acceptsByFilter(hook: SortingHookState, resource: FluidResource, color: DyeColor?): Boolean =
 		hook.accepts(resource, color)
 
 	override fun managerFor(level: ServerLevel): AbstractPipeNetworkManager<*> = FluidNetworkManager.get(level)
@@ -358,8 +361,8 @@ object FluidPipeRouter : PipeRouter<earth.terrarium.common_storage_lib.resources
 	 * A Crafting CPU cluster mid-job, exactly as on the item side - a step whose output is a fluid
 	 * makes its cluster a push destination for that fluid, so a machine's fluid output routes into
 	 * the cluster's Crafting Tanks rather than being sorted off to storage. See
-	 * [net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery].
+	 * [CraftingCpuRuntime.awaitsDelivery].
 	 */
-	override fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: earth.terrarium.common_storage_lib.resources.fluid.FluidResource): Boolean =
-		net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime.awaitsDelivery(level, pos, resource)
+	override fun awaitsDelivery(level: ServerLevel, pos: BlockPos, resource: FluidResource): Boolean =
+		CraftingCpuRuntime.awaitsDelivery(level, pos, resource)
 }

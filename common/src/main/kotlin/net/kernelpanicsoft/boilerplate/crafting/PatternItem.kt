@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
 import net.kernelpanicsoft.archie.serialization.NBTHolder
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack

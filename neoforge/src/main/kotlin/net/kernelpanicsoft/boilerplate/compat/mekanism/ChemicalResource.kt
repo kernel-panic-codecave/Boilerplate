@@ -29,7 +29,7 @@ class ChemicalResource private constructor(val chemical: Chemical) : ResourceCom
 	 *
 	 * [ResourceComponent] does not define equality, and a resource without it silently breaks every
 	 * map and cache keyed on one - the same trap `FluidResource` walks into and that
-	 * [net.kernelpanicsoft.boilerplate.network.ResourceIdentity] exists to work around. A chemical
+	 * [net.kernelpanicsoft.boilerplate.resource.ResourceIdentity] exists to work around. A chemical
 	 * is a registry singleton, so identity would be enough; this is spelled out anyway so the
 	 * contract does not depend on that staying true.
 	 */

@@ -11,8 +11,8 @@ import net.kernelpanicsoft.boilerplate.crafting.PatternEncoder
 import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
-import net.kernelpanicsoft.boilerplate.util.resourceCell
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
 import net.minecraft.server.level.ServerLevel

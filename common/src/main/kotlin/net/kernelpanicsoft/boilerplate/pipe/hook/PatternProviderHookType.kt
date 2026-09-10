@@ -7,7 +7,7 @@ import net.kernelpanicsoft.boilerplate.crafting.PatternItemData
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.gui.PatternProviderHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType.tickGenericTarget
@@ -23,7 +23,6 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
 import net.minecraft.world.level.block.Blocks
-import net.kernelpanicsoft.boilerplate.network.roomFor
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 

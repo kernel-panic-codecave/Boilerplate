@@ -1,8 +1,8 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.boilerplate.network.ItemResourceSerializer
-import net.kernelpanicsoft.boilerplate.network.SItemResource
+import net.kernelpanicsoft.boilerplate.resource.ItemResourceSerializer
+import net.kernelpanicsoft.boilerplate.resource.SItemResource
 
 /** [CombinedConditionType]'s own state: how [children] combine, and the ghost grid itself - see its own KDoc. */
 class CombinedConditionState : FilterConditionState(CombinedConditionType.ID) {

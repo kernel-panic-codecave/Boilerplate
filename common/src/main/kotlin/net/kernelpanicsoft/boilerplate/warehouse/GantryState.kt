@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.warehouse
 
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
  * A crane head's current position and pending motion, owned by [WarehouseControllerBlockEntity] -

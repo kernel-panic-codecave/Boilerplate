@@ -8,17 +8,22 @@ import net.kernelpanicsoft.archie.util.onClient
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.crafting.gui.CraftingBufferMenu
 import net.kernelpanicsoft.boilerplate.crafting.gui.CraftingBufferScreen
+import net.kernelpanicsoft.boilerplate.creative.CreativeProviderBlockEntity
+import net.kernelpanicsoft.boilerplate.creative.CreativeProviderMenu
+import net.kernelpanicsoft.boilerplate.creative.CreativeProviderScreen
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.gui.*
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardTarget
 import net.kernelpanicsoft.boilerplate.util.blockEntity
 import net.kernelpanicsoft.boilerplate.util.level
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerMenu
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerScreen
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.gui.WarehouseControllerMenu
+import net.kernelpanicsoft.boilerplate.warehouse.gui.WarehouseControllerScreen
 import net.kernelpanicsoft.boilerplate.warehouse.rack.*
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankMenu
+import net.kernelpanicsoft.boilerplate.pipe.gui.ExtractionHookMenu
+import net.kernelpanicsoft.boilerplate.pipe.gui.ExtractionHookScreen
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankScreen
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.Registries
@@ -32,6 +37,14 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(Boilerplate.MOD, Regis
 			val tile = inventory.player.level.blockEntity<MultipartBlockEntity>(buf.readBlockPos())!!
 			val direction = buf.readEnum(Direction::class.java)
 			SortingHookMenu(id, inventory, tile, direction)
+		}
+	}
+
+	val ExtractionHook: MenuType<ExtractionHookMenu> by register("extraction_hook") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level.blockEntity<MultipartBlockEntity>(buf.readBlockPos())!!
+			val direction = buf.readEnum(Direction::class.java)
+			ExtractionHookMenu(id, inventory, tile, direction)
 		}
 	}
 
@@ -118,6 +131,34 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(Boilerplate.MOD, Regis
 		}
 	}
 
+	val DistributedMultiTank: MenuType<DistributedMultiTankMenu> by register("distributed_multi_tank") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level.blockEntity<DistributedMultiTankBlockEntity>(buf.readBlockPos())!!
+			DistributedMultiTankMenu(id, inventory, tile)
+		}
+	}
+
+	val DistributedMultiBuffer: MenuType<DistributedMultiBufferMenu> by register("distributed_multi_buffer") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level.blockEntity<DistributedMultiBufferBlockEntity>(buf.readBlockPos())!!
+			DistributedMultiBufferMenu(id, inventory, tile)
+		}
+	}
+
+	val Omnibuffer: MenuType<OmnibufferMenu> by register("omnibuffer") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level.blockEntity<OmnibufferBlockEntity>(buf.readBlockPos())!!
+			OmnibufferMenu(id, inventory, tile)
+		}
+	}
+
+	val CreativeProvider: MenuType<CreativeProviderMenu> by register("creative_provider") {
+		MenuRegistry.ofExtended { id, inventory, buf ->
+			val tile = inventory.player.level.blockEntity<CreativeProviderBlockEntity>(buf.readBlockPos())!!
+			CreativeProviderMenu(id, inventory, tile)
+		}
+	}
+
 	val FluidTank: MenuType<FluidTankMenu> by register("fluid_tank") {
 		MenuRegistry.ofExtended { id, inventory, buf ->
 			val tile = inventory.player.level.blockEntity<FluidTankBlockEntity>(buf.readBlockPos())!!
@@ -137,6 +178,7 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(Boilerplate.MOD, Regis
 		listen {
 			onClient {
 				MenuRegistry.registerScreenFactory(SortingHook, ::SortingHookScreen)
+				MenuRegistry.registerScreenFactory(ExtractionHook, ::ExtractionHookScreen)
 				MenuRegistry.registerScreenFactory(RequesterHook, ::RequesterHookScreen)
 				MenuRegistry.registerScreenFactory(TerminalHook, ::TerminalHookScreen)
 				MenuRegistry.registerScreenFactory(FilterCard, ::FilterCardScreen)
@@ -149,6 +191,10 @@ object GuiRegistry : ADeferredRegistryHolder<MenuType<*>>(Boilerplate.MOD, Regis
 				MenuRegistry.registerScreenFactory(GeneralRack, ::GeneralRackScreen)
 				MenuRegistry.registerScreenFactory(UnstackableRack, ::UnstackableRackScreen)
 				MenuRegistry.registerScreenFactory(FluidTank, ::FluidTankScreen)
+				MenuRegistry.registerScreenFactory(CreativeProvider, ::CreativeProviderScreen)
+				MenuRegistry.registerScreenFactory(DistributedMultiTank, ::DistributedMultiTankScreen)
+				MenuRegistry.registerScreenFactory(DistributedMultiBuffer, ::DistributedMultiBufferScreen)
+				MenuRegistry.registerScreenFactory(Omnibuffer, ::OmnibufferScreen)
 				MenuRegistry.registerScreenFactory(WarehouseController, ::WarehouseControllerScreen)
 			}
 		}

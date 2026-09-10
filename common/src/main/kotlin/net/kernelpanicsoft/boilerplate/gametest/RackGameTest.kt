@@ -6,7 +6,7 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseIndex
 import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlockEntity
@@ -25,7 +25,7 @@ import net.minecraft.world.item.Items
  * [net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlockEntity]/
  * [net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlockEntity]). The first batch
  * below exercises each rack's own storage behavior directly through [ItemApi.BLOCK.find] (the same
- * lookup [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity]'s own gantry
+ * lookup [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity]'s own gantry
  * uses) rather than a bound warehouse; the later `RoundTrip`/`OnInitialScan` tests instead bind a
  * real controller, confirming each rack type is indexed and put-away/retrieved through *without*
  * needing any special-casing in [net.kernelpanicsoft.boilerplate.warehouse.WarehouseIndex] -

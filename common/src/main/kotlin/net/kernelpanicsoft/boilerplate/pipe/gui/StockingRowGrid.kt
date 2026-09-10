@@ -6,6 +6,7 @@ import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.boilerplate.pipe.hook.UNBOUNDED_STOCK
 import net.kernelpanicsoft.boilerplate.pipe.hook.configuredFilterOn
+import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.minecraft.world.item.ItemStack
 
 /**
@@ -22,6 +23,9 @@ import net.minecraft.world.item.ItemStack
  * - **A configured filter card in a cell is a filter**, not an item. Nothing extra is drawn for it -
  *   the card's own art already says what it is - but its count means "this many of *each* thing I
  *   match", which is why the amount stays editable for those cells too.
+ * - **Middle-clicking a cell** opens [setAmountDialog] on it, for the amounts a wheel reaches
+ *   slowly. The dialog offers no ∞ of its own - that one is a scroll down off the bottom, where
+ *   "stop counting" reads as the end of the range rather than as a number to type.
  */
 @Composable
 fun StockingRowGrid(
@@ -32,6 +36,7 @@ fun StockingRowGrid(
 	onSet: (Int, ResourceComponent, Long) -> Unit,
 	clickHandler: ClickHandler,
 ) {
+	val layers = LocalLayerManager.current
 	ResourceGhostSlotGrid(
 		resources = targets,
 		columns = columns,
@@ -46,6 +51,18 @@ fun StockingRowGrid(
 			val target = targets.getOrNull(index) ?: return@ResourceGhostSlotGrid
 			if (target.isBlank) return@ResourceGhostSlotGrid
 			onSet(index, target, stepAmount(target, amounts.getOrNull(index) ?: 1L, delta))
+		},
+		onEditAmount = { index ->
+			val target = targets.getOrNull(index) ?: return@ResourceGhostSlotGrid
+			val kind = ResourceKindRegistry.forResource(target)
+			// A stocking row stores platform amounts and the dialog speaks authored ones, so this
+			// converts on both sides. An unbounded cell has no number to seed with - it means "stop
+			// counting" - so typing one starts from the kind's own default instead.
+			val current = amounts.getOrNull(index) ?: UNBOUNDED_STOCK
+			val authored = if (current == UNBOUNDED_STOCK) kind?.defaultAuthored ?: 1L else kind?.toAuthored(current) ?: current
+			layers.setAmountDialog(target, authored, STOCK_DIALOG_MAX_AUTHORED) { chosen ->
+				onSet(index, target, kind?.toPlatform(chosen) ?: chosen)
+			}
 		},
 	)
 }
@@ -81,18 +98,30 @@ private fun defaultAmountFor(resource: ResourceComponent, existing: ResourceComp
 }
 
 /**
- * [amount] moved [delta] notches.
+ * [amount] moved [delta] notches, at whatever step the held modifiers make of [target]'s own kind
+ * (see [scrollStepFor]).
  *
- * [UNBOUNDED_STOCK] sits immediately below `1`, so scrolling down off the bottom reaches it and
- * scrolling up off it lands back on `1` - see [StockingRowGrid]. There is deliberately no upper
- * bound: a stocking target is not a stack, and capping it at one was the limitation moving to a
- * ghost row removed.
+ * [UNBOUNDED_STOCK] sits immediately below the smallest amount a cell can hold, so scrolling down
+ * off the bottom reaches it and scrolling up off it lands back on that amount - see
+ * [StockingRowGrid]. There is deliberately no upper bound: a stocking target is not a stack, and
+ * capping it at one was the limitation moving to a ghost row removed.
  */
 private fun stepAmount(target: ResourceComponent, amount: Long, delta: Int): Long {
 	val kind = ResourceKindRegistry.forResource(target)
-	val step = kind?.let { it.toPlatform(it.authoredStep) } ?: 1L
-	if (amount == UNBOUNDED_STOCK) return if (delta > 0) step else UNBOUNDED_STOCK
+	val authoredStep = scrollStepFor(kind)
+	val step = kind?.toPlatform(authoredStep) ?: authoredStep
+	// The finer of the two, for the reason PatternTerminalHookScreen.stepCellAmount documents.
+	val floor = kind?.let { it.toPlatform(minOf(authoredStep, it.authoredStep)) } ?: 1L
+	if (amount == UNBOUNDED_STOCK) return if (delta > 0) floor else UNBOUNDED_STOCK
 	val next = amount + delta * step
-	return if (next < step) UNBOUNDED_STOCK else next
+	return if (next < floor) UNBOUNDED_STOCK else next
 }
 
+/**
+ * The ceiling [StockingRowGrid]'s own amount dialog offers.
+ *
+ * A stocking target is deliberately unbounded when scrolled - it is a stock level, not a stack -
+ * but a typed field still needs some range to clamp into, and one a `+64` step near the top cannot
+ * overflow past. A million of anything is far beyond what a stocking row is for and well inside that.
+ */
+private const val STOCK_DIALOG_MAX_AUTHORED = 1_000_000L

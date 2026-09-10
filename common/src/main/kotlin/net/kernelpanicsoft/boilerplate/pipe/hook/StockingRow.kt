@@ -2,8 +2,8 @@ package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterContext

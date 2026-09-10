@@ -8,6 +8,7 @@ import net.kernelpanicsoft.archie.serialization.serializers.ResourceLocationSeri
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.encasement.EncasementHolderState
+import net.kernelpanicsoft.boilerplate.pipe.hook.BoundaryRelay
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PipeHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
@@ -154,6 +155,10 @@ class MultipartBlockEntity(pos: BlockPos, state: BlockState) :
 				if (!hookState.active) continue
 				if (isFirstTick || !wasActive) hookType.start(serverLevel, pos, direction, this, hookState)
 				hookType.tick(serverLevel, pos, direction, this, hookState)
+				// Carrying a boundary crossing's second leg belongs to *being a source*, not to any
+				// one hook type, so it is driven here for every hook that provides at all rather than
+				// from each of their ticks - see BoundaryRelay.
+				if (hookType.providesItems) BoundaryRelay.tick(serverLevel, pos, direction, this, hookState)
 			}
 			hooks.touch()
 			// hooks is @Sync, but a menu-less BlockEntity's @Sync fields don't reach clients on

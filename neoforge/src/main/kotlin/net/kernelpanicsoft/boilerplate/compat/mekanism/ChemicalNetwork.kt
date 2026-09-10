@@ -5,7 +5,7 @@ import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.crafting.CraftingCpuRuntime
 import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 import net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.*
 import net.minecraft.core.BlockPos
@@ -56,7 +56,7 @@ object ChemicalPipeRouter : PipeRouter<ChemicalResource>() {
 /**
  * The chemical pipe network - what actually makes a pipe *carry* a chemical.
  *
- * Registering a [net.kernelpanicsoft.boilerplate.network.ResourceKind] makes chemicals storable,
+ * Registering a [net.kernelpanicsoft.boilerplate.resource.ResourceKind] makes chemicals storable,
  * craftable and listable; this is the separate half that makes them *movable*. Both are needed, and
  * the split is easy to miss: a kind with no network type is stored perfectly and never goes
  * anywhere.

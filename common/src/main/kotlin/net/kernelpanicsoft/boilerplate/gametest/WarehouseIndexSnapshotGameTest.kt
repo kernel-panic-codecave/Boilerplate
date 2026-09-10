@@ -3,7 +3,7 @@ package net.kernelpanicsoft.boilerplate.gametest
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.Bounds
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseIndex
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest

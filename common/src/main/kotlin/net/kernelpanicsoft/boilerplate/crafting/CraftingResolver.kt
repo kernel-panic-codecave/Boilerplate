@@ -1,7 +1,7 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 
 /** One pattern run planned as part of a [CraftingResolver.Plan], in bottom-up execution order - see [CraftingResolver.Plan.steps]. [resource] is the resource whose demand [runs] was sized against - see [net.kernelpanicsoft.boilerplate.crafting.CraftingBufferJob], which reports it in job-status text. */
 data class CraftStep(val pattern: Pattern, val runs: Long, val resource: ResourceComponent)

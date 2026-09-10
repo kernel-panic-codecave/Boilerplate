@@ -34,9 +34,9 @@ import net.minecraft.world.phys.shapes.VoxelShape
 class PressurePipeBlock(properties: Properties) : PipeBlock(properties) {
 	override fun codec(): MapCodec<PressurePipeBlock> = CODEC
 
-	override val primaryNetworkTypes: Set<NetworkType> get() = setOf(NetworkTypeRegistry.Pressure)
+	override val primaryNetworkTypes: Set<NetworkType> by lazy { setOf(NetworkTypeRegistry.Pressure) }
 
-	override val secondaryNetworkTypes: Set<NetworkType> get() = emptySet()
+	override val secondaryNetworkTypes: Set<NetworkType> = emptySet()
 
 	/**
 	 * A slimmer 4x4 cross-section - deliberately narrower than item pipes' own 6x6 core (see

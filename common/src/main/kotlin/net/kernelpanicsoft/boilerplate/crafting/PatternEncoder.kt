@@ -19,7 +19,7 @@ import net.minecraft.world.item.crafting.RecipeType
  *
  * [inputs] and [outputs] are one entry per grid cell, blanks included, and carry bare
  * [ResourceComponent]s: a `PROCESSING` pattern may name a fluid (or any other registered
- * [net.kernelpanicsoft.boilerplate.network.ResourceKind]) on either side. Amounts come from the
+ * [net.kernelpanicsoft.boilerplate.resource.ResourceKind]) on either side. Amounts come from the
  * cells themselves rather than from how many cells hold the same thing, so `64 sand -> 64 glass` is
  * one entry of 64 per side.
  *
@@ -48,7 +48,7 @@ object PatternEncoder {
 		return when (kind) {
 			PatternKind.CRAFTING -> {
 				// A vanilla grid only holds kinds that say they fit in one - see
-				// [net.kernelpanicsoft.boilerplate.network.ResourceKind.vanillaCraftable], and this
+				// [net.kernelpanicsoft.boilerplate.resource.ResourceKind.vanillaCraftable], and this
 				// object's own KDoc for why that is strict rather than best-effort.
 				val cells = inputs.map { cell ->
 					if (cell.resource.isBlank) ItemStack.EMPTY

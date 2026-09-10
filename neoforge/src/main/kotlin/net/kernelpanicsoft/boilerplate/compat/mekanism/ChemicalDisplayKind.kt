@@ -31,7 +31,7 @@ import net.minecraft.world.item.ItemStack
  * [InstancedMeshes.dropletMesh] for the world.
  *
  * **Client-only**, like every [ResourceDisplayKind] - reached solely through
- * [net.kernelpanicsoft.boilerplate.network.ResourceKind.display], which nothing on a dedicated
+ * [net.kernelpanicsoft.boilerplate.resource.ResourceKind.display], which nothing on a dedicated
  * server reads, so this class is never loaded there.
  */
 object ChemicalDisplayKind : ResourceDisplayKind {
@@ -48,8 +48,11 @@ object ChemicalDisplayKind : ResourceDisplayKind {
 
 	override fun worldMesh(resource: ResourceComponent, amount: Long): Mesh? {
 		val chemical = (resource as? ChemicalResource)?.takeIf { !it.isBlank } ?: return null
-		val sprite = spriteOf(chemical) ?: return null
-		return InstancedMeshes.dropletMesh(chemical.chemical, sprite, worldTint(chemical))
+		// Keyed on the chemical, and the sprite resolved only when that key is new - a pipe carrying
+		// a thousand droplets asks for this once per droplet per frame.
+		return InstancedMeshes.dropletMesh(chemical.chemical) {
+			InstancedMeshes.DropletSkin(spriteOf(chemical) ?: return@dropletMesh null, worldTint(chemical))
+		}
 	}
 
 	/** Name, millibuckets, and the mod it came from - the same shape a fluid's tooltip has, since a chemical is measured the same way. */

@@ -21,7 +21,7 @@ import net.minecraft.world.entity.player.Inventory
 import net.minecraft.world.inventory.AbstractContainerMenu
 import net.minecraft.world.item.Item
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterContext
 import net.kernelpanicsoft.archie.util.rem
 
@@ -83,16 +83,17 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 		// items to no effect. Doing nothing is the honest answer, and the GUI says so.
 		if (interfaceState != null && RequestFulfillment.sharesSubnet(level, pos, neighborPos)) return
 
-		val held: (ResourceComponent) -> Long = if (interfaceState != null) {
-			{ resource -> amountHeld(interfaceState, resource) }
-		} else {
-			// Whatever the neighbour exposes of the resource's own kind - resolved per resource,
-			// since one row may name several kinds.
-			({ resource ->
-				val kind = ResourceKindRegistry.forResource(resource)?.storage
-				val storage = kind?.find(level, neighborPos, face)
-				if (storage == null) 0L else amountIn(storage, resource)
-			})
+		if (interfaceState != null) {
+			stockFarSubnet(level, pos, neighborPos, face, state, interfaceState)
+			return
+		}
+
+		// Whatever the neighbour exposes of the resource's own kind - resolved per resource, since one
+		// row may name several kinds.
+		fun held(resource: ResourceComponent): Long {
+			val kind = ResourceKindRegistry.forResource(resource)?.storage
+			val storage = kind?.find(level, neighborPos, face) ?: return 0L
+			return amountIn(storage, resource)
 		}
 
 		for ((resource, wanted) in state.namedTargets()) {
@@ -104,16 +105,72 @@ object RequesterHookType : PipeHookType<RequesterHookState>() {
 		}
 	}
 
-	const val REQUEST_INTERVAL_TICKS = 40
-
 	/**
-	 * How much an [UNBOUNDED_STOCK] entry asks for per cycle.
+	 * Keeps the far subnet's own destinations supplied, rather than the seam in front of them.
 	 *
-	 * An unbounded target has no number to work toward, so it needs *some* ceiling per request or the
-	 * ask is meaningless. A stack's worth per cycle keeps an export bus moving briskly without any
-	 * single cycle trying to drain a whole network at once.
+	 * An interface is a junction, not a machine: stocking *it* fills a nine-column reservoir that the
+	 * far side then has to distribute for itself, and a row that said "keep 64 coal" left 64 coal
+	 * sitting on the boundary while the furnaces behind it ran dry. What the row actually means is
+	 * "keep the things behind here supplied", so this asks the far network which of its own
+	 * destinations would take the resource ([RequestFulfillment.acceptingDestinations]) and stocks
+	 * each of them - in parallel, all from this network's own stock.
+	 *
+	 * How the row's number is shared out is the player's choice - see [ParallelStocking].
+	 *
+	 * Each delivery is an ordinary request to the interface, paired with an
+	 * [InboundClaim] naming where it is really going: leg 1 travels this network into the interface's
+	 * stock, leg 2 travels the far one to the destination. The claim is what stops the interface
+	 * treating the arrival as excess and pushing it wherever *its* routing prefers.
 	 */
-	const val EXPORT_BATCH = 64L
+	private fun stockFarSubnet(
+		level: ServerLevel,
+		pos: BlockPos,
+		interfacePos: BlockPos,
+		face: Direction,
+		state: RequesterHookState,
+		interfaceState: InterfaceHookState,
+	) {
+		for ((resource, wanted) in state.namedTargets()) {
+			val destinations = RequestFulfillment.acceptingDestinations(level, interfacePos, resource)
+			if (destinations.isEmpty()) continue
+			val storageKind = ResourceKindRegistry.forResource(resource)?.storage ?: continue
+
+			// What each destination should hold. SPLIT reads the row's number as a total for the
+			// subnet; EACH reads it as a level to hold at every one of them.
+			val target = when {
+				wanted == UNBOUNDED_STOCK -> BoilerplateConfig.Gameplay.Hooks.exportBatch
+				state.parallel == ParallelStocking.SPLIT -> maxOf(1L, wanted / destinations.size)
+				else -> wanted
+			}
+			// Already on its way to somewhere behind this seam, and not yet visible in any
+			// destination - counted once for the whole row rather than per destination, since the
+			// claims name the destination but the stock they will come out of is shared.
+			val crossing = interfaceState.inbound
+				.filter { ResourceIdentity.of(it.resource) == ResourceIdentity.of(resource) }
+				.sumOf { it.amount }
+			if (crossing > 0) continue
+
+			for ((destinationPos, destinationFace) in destinations) {
+				val storage = storageKind.find(level, destinationPos, destinationFace) ?: continue
+				val held = if (wanted == UNBOUNDED_STOCK) 0L else amountIn(storage, resource)
+				val shortfall = target - held
+				if (shortfall <= 0) continue
+				val sent = RequestFulfillment.request(level, pos, ResourceStack(resource, shortfall), interfacePos, face)
+				if (sent <= 0) continue
+				interfaceState.inbound += InboundClaim(
+					resource = resource,
+					amount = sent,
+					deliverTo = destinationPos,
+					deliverFace = destinationFace,
+					expiresAtTick = level.gameTime + INBOUND_TIMEOUT_TICKS,
+				)
+				(level.getBlockEntity(interfacePos) as? MultipartBlockEntity)?.setChanged()
+			}
+		}
+	}
+
+	/** How long a requester's own inbound claim waits before it lapses - the same generous window a pull's claim gets, for the same reason. */
+	private const val INBOUND_TIMEOUT_TICKS = 20L * 120
 
 	override fun asItem(): Item = ItemRegistry.RequesterHook
 }

@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.registry
 
 import net.kernelpanicsoft.archie.registries.RegistrarHelper
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
 import net.kernelpanicsoft.boilerplate.pipe.encasement.EncasementHolderState
 import net.kernelpanicsoft.boilerplate.pipe.encasement.PipeEncasementType
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState

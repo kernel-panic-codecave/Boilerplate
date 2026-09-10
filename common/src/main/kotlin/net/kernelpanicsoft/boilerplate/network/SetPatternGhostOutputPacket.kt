@@ -3,6 +3,7 @@ package net.kernelpanicsoft.boilerplate.network
 import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.networking.IPacketContext
 import net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /** Client -> server: overwrites ghost output [index] with [resource] at [amount] (or clears it, for [earth.terrarium.common_storage_lib.resources.item.ItemResource.BLANK]) on whichever [PatternTerminalHookMenu] the requesting player currently has open - only meaningful in [net.kernelpanicsoft.boilerplate.crafting.PatternKind.PROCESSING], up to 9 of these. */
 @Serializable

@@ -2,8 +2,8 @@ package net.kernelpanicsoft.boilerplate.pipe.hook
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import kotlinx.serialization.builtins.serializer
-import net.kernelpanicsoft.boilerplate.network.ResourceComponentSerializer
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.ResourceComponentSerializer
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
 
 /**
  * Self-contained state for one [RequesterHookType] attachment - a [StockingRow] of standing orders:
@@ -18,6 +18,12 @@ class RequesterHookState : HookHolderState(RequesterHookType.ID), StockingRow {
 	override val targets: MutableList<SResourceComponent> by listField(ResourceComponentSerializer) { List(SLOTS) { ItemResource.BLANK } }
 
 	override val targetAmounts: MutableList<Long> by listField(Long.serializer()) { List(SLOTS) { 1L } }
+
+	/**
+	 * How this hook spreads its row when it faces an interface - see [ParallelStocking]. Ignored
+	 * facing anything else, where there is exactly one destination.
+	 */
+	var parallel: ParallelStocking by field(ParallelStockingSerializer) { ParallelStocking.EACH }
 
 	var ticksSinceRequest: Int = 0
 

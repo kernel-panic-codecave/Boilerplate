@@ -6,7 +6,7 @@ import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
 import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.power.PressureTankEncasementType
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest

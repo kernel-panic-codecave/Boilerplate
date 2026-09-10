@@ -8,12 +8,10 @@ import dev.engine_room.flywheel.api.visualization.VisualizationContext
 import dev.engine_room.flywheel.lib.instance.InstanceTypes
 import dev.engine_room.flywheel.lib.instance.TransformedInstance
 import net.kernelpanicsoft.boilerplate.client.WorldMeshMotion
-import net.kernelpanicsoft.boilerplate.client.preferredMaterial
+import net.kernelpanicsoft.boilerplate.client.InstancedMeshes
 import kotlin.math.sin
 import kotlin.math.PI
-import dev.engine_room.flywheel.lib.model.SingleMeshModel
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
@@ -36,11 +34,18 @@ import net.minecraft.world.phys.Vec3
  * ([net.kernelpanicsoft.boilerplate.client.ResourceDisplayKind.worldMesh]) - an item's baked model,
  * a fluid's droplet, whatever an addon's kind bakes. A kind with no mesh is simply not drawn.
  *
- * Instances are rebuilt only when the *set* of cargo changes (by resource identity, in order), not
- * every frame: the transform moves every frame because the cargo is moving, but re-instancing a
- * mesh per frame would be the immediate-mode cost instancing exists to avoid. Position is
- * deliberately taken from [net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache]'s
- * dead-reckoned copy by the caller, so a segment interpolates between syncs rather than stepping.
+ * Instances are reconciled against the cargo rather than rebuilt from it: the transform moves every
+ * frame because the cargo is moving, but only a slot whose *geometry* changed is re-instanced. A
+ * busy pipe changes its contents almost every frame, and deleting and recreating the whole set each
+ * time is the immediate-mode cost instancing exists to avoid - every recreated instance is a fresh
+ * GPU allocation, and Flywheel re-sorts its entire draw list whenever an instancer comes or goes.
+ *
+ * The geometry itself is shared through [InstancedMeshes.modelOf], so every droplet of one fluid in
+ * the whole level lands in a single instancer and a single draw call.
+ *
+ * Position is deliberately taken from
+ * [net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache]'s dead-reckoned copy by the
+ * caller, so a segment interpolates between syncs rather than stepping.
  */
 class TravelingItemInstances(
 	private val context: VisualizationContext,
@@ -49,34 +54,32 @@ class TravelingItemInstances(
 	/** The same position relative to Flywheel's current render origin - where instances actually go. */
 	private val visualPos: BlockPos,
 ) {
-	private var instances: List<TransformedInstance> = emptyList()
+	private val instances = ArrayList<TransformedInstance>()
 
-	/** What [instances] was built for - the cargo's resources in order, so a change of contents (not merely of position) is what triggers a rebuild. */
-	private var signature: List<ResourceIdentity> = emptyList()
+	/** The mesh each entry of [instances] was created for, so [reconcile] can tell an unchanged slot from one that needs new geometry. */
+	private val instanceMeshes = ArrayList<Mesh>()
 
 	/** Every instance currently alive, for the owning visual's own `relight`. */
 	val active: List<TransformedInstance> get() = instances
 
 	/**
-	 * Rebuilds instances if the cargo changed, then places each one along its own leg of the pipe.
+	 * Reconciles instances against the cargo, then places each one along its own leg of the pipe.
 	 *
 	 * [gameTime] is the render thread's fractional game time, driving the tumble - so every piece of
 	 * cargo turns in step rather than each carrying its own animation state.
 	 */
 	fun update(items: List<TravelingItem>, gameTime: Float) {
-		val drawable = items.filter { it.shouldDraw() && meshFor(it) != null }
-		val newSignature = drawable.map { ResourceIdentity.of(it.stack.resource as ResourceComponent) }
-		if (newSignature != signature) {
-			instances.forEach(Instance::delete)
-			instances = drawable.map { item ->
-				// The mesh picks its own material - a translucent droplet needs blending, and an
-				// item's model does not. See MaterialMesh.
-				val mesh = meshFor(item)!!
-				val model = SingleMeshModel(mesh, mesh.preferredMaterial())
-				context.instancerProvider().instancer(InstanceTypes.TRANSFORMED, model).createInstance()
-			}
-			signature = newSignature
+		// One pass, keeping each item's mesh: `meshFor` is a registry lookup and a cache probe per
+		// item, and a filter that calls it only to discard the answer pays for it twice.
+		val drawable = ArrayList<TravelingItem>(items.size)
+		val meshes = ArrayList<Mesh>(items.size)
+		for (item in items) {
+			if (!item.shouldDraw()) continue
+			val mesh = meshFor(item) ?: continue
+			drawable += item
+			meshes += mesh
 		}
+		reconcile(meshes)
 
 		for ((index, item) in drawable.withIndex()) {
 			val at = positionOf(item)
@@ -108,9 +111,41 @@ class TravelingItemInstances(
 
 	fun delete() {
 		instances.forEach(Instance::delete)
-		instances = emptyList()
-		signature = emptyList()
+		instances.clear()
+		instanceMeshes.clear()
 	}
+
+	/**
+	 * Brings [instances] in line with [meshes] slot by slot, touching only what changed.
+	 *
+	 * A slot already holding an instance of the same mesh is left exactly as it is - cargo shuffling
+	 * along a pipe of one fluid never re-instances anything, and a mixed pipe re-instances only the
+	 * slots whose resource actually differs. Surplus instances are dropped from the tail.
+	 */
+	private fun reconcile(meshes: List<Mesh>) {
+		for (index in meshes.indices) {
+			val mesh = meshes[index]
+			when {
+				index >= instances.size -> {
+					instances += instanceFor(mesh)
+					instanceMeshes += mesh
+				}
+				instanceMeshes[index] !== mesh -> {
+					instances[index].delete()
+					instances[index] = instanceFor(mesh)
+					instanceMeshes[index] = mesh
+				}
+			}
+		}
+		while (instances.size > meshes.size) {
+			instances.removeAt(instances.lastIndex).delete()
+			instanceMeshes.removeAt(instanceMeshes.lastIndex)
+		}
+	}
+
+	/** A new instance of [mesh]'s shared model - shared so that every droplet of one fluid draws from one instancer. */
+	private fun instanceFor(mesh: Mesh): TransformedInstance =
+		context.instancerProvider().instancer(InstanceTypes.TRANSFORMED, InstancedMeshes.modelOf(mesh)).createInstance()
 
 	/** How [item]'s own kind moves while it travels - see [WorldMeshMotion]. */
 	private fun motionOf(item: TravelingItem): WorldMeshMotion {

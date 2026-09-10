@@ -8,6 +8,10 @@
     "boilerplate:general_rack",
     "boilerplate:bulk_rack",
     "boilerplate:unstackable_rack",
+    "boilerplate:distributed_multi_tank",
+    "boilerplate:distributed_multi_buffer",
+    "boilerplate:omnibuffer",
+    "boilerplate:creative_provider",
     "boilerplate:fluid_tank"
   ]
 }

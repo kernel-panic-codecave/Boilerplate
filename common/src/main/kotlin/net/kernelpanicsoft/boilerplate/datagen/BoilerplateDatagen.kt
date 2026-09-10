@@ -22,8 +22,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParamSets
  */
 private val RESETTABLE_FILTER_CARDS: List<Item> by lazy {
 	listOf(
-		ItemRegistry.ItemFilterCard,
-		ItemRegistry.FluidFilterCard,
+		ItemRegistry.ResourceFilterCard,
 		ItemRegistry.ModFilterCard,
 		ItemRegistry.TagFilterCard,
 		ItemRegistry.ColorFilterCard,
@@ -52,7 +51,18 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 				addBlock("General Rack") { BlockRegistry.GeneralRack }
 				addBlock("Bulk Rack") { BlockRegistry.BulkRack }
 				addBlock("Unstackable Rack") { BlockRegistry.UnstackableRack }
+				addBlock("Distributed Multi Tank") { BlockRegistry.DistributedMultiTank }
+				addBlock("Distributed Multi Buffer") { BlockRegistry.DistributedMultiBuffer }
+				addBlock("Omnibuffer") { BlockRegistry.Omnibuffer }
+				addBlock("Creative Provider") { BlockRegistry.CreativeProvider }
 				addBlock("Fluid Tank") { BlockRegistry.FluidTank }
+
+				// Subtitles, shown when the player has them turned on. Keyed by the `subtitle`
+				// each entry in sounds.json names, not by the sound event's own id - several
+				// events deliberately share one line, since "Gantry moves" describes the whole
+				// start/loop/stop set rather than three separate happenings.
+				add("subtitles.boilerplate.pipe.thunk", "Pipe clunks")
+				add("subtitles.boilerplate.gantry.move", "Gantry moves")
 
 				// Hook items override their descriptionId to `hook.<type id>` - adding them here
 				// emits those keys, which is also what the segment menus' own titles read.
@@ -72,8 +82,7 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 				addItem("Crafting Buffer") { ItemRegistry.CraftingBufferEncasement }
 
 				// FilterCardItem answers as `filter.<condition type id>`.
-				addItem("Item Condition Card") { ItemRegistry.ItemFilterCard }
-				addItem("Fluid Condition Card") { ItemRegistry.FluidFilterCard }
+				addItem("Resource Condition Card") { ItemRegistry.ResourceFilterCard }
 				addItem("Mod Condition Card") { ItemRegistry.ModFilterCard }
 				addItem("Tag Condition Card") { ItemRegistry.TagFilterCard }
 				addItem("Color Condition Card") { ItemRegistry.ColorFilterCard }
@@ -116,6 +125,10 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.GeneralRack
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.BulkRack
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.UnstackableRack
+				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.DistributedMultiTank
+				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.DistributedMultiBuffer
+				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.Omnibuffer
+				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.CreativeProvider
 				TagsRegistry.Blocks.MINEABLE_WRENCH += BlockRegistry.FluidTank
 			}
 			itemTags { _ ->

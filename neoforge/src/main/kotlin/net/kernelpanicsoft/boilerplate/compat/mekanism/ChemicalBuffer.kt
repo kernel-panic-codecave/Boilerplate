@@ -5,7 +5,7 @@ import earth.terrarium.common_storage_lib.storage.base.StorageSlot
 
 /**
  * A standalone chemical store of [tanks] tanks, each holding [capacity] millibuckets - the chemical
- * kind's own layer of a [net.kernelpanicsoft.boilerplate.network.ResourceStorage], and what a
+ * kind's own layer of a [net.kernelpanicsoft.boilerplate.resource.ResourceStorage], and what a
  * warehouse controller stages cargo in, a Crafting CPU pools into, and an interface hook keeps stock
  * in.
  *

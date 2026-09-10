@@ -39,10 +39,8 @@ fun underlyingPipeBlockAt(level: BlockGetter, pos: BlockPos): PipeBlock? {
  * [PipeBlock.primaryNetworkTypes] plus [PipeBlock.secondaryNetworkTypes], empty for anything that
  * isn't a pipe (or a not-yet-placed [MultipartBlock]).
  */
-fun networkTypesAt(level: BlockGetter, pos: BlockPos): Set<NetworkType> {
-	val pipeBlock = underlyingPipeBlockAt(level, pos) ?: return emptySet()
-	return pipeBlock.primaryNetworkTypes + pipeBlock.secondaryNetworkTypes
-}
+fun networkTypesAt(level: BlockGetter, pos: BlockPos): Set<NetworkType> =
+	underlyingPipeBlockAt(level, pos)?.allNetworkTypes ?: emptySet()
 
 /** The [NetworkType]s gating attachment compatibility at [pos] - the underlying pipe's own primaries. */
 fun primaryNetworkTypesAt(level: BlockGetter, pos: BlockPos): Set<NetworkType> = underlyingPipeBlockAt(level, pos)?.primaryNetworkTypes ?: emptySet()

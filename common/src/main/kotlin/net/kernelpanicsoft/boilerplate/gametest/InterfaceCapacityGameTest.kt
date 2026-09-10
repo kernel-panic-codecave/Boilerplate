@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.gametest
 
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
-import net.kernelpanicsoft.boilerplate.network.roomFor
+import net.kernelpanicsoft.boilerplate.resource.roomFor
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType

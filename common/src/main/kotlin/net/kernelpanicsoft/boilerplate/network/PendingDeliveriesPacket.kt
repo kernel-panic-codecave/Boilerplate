@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.minecraft.client.Minecraft
+import net.kernelpanicsoft.boilerplate.resource.ResourceStorage
 
 /**
  * Server -> client: this terminal hook's own periodic status - its [PendingDelivery] list right

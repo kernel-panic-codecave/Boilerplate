@@ -67,10 +67,11 @@ sealed class FilterCardTarget {
 	@Serializable
 	data class ChildSlot(val parent: FilterCardTarget, val slot: Int) : FilterCardTarget() {
 		override fun resolve(level: Level, player: Player): ItemContainerAccess =
-			GhostChildItemAccess(parent.resolve(level, player) as CommittableItemAccess, slot)
+			GhostChildItemAccess(parent.resolve(level, player), slot)
 
 		override fun write(level: Level, player: Player, resource: ItemResource) {
-			val parentStack = parent.resolve(level, player).getStack()
+			val access = parent.resolve(level, player)
+			val parentStack = access.getStack()
 			val parentState = FilterCardState(parentStack)
 			(parentState.currentState() as? CombinedConditionState)?.children?.set(slot, resource)
 			parentState.touchCurrentState()
@@ -78,6 +79,9 @@ sealed class FilterCardTarget {
 			// FilterCardState.configured. Without this the parent stays "blank", and a stocking row
 			// entry holding it would read it as the item rather than as the filter it now is.
 			parentState.configured = true
+			// The parent may be a slot that hands out a rebuilt stack per read - see
+			// MenuSlotItemAccess.commit. Storing it is what makes the mutation above survive.
+			(access as? CommittableItemAccess)?.commit()
 			parent.write(level, player, ItemResource.of(parentStack))
 		}
 	}
@@ -118,10 +122,33 @@ private class MenuSlotItemAccess(
 	private val player: Player,
 	private val slot: Int,
 	private val expectedItem: Item,
-) : ItemContainerAccess {
-	override fun getStack(): ItemStack = player.containerMenu.slots.getOrNull(slot)?.item ?: ItemStack.EMPTY
+) : CommittableItemAccess {
+	/**
+	 * Materialized once, not re-read.
+	 *
+	 * A storage-backed menu slot does not *hold* an [ItemStack] at all - it holds a resource and a
+	 * count, and builds a fresh stack out of them on every read (Archie's `CommonStorageMenuSlot`
+	 * and `VanillaMenuSlot` both do). Reading twice therefore hands out two unrelated objects, so an
+	 * edit and the [commit] that stores it have to share one.
+	 */
+	private val cached: ItemStack by lazy { player.containerMenu.slots.getOrNull(slot)?.item ?: ItemStack.EMPTY }
+
+	override fun getStack(): ItemStack = cached
 
 	override fun stillValid(player: Player): Boolean = player === this.player && getStack().`is`(expectedItem)
+
+	/**
+	 * Puts the edited stack back in the slot.
+	 *
+	 * Load-bearing for exactly the reason above: without it an edit to a card *sitting in a menu* -
+	 * a hook's filter slot, a rack's - mutated the throwaway copy the slot had just built and was
+	 * dropped on the floor. The client had already applied it optimistically, so it looked saved
+	 * until the server's untouched card came back and overwrote it, which reads as a sync fault
+	 * rather than the lost write it is.
+	 */
+	override fun commit() {
+		player.containerMenu.slots.getOrNull(slot)?.set(cached)
+	}
 }
 
 /**

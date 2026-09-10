@@ -6,10 +6,9 @@ import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.boilerplate.crafting.SubmittedJobRef
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
-import kotlinx.serialization.builtins.serializer
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.boilerplate.network.ResourceStorage
-import net.kernelpanicsoft.boilerplate.network.resourceField
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceStorage
+import net.kernelpanicsoft.boilerplate.resource.resourceField
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackFluidStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FallbackItemStorageExposer
@@ -110,8 +109,5 @@ open class TerminalHookState(type: ResourceLocation = TerminalHookType.ID) : Hoo
 
 	companion object {
 		const val SLOT_COUNT = 9
-
-		/** How much of a fluid-like kind one [output] column holds, in millibuckets - big enough for a withdrawal to land in one go, stated loader-independently for the reason [net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlockEntity.getCapacity] documents. */
-		private const val FLUID_INBOX_MILLIBUCKETS = 16_000L
 	}
 }

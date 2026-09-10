@@ -2,7 +2,6 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.*
 import earth.terrarium.common_storage_lib.resources.ResourceStack
-import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.*
 import net.kernelpanicsoft.archie.gui.composables.input.Dropdown
@@ -23,8 +22,8 @@ import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.util.KColor
 import net.kernelpanicsoft.boilerplate.network.CraftPlanEntry
 import net.kernelpanicsoft.boilerplate.network.CraftPlanPacket
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
 import earth.terrarium.common_storage_lib.resources.ResourceComponent

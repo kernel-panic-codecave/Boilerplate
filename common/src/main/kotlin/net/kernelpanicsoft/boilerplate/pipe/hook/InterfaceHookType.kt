@@ -3,9 +3,8 @@ package net.kernelpanicsoft.boilerplate.pipe.hook
 import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.gui.InterfaceHookMenu
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.drainExcess
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookType.requisitionStock
@@ -38,7 +37,8 @@ import net.kernelpanicsoft.archie.util.rem
  *   pushes only what's above that target back out - so stock tracks its ghost row, serving as a
  *   gantry/green-Alarm stocking point for the warehouse layer rather than a transit buffer.
  * - **Pass-through junction** ([InterfaceHookState.exposedItemStorage]): every *generic* insert
- *   coming through the face is routed straight into the network ([InterfacePassThroughStorage])
+ *   coming through the face is routed straight into the network
+ *   ([net.kernelpanicsoft.boilerplate.pipe.entity.PassThroughStorage])
  *   instead of being staged, or rejected with `0` if no accepting destination exists. This is what
  *   making a machine's output (or another mod's pipe) flow *through* an interface requires, and it
  *   underpins the subnet-boundary system's directionality (see
@@ -94,12 +94,23 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	override val validRoute: Boolean = false
 
 	/**
-	 * `true` - see this class's own KDoc for the rationale. [InterfaceHookState.stock] is an
-	 * explicit opt-in provider surface, and [RequestFulfillment.ProviderSource.storage] already
-	 * special-cases reading it directly; with this `false` that whole path was unreachable and an
-	 * interface's stock was invisible to every request, terminal search and standing order.
+	 * `false` - an interface is a seam, not a store.
+	 *
+	 * Its stock was a provider source in its own right, and that defeated the boundary it anchors.
+	 * [RequestFulfillment.reachablePipes] includes a boundary-adjacent position, so the *far* side
+	 * saw that source as well as the near one; an interface is not a
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.SortingHookState], so nothing filtered the pull; and
+	 * because the source was the interface itself, it never went through the hook facing it. A
+	 * network could reach straight past a provider into the stock whatever that provider's filter
+	 * said - which is not the filtered, extract-only junction the design describes.
+	 *
+	 * The stock is still perfectly reachable, by the route it should always have taken: through
+	 * whichever hook faces this one, as that hook's own neighbouring inventory, subject to its
+	 * filter. What is gone is this interface's own subnet seeing the reservoir as requestable stock
+	 * of its own - it has no hook facing itself, and a seam holding something for the *other* side is
+	 * not stock this side should be planning against.
 	 */
-	override val providesItems: Boolean = true
+	override val providesItems: Boolean = false
 
 	override fun createMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntity, direction: Direction): AbstractContainerMenu =
 		InterfaceHookMenu(id, inventory, tile, direction)
@@ -109,7 +120,61 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 		if (state.ticksSinceManage < BoilerplateConfig.Gameplay.Hooks.manageIntervalTicks) return
 		state.ticksSinceManage = 0
 		requisitionStock(level, pos, direction, state)
+		// Before the excess drain, which would otherwise treat an addressed arrival as ordinary stock
+		// and send it wherever the far router liked best.
+		forwardInbound(level, pos, direction, tile, state)
 		drainExcess(level, pos, direction, tile, state)
+	}
+
+	/**
+	 * The second leg of an inward crossing: what the other side sent *through* this interface,
+	 * pushed on to the destination it was addressed to.
+	 *
+	 * An ordinary delivery on this network in every respect but the destination, which is the
+	 * sender's rather than whatever routing would have picked - see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.InboundClaim] for why that distinction is the whole
+	 * point. A claim only partly satisfied keeps its remainder for a later pass, and one whose
+	 * resource never arrives lapses, at which point what did arrive is ordinary stock again.
+	 */
+	private fun forwardInbound(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: InterfaceHookState) {
+		if (state.inbound.isEmpty()) return
+		val now = level.gameTime
+		val remaining = mutableListOf<InboundClaim>()
+		for (claim in state.inbound) {
+			if (now > claim.expiresAtTick) continue
+			val resource = claim.resource
+			val networkType = networkTypeForResource(resource)
+			val held = amountHeld(state, resource)
+			val movable = minOf(claim.amount, held)
+			if (networkType == null || movable <= 0) {
+				remaining += claim
+				continue
+			}
+			// Excluding this segment, exactly as the excess drain does: an interface delivers into its
+			// own network, never back out through its own face.
+			val route = networkType.routeTo(level, pos, claim.deliverTo)
+			if (route == null) {
+				remaining += claim
+				continue
+			}
+			val sendable = batchedForRoute(level, pos, route, resource, movable)
+			if (sendable <= 0) {
+				remaining += claim
+				continue
+			}
+			val extracted = state.stock.extract(resource, sendable, false)
+			if (extracted <= 0) {
+				remaining += claim
+				continue
+			}
+			tile.acceptEntry(ResourceStack(resource, extracted), direction, route, targetFace = claim.deliverFace)
+			val left = claim.amount - extracted
+			if (left > 0) remaining += claim.copy(amount = left)
+		}
+		if (remaining.size == state.inbound.size && remaining.zip(state.inbound).all { (a, b) -> a == b }) return
+		state.inbound.clear()
+		state.inbound.addAll(remaining)
+		tile.setChanged()
 	}
 
 	/**
@@ -169,6 +234,14 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 	private fun drainExcess(level: ServerLevel, pos: BlockPos, direction: Direction, tile: MultipartBlockEntity, state: InterfaceHookState) {
 		// A requester facing this interface replaces its own row as the target - see externalRow.
 		val row = externalRow(level, pos, direction) ?: state
+		// What a provider facing this interface has already asked the far side to send here, and is
+		// waiting to carry across. Spoken for: draining it would push the far network's answer
+		// straight back into the far network, which fetches it again, forever. See RelayClaim.
+		// Summed, not overlaid: a resource claimed in both directions at once is spoken for twice
+		// over, and `Map + Map` would keep only the second figure.
+		val claimed = HashMap<ResourceIdentity, Long>()
+		for ((key, amount) in claimedByFacingProvider(level, pos, direction)) claimed[key] = (claimed[key] ?: 0L) + amount
+		for ((key, amount) in claimedInbound(state)) claimed[key] = (claimed[key] ?: 0L) + amount
 		// Allowances are counted down across columns: a target is a total for its resource, so two
 		// part-filled columns of the same thing share one rather than each getting the full amount.
 		val allowances = HashMap<ResourceIdentity, Long>()
@@ -180,7 +253,7 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 			val wanted = row.wantedAmount(resource)
 			// Unbounded means never drain it: this column is a holding point, not a transit buffer.
 			if (wanted == UNBOUNDED_STOCK) continue
-			val remaining = allowances.getOrPut(key) { wanted }
+			val remaining = allowances.getOrPut(key) { wanted + (claimed[key] ?: 0L) }
 			val target = minOf(slot.amount, remaining).coerceAtLeast(0L)
 			allowances[key] = remaining - target
 			val excess = slot.amount - target
@@ -191,15 +264,46 @@ object InterfaceHookType : PipeHookType<InterfaceHookState>() {
 			val networkType = networkTypeForResource(resource) ?: continue
 			val route = networkType.route(level, pos, ResourceStack(resource, excess), exclude = setOf(pos)) ?: continue
 			// A batching destination takes whole multiples only; the rest stays in stock.
-			val sendable = batchedForRoute(level, pos, route, excess)
+			val sendable = batchedForRoute(level, pos, route, resource, excess)
 			if (sendable <= 0) continue
 			val extracted = state.stock.extract(resource, sendable, false)
 			if (extracted <= 0) continue
-			tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), direction, 0f, route, null)
+			tile.acceptEntry(ResourceStack(resource, extracted), direction, route)
 		}
 	}
 
-	const val MANAGE_INTERVAL_TICKS = 20
+
+	/**
+	 * How much of each resource a hook facing this interface is waiting to collect
+	 * - see [net.kernelpanicsoft.boilerplate.pipe.hook.RelayClaim].
+	 *
+	 * Counted as though the row wanted it, rather than as a separate rule, so one number decides what
+	 * stays: a column holding both a stocking target and a claim keeps the sum of the two, and
+	 * everything above that is still genuinely excess.
+	 */
+	/**
+	 * How much of each resource is here on its way *through* - an inward crossing's own arrivals,
+	 * counted as wanted so the excess drain leaves them for [forwardInbound] to address properly.
+	 */
+	private fun claimedInbound(state: InterfaceHookState): Map<ResourceIdentity, Long> {
+		if (state.inbound.isEmpty()) return emptyMap()
+		val claimed = HashMap<ResourceIdentity, Long>()
+		for (claim in state.inbound) {
+			val key = ResourceIdentity.of(claim.resource)
+			claimed[key] = (claimed[key] ?: 0L) + claim.amount
+		}
+		return claimed
+	}
+
+	private fun claimedByFacingProvider(level: ServerLevel, pos: BlockPos, direction: Direction): Map<ResourceIdentity, Long> {
+		val facing = SubnetBoundary.relayingHookAt(level, pos.relative(direction), direction.opposite) ?: return emptyMap()
+		val claimed = HashMap<ResourceIdentity, Long>()
+		for (claim in facing.relays) {
+			val key = ResourceIdentity.of(claim.resource)
+			claimed[key] = (claimed[key] ?: 0L) + claim.amount
+		}
+		return claimed
+	}
 
 	override fun asItem(): Item = ItemRegistry.InterfaceHook
 }

@@ -3,8 +3,8 @@ package net.kernelpanicsoft.boilerplate.compat.mekanism
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import net.kernelpanicsoft.boilerplate.network.ResourceStorageKind
-import net.kernelpanicsoft.boilerplate.network.roomFor
+import net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind
+import net.kernelpanicsoft.boilerplate.resource.roomFor
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
@@ -13,7 +13,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 
 /**
  * How the chemical kind's storage is reached and moved through - the chemical twin of
- * [net.kernelpanicsoft.boilerplate.registry.FluidStorageKind].
+ * [net.kernelpanicsoft.boilerplate.resource.FluidStorageKind].
  *
  * Registering this (through [ChemicalResourceKindRegistry]) is what makes chemicals warehouse-able, pipeable,
  * craftable and terminal-listable in one go: nothing in those systems asks what a chemical is, only

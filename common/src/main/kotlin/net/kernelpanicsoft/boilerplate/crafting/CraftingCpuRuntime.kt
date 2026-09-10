@@ -4,7 +4,7 @@ import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import net.kernelpanicsoft.archie.transfer.ArchieEnergyStorage
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
@@ -41,7 +41,7 @@ import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
  * Every resource here is a bare [ResourceComponent], since a [Pattern] may name a fluid on either
  * side. What differs per kind is only *which* pool holds it and *which* router carries it, both
  * resolved at the point of use ([poolFor]/[routeTo]) - so an addon kind that registers a
- * [net.kernelpanicsoft.boilerplate.network.ResourceKind] and a pool of its own needs no change to
+ * [net.kernelpanicsoft.boilerplate.resource.ResourceKind] and a pool of its own needs no change to
  * the job logic itself.
  */
 object CraftingCpuRuntime {
@@ -141,20 +141,23 @@ object CraftingCpuRuntime {
 	 * [RequestFulfillment.fulfillFluidFromProvider] for a fluid - looped because each serves one
 	 * source per call, an immediate unreserved extract-and-route that can't be double-committed the
 	 * way shelf stock can), then from a reachable warehouse's reservable shelf stock (see
-	 * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity.claimAndEnqueue]).
+	 * [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity.claimAndEnqueue]).
 	 * Only ever [CraftingResolver.Plan.stockPulls]'s own raw materials, never an intermediate a step
 	 * of this same job will produce itself.
 	 *
 	 * Both halves are kind-agnostic. The warehouse one in particular: a bound warehouse indexes and
 	 * moves every registered kind that has a
-	 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind], so a fluid raw material comes
+	 * [net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind], so a fluid raw material comes
 	 * off a tank in storage exactly as an item comes off a rack. A claim that finds no source at all
 	 * simply stays outstanding and is retried.
 	 */
 	private fun claimOutstandingStock(level: ServerLevel, pos: BlockPos, job: CraftingBufferJob) {
 		if (job.outstandingStockClaims.values.all { it <= 0 }) return
-		val warehouses = RequestFulfillment.reachableWarehouses(level, pos)
-		val providers = RequestFulfillment.reachableProviders(level, pos)
+		// One walk, both kinds of source off it - this runs every tick a job still has anything
+		// outstanding, and the walk is the expensive half.
+		val reachable = RequestFulfillment.reachableFrom(level, pos)
+		val warehouses = reachable.warehouses
+		val providers = reachable.providers
 		for ((key, amount) in job.outstandingStockClaims.entries.toList()) {
 			if (amount <= 0) continue
 			var remaining = amount
@@ -195,12 +198,12 @@ object CraftingCpuRuntime {
 		for ((index, step) in job.steps.withIndex()) {
 			var tablePos = job.tableForStep[index]
 			if (tablePos == null) {
-				val provider = RequestFulfillment.reachablePatternProviders(level, pos)
+				val provider = RequestFulfillment.reachablePatterns(level, pos)
 					.firstOrNull { it.state.heldPatterns().contains(step.pattern) }
 				if (provider == null) {
-					// Previously the one branch in the whole flow with no trace at all, and the one
-					// that looks most like items vanishing: the step simply never runs, so nothing
-					// it would have produced is ever asked for or made.
+					// The branch that looks most like resources vanishing: the step simply never runs,
+					// so nothing it would have produced is ever asked for or made, and nothing about
+					// that is visible from the outside.
 					//
 					// Traced in enough detail to tell the two causes apart on one line, because they
 					// look identical from the GUI and have nothing in common as fixes. Either this
@@ -210,7 +213,7 @@ object CraftingCpuRuntime {
 					// which is a bug in [Pattern.equals] or in what a pattern round-trips through
 					// NBT as. `holds` is what settles it: the step is stuck despite a reachable
 					// provider plainly offering what it is looking for.
-					val reachable = RequestFulfillment.reachablePatternProviders(level, pos)
+					val reachable = RequestFulfillment.reachablePatterns(level, pos)
 					val connected = RequestFulfillment.connectedPipes(level, pos).size
 					ResourceTrace.at(
 						pos, "step.noProvider",
@@ -364,7 +367,11 @@ object CraftingCpuRuntime {
 	/** Pushes [amount] of [resource] out of this cluster's own pool toward [deliverTo] as a real pipe delivery leaving this segment. Returns how much actually shipped. */
 	private fun pushToNetwork(level: ServerLevel, pos: BlockPos, tile: MultipartBlockEntity, state: CraftingCpuMemberState, resource: ResourceComponent, amount: Long, deliverTo: BlockPos, site: String = "push", step: Int = -1): Long {
 		if (amount <= 0) return 0
+		// This network first; failing that, through a recursive boundary that can push - a pattern
+		// provider on the far side of a seam is fed in two legs, exactly as stock is fetched across
+		// one. Without this the step parks at `feed.wait` forever, since routing stops at a boundary.
 		val route = routeTo(level, pos, deliverTo, resource)
+			?: RequestFulfillment.pushAcrossBoundaries(level, pos, ResourceStack(resource, amount), deliverTo)
 		if (route == null) {
 			ResourceTrace.moved(pos, "push.route", resource, amount, 0L, "to" to deliverTo, "reason" to "no route")
 			return 0
@@ -374,7 +381,7 @@ object CraftingCpuRuntime {
 			ResourceTrace.at(pos, "feed.wait", "step" to step, "needs" to resource, "want" to amount, "target" to deliverTo)
 			return 0
 		}
-		tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), entryFaceFor(pos, route), 0f, route, null)
+		tile.acceptEntry(ResourceStack(resource, extracted), entryFaceFor(pos, route), route)
 		ResourceTrace.moved(pos, site, resource, amount, extracted, "step" to step, "target" to deliverTo)
 		return extracted
 	}
@@ -451,7 +458,7 @@ object CraftingCpuRuntime {
 				}
 				val extracted = extractFrom(storage, resource, amount)
 				if (extracted <= 0) continue
-				tile.travelingItems += TravelingItem(ResourceStack(resource, extracted), entryFaceFor(pos, route), 0f, route, null)
+				tile.acceptEntry(ResourceStack(resource, extracted), entryFaceFor(pos, route), route)
 				ResourceTrace.moved(pos, "drain.ship", resource, amount, extracted, "to" to route.last())
 				return false
 			}
@@ -474,7 +481,7 @@ object CraftingCpuRuntime {
 	/**
 	 * Extracts [amount] of [resource] from [storage], whose element type is only known to be *some*
 	 * resource kind. The unchecked cast that costs lives once, inside the resource's own
-	 * [net.kernelpanicsoft.boilerplate.network.ResourceStorageKind] - see its KDoc - rather than
+	 * [net.kernelpanicsoft.boilerplate.resource.ResourceStorageKind] - see its KDoc - rather than
 	 * being repeated here; [poolFor] guarantees the pairing it relies on.
 	 */
 	private fun extractFrom(storage: CommonStorage<*>, resource: ResourceComponent, amount: Long): Long =
@@ -493,6 +500,6 @@ object CraftingCpuRuntime {
 	/** Ticks between attempts to drain a step's own output out of its machine. Scaled by [CraftingCpuMemberState]'s own [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick] multiplier (see [advanceSteps]) - more available pressure drains sooner, per `docs/design/m5-pressure-power.md`. */
 	private const val PULL_INTERVAL_TICKS = 40
 
-	/** Throwaway, always-empty stand-in for [advanceJob]'s own [PressureLine.find] call when nothing is reachable - same role as [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity]'s identical constant. */
+	/** Throwaway, always-empty stand-in for [advanceJob]'s own [PressureLine.find] call when nothing is reachable - same role as [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity]'s identical constant. */
 	private val NO_PRESSURE_LINE = ArchieEnergyStorage(0)
 }

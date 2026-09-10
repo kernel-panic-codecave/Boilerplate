@@ -11,7 +11,7 @@ import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.kernelpanicsoft.boilerplate.registry.Registrars
-import net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock
+import net.kernelpanicsoft.boilerplate.warehouse.block.GantryRailBlock
 import net.minecraft.core.Direction
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.world.level.block.Block
@@ -33,7 +33,7 @@ import net.minecraft.world.level.block.state.properties.EnumProperty
  * [getRenderState][net.kernelpanicsoft.boilerplate.pipe.attachment.PipeAttachmentType.getRenderState]
  * answers select variants from), the plain-cube warehouse controller block
  * plus its wand item,
- * [net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock]'s own connection-driven
+ * [GantryRailBlock]'s own connection-driven
  * `"multipart"` body (a real, player-visible block auto-placed as the gantry frame), and the
  * placeholder `gantry_head` model
  * [net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual]
@@ -141,12 +141,15 @@ internal fun ABlockStateProvider.boilerplateBlockStates() {
 
 	// Same plain-cube default as the racks above - creative/testing-only, so real art is low priority.
 	simpleBlockWithItem(BlockRegistry.FluidTank)
+	simpleBlockWithItem(BlockRegistry.DistributedMultiTank)
+	simpleBlockWithItem(BlockRegistry.DistributedMultiBuffer)
+	simpleBlockWithItem(BlockRegistry.Omnibuffer)
+	simpleBlockWithItem(BlockRegistry.CreativeProvider)
 	simpleBlockWithItem(BlockRegistry.CreativePressureSource)
 
 	// Filter cards are plain items (no block of their own), unlike a hook's block-model-backed
 	// icon above - a flat `item/generated` icon over each one's own `textures/item/*.png` instead.
-	itemModels().basicItem(ItemRegistry.ItemFilterCard)
-	itemModels().basicItem(ItemRegistry.FluidFilterCard)
+	itemModels().basicItem(ItemRegistry.ResourceFilterCard)
 	itemModels().basicItem(ItemRegistry.ModFilterCard)
 	itemModels().basicItem(ItemRegistry.TagFilterCard)
 	itemModels().basicItem(ItemRegistry.ColorFilterCard)
@@ -174,7 +177,7 @@ internal fun ABlockStateProvider.boilerplateBlockStates() {
  * connected - the shape every six-way connecting block in this mod uses
  * ([PipeBlock]/[net.kernelpanicsoft.boilerplate.pipe.block.GlassPipeBlock]'s original
  * hand-written `blockstates/pipe.json` shape, now generated identically, and
- * [net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock] reusing the same pattern).
+ * [GantryRailBlock] reusing the same pattern).
  */
 private fun ABlockStateProvider.sixWayMultipart(block: Block, propertiesByDirection: Map<Direction, BooleanProperty>, core: AModelFile, arm: AModelFile, cap: AModelFile? = null, straightProperty: BooleanProperty? = null, axisProperty: EnumProperty<Direction.Axis>? = null, straight: AModelFile? = null) {
 	getMultipartBuilder(block) {

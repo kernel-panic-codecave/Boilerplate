@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.networking.IPacketContext
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardTarget
 import net.minecraft.server.level.ServerPlayer
+import net.kernelpanicsoft.boilerplate.resource.SItemResource
 
 /**
  * Client -> server: directly overwrites the ghost slot [target] describes with [resource] (or

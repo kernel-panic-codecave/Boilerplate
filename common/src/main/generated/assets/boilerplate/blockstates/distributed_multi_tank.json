@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "boilerplate:block/distributed_multi_tank"
+    }
+  }
+}

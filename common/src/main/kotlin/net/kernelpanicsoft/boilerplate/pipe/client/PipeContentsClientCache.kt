@@ -2,7 +2,7 @@ package net.kernelpanicsoft.boilerplate.pipe.client
 
 import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.minecraft.core.BlockPos
@@ -109,7 +109,14 @@ object PipeContentsClientCache {
 	 * hand-off would draw twice for the moment both packets are in flight.
 	 */
 	private fun sameItem(a: TravelingItem, b: TravelingItem): Boolean {
-		if (a.stack.amount != b.stack.amount || a.path != b.path) return false
+		// Compared one hop shallower than what is actually sent, because the two sides are cut at
+		// different points along the same route: [a] is this segment's own copy, truncated to
+		// [TravelingItem.CLIENT_PATH_LOOKAHEAD] from here, while [b] came from the neighbour's copy
+		// - truncated to the same depth from one hop *earlier* and then dropped by one. Their first
+		// `LOOKAHEAD - 1` hops are the part both are guaranteed to carry, and comparing the whole of
+		// each would call the same delivery two different ones and draw it twice.
+		val depth = TravelingItem.CLIENT_PATH_LOOKAHEAD - 1
+		if (a.stack.amount != b.stack.amount || a.path.take(depth) != b.path.take(depth)) return false
 		val resourceA = a.stack.resource as? ResourceComponent ?: return false
 		val resourceB = b.stack.resource as? ResourceComponent ?: return false
 		return ResourceIdentity.of(resourceA) == ResourceIdentity.of(resourceB)

@@ -9,15 +9,14 @@ import earth.terrarium.common_storage_lib.storage.base.CommonStorage
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.ComposeBlockContainerMenu
 import net.kernelpanicsoft.boilerplate.crafting.*
-import net.kernelpanicsoft.boilerplate.network.displayName
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.kernelpanicsoft.boilerplate.network.*
+import net.kernelpanicsoft.boilerplate.resource.*
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.HookHolderState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
-import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.pipe.network.RequestFulfillment
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
@@ -32,12 +31,9 @@ import net.minecraft.world.item.ItemStack
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import net.kernelpanicsoft.boilerplate.network.SResourceComponent
-import net.kernelpanicsoft.boilerplate.network.ResourceIdentity
-import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
-import net.kernelpanicsoft.boilerplate.crafting.amountIn
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
+import net.kernelpanicsoft.boilerplate.resource.SResourceComponent
+import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
 
 /**
  * Menu for the warehouse terminal hook attached to [tile]: search/withdraw across *every* source
@@ -143,7 +139,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		// [net.kernelpanicsoft.boilerplate.client.ResourceDisplayKind], so a fluid output is a row
 		// like any other. Deduplicated by [ResourceIdentity] rather than by the resource, since a
 		// fluid has no value equality of its own and `distinct()` would keep every mention of one.
-		val resources = RequestFulfillment.reachablePatternProviders(level, tile.blockPos)
+		val resources = RequestFulfillment.reachablePatterns(level, tile.blockPos)
 			.flatMap { it.state.heldPatterns() }
 			.flatMap { it.outputs }
 			.map { it.resource as ResourceComponent }
@@ -209,6 +205,9 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 			val startTick = level.gameTime
 			val dispatched = RequestFulfillment.request(
 				level, tile.blockPos, ResourceStack(stack.resource as ResourceComponent, take), tile.blockPos, direction, reservationId,
+				// Each withdrawal is its own order for that much more, not a standing level being
+				// re-asked - see askAcrossBoundaries.
+				oneShot = true,
 			) { pipeHops, gantryBlocks, actual ->
 				state.pendingDeliveries += PendingDelivery(
 					reservationId, slot, stack.resource, actual, startTick,
@@ -492,7 +491,7 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 		val level = level as? ServerLevel ?: return
 		val networkType = networkTypeForResource(stack.resource) ?: return
 		val route = networkType.route(level, tile.blockPos, stack) ?: return
-		tile.travelingItems += TravelingItem(stack, direction, 0f, route)
+		tile.acceptEntry(stack, direction, route)
 		if (clearCarried) carried = ItemStack.EMPTY
 		if (clearSlot != null) slots[clearSlot].set(ItemStack.EMPTY)
 	}
@@ -503,15 +502,21 @@ abstract class AbstractTerminalHookMenu<SELF : AbstractTerminalHookMenu<SELF>>(t
 	 *
 	 * The counterpart of clicking an inbox column to *fill* one, and the reason a terminal needs no
 	 * slot of its own for this: the carried stack is already a perfectly good place to put a bucket.
-	 * A carried stack that is not a container of any registered kind, or holds nothing routable, is
-	 * left alone - the caller falls back to depositing the item itself.
+	 *
+	 * Reports which of the three things happened rather than a bare success flag - see [DrainResult].
+	 * Only [DrainResult.NotAContainer] means the gesture missed and the caller should store the item
+	 * instead; a container with nothing routable is the gesture landing and the network having
+	 * nowhere to put it, and storing the container then is how a player loses a full tank to a
+	 * right-click.
 	 */
-	fun depositCarriedContainer(): Boolean {
-		val level = level as? ServerLevel ?: return false
-		val emptied = drainContainerIntoNetwork(level, tile.blockPos, direction, tile, carried) ?: return false
-		carried = emptied
-		sendSearchResults()
-		return true
+	fun depositCarriedContainer(): DrainResult {
+		val level = level as? ServerLevel ?: return DrainResult.NotAContainer
+		val result = drainContainerIntoNetwork(level, tile.blockPos, direction, tile, carried)
+		if (result is DrainResult.Drained) {
+			carried = result.emptied
+			sendSearchResults()
+		}
+		return result
 	}
 
 	/**

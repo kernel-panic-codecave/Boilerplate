@@ -4,7 +4,7 @@ import net.kernelpanicsoft.archie.gametest.assertTrue
 import earth.terrarium.common_storage_lib.item.ItemApi
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.boilerplate.network.roomFor
+import net.kernelpanicsoft.boilerplate.resource.roomFor
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
 import net.kernelpanicsoft.boilerplate.pipe.entity.TravelingItem
 import net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookState
@@ -17,8 +17,13 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookType
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternProviderHookType
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
-import net.kernelpanicsoft.boilerplate.util.resourceCell
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.kernelpanicsoft.boilerplate.pipe.hook.batchAtRouteEnd
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchForRoute
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
+import net.kernelpanicsoft.boilerplate.resource.FluidKind
+import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
+import net.minecraft.world.level.material.Fluids
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -81,6 +86,63 @@ class FilterBatchGameTest {
 		val elsewhere = absolutePos(pipePos).relative(Direction.SOUTH)
 		assertTrue(batchAtRouteEnd(level, absolutePos(pipePos), listOf(elsewhere)) == FilterHookState.NOT_BATCHED) {
 			"A face with no hook must impose nothing, even on a pipe that batches elsewhere"
+		}
+		succeed()
+	}
+
+	/**
+	 * A batch is authored in the unit a player types, and applied in the unit the resource being
+	 * moved is actually counted in.
+	 *
+	 * One face gates every kind that can cross it, so the number cannot be a platform count: a fluid
+	 * is counted in droplets on Fabric and millibuckets on NeoForge, and a saved `1000` would have
+	 * meant a bucket on one loader and a eightieth of one on the other. Authored, it is a bucket on
+	 * both - and still a thousand items when an item crosses the same face.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testABatchMeansTheSameVolumeOnEitherLoader() {
+		// One whole of a fluid, in the unit a player types it in.
+		val aBucket = FluidKind.defaultAuthored
+		val (_, pipePos) = layOutBatchingHook(batch = aBucket)
+		val destination = absolutePos(pipePos).relative(Direction.NORTH)
+		val from = absolutePos(pipePos)
+		val water = FluidResource.of(Fluids.WATER)
+		val bucket = FluidKind.toPlatform(aBucket)
+
+		assertTrue(batchForRoute(level, from, listOf(destination), water) == bucket) {
+			"Expected a batch of $aBucket to gate one bucket ($bucket in this " +
+				"platform's own count), got ${batchForRoute(level, from, listOf(destination), water)}"
+		}
+		// Two buckets pass whole; one and a half is rounded back down to one.
+		assertTrue(batchedForRoute(level, from, listOf(destination), water, bucket * 2) == bucket * 2) {
+			"Expected two whole buckets to cross a bucket-batched face"
+		}
+		assertTrue(batchedForRoute(level, from, listOf(destination), water, bucket + bucket / 2) == bucket) {
+			"Expected a bucket and a half to be rounded down to one whole bucket"
+		}
+		// The same face, the same number, an item crossing it: a thousand items.
+		val diamond = ItemResource.of(Items.DIAMOND)
+		assertTrue(batchForRoute(level, from, listOf(destination), diamond) == aBucket) {
+			"Expected an item to read the same authored number as a plain count of itself"
+		}
+		succeed()
+	}
+
+	/**
+	 * The configurable ceiling has to reach one whole of the largest kind that can cross a face.
+	 *
+	 * It was a flat, item-shaped `64`, which put every measured kind out of reach - a fluid delivery
+	 * is a whole bucket, so the entire settable range expressed less than a sixteenth of one and a
+	 * fluid line could not be batched at all.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 5)
+	fun GameTestHelper.testTheBatchCeilingReachesAWholeBucket() {
+		val aBucket = FluidKind.defaultAuthored
+		assertTrue(FilterHookState.maxBatchSize >= aBucket) {
+			"Expected the batch ceiling to reach at least one bucket, got ${FilterHookState.maxBatchSize}"
+		}
+		assertTrue(FilterHookState.maxBatchSize >= 64L) {
+			"Expected the batch ceiling to still reach a stack, got ${FilterHookState.maxBatchSize}"
 		}
 		succeed()
 	}
@@ -254,7 +316,7 @@ class FilterBatchGameTest {
 	 * Working around it by walking slots directly is *not* sound either: that assumes a storage's
 	 * slots are a faithful partition whose admission matches the storage's own, which several of
 	 * this mod's do not - see the pattern-buffer case below. So
-	 * [net.kernelpanicsoft.boilerplate.network.roomFor] asks the storage, and the arrival gate in
+	 * [roomFor] asks the storage, and the arrival gate in
 	 * [net.kernelpanicsoft.boilerplate.pipe.entity.PipeBlockEntity] needs no prediction at all.
 	 */
 	@GameTest(template = SMALL, timeoutTicks = 20)
@@ -286,7 +348,7 @@ class FilterBatchGameTest {
 	 * slots directly instead of asking it. That assumes `get(index)` is a faithful partition whose
 	 * slots admit what the storage admits - and [PatternBufferIO] is a deliberate counter-example.
 	 * Its own `insert` meters by run boundary, caps at
-	 * [PatternProviderHookState.MAX_BUFFERED_RUNS_PER_PATTERN] runs, and refuses a resource no
+	 * configured buffered runs, and refuses a resource no
 	 * pattern here requires; its slots do none of that. A walk therefore reported room where the
 	 * storage would in fact take nothing, and a delivery sized by that number arrives, is refused,
 	 * and stalls in the pipe - retried forever while the extractor keeps sending more.

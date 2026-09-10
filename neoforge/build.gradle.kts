@@ -1,4 +1,3 @@
-import net.kernelpanicsoft.archie.plugin.runtimeLibrary
 
 plugins {
 	alias(libs.plugins.shadow)
@@ -105,17 +104,17 @@ dependencies {
 
 	modLocalRuntime(libs.devauth.neoforge)
 
-	// Compose runtime pulls these in transitively, but they have to reach NeoForge as *libraries*,
-	// not as remapped mod jars. Archie nests them under `META-INF/jars/` (the Fabric layout) with no
-	// `META-INF/jarjar/metadata.json` and no `FMLModType` in their manifests, so NeoForge's
-	// ModuleClassLoader never loads them and the first Compose screen dies with
-	// `NoClassDefFoundError: androidx/collection/MutableScatterSet`. `runtimeLibrary` is what stamps
-	// `FMLModType: GAMELIBRARY` on them - Archie already does exactly this for `runtime-desktop`
-	// itself, just not for these three. Remove again only once Archie patches all of its nested
-	// libraries (and emits jarjar metadata, which shipped NeoForge jars also need).
-	runtimeLibrary(libs.okio)
-	runtimeLibrary(libs.androidx.annotation)
-	runtimeLibrary(libs.androidx.collection)
+	// Compose's own transitive libraries (okio, androidx.annotation, androidx.collection) are
+	// deliberately *not* declared here. They have to reach NeoForge stamped `FMLModType: GAMELIBRARY`
+	// or the first Compose screen dies with `NoClassDefFoundError:
+	// androidx/collection/MutableScatterSet` - and Archie's own neoforge jar already nests them that
+	// way (`META-INF/jars/collection-jvm-1.4.0-PatchedFMLModType.jar`) with the
+	// `META-INF/jarjar/metadata.json` NeoForge needs to load them.
+	//
+	// Declaring them here as well is what breaks: loom remaps this module's copy while FML patches
+	// Archie's, and the two module names both export the package - `Modules collection.jvm.<hash> and
+	// collection.jvm.PatchedFMLModType export package androidx.collection`, which kills the launch
+	// before any mod loads. Exactly one side provides them, and that side is Archie.
 
 	modLocalRuntime("curse.maven:nbtedit-678133:6125444")
 	modCompileOnly(libs.mekanism)

@@ -1,19 +1,22 @@
 {
   "block.boilerplate.bulk_rack": "Bulk Rack",
+  "block.boilerplate.creative_provider": "Creative Provider",
+  "block.boilerplate.distributed_multi_buffer": "Distributed Multi Buffer",
+  "block.boilerplate.distributed_multi_tank": "Distributed Multi Tank",
   "block.boilerplate.fluid_tank": "Fluid Tank",
   "block.boilerplate.gantry_rail": "Gantry Rail",
   "block.boilerplate.general_rack": "General Rack",
   "block.boilerplate.glass_pipe": "Glass Pipe",
+  "block.boilerplate.omnibuffer": "Omnibuffer",
   "block.boilerplate.pipe": "Pipe",
   "block.boilerplate.unstackable_rack": "Unstackable Rack",
   "block.boilerplate.warehouse_controller": "Warehouse Controller",
   "encasement.boilerplate.crafting_buffer": "Crafting Buffer",
   "filter.boilerplate.color": "Color Condition Card",
   "filter.boilerplate.combined": "Combined Condition Card",
-  "filter.boilerplate.fluid": "Fluid Condition Card",
-  "filter.boilerplate.item": "Item Condition Card",
   "filter.boilerplate.mod": "Mod Condition Card",
   "filter.boilerplate.regex": "Regex Condition Card",
+  "filter.boilerplate.resource": "Resource Condition Card",
   "filter.boilerplate.tag": "Tag Condition Card",
   "hook.boilerplate.adapter": "Adapter Hook",
   "hook.boilerplate.crafting_terminal": "Crafting Terminal Hook",
@@ -32,5 +35,7 @@
   "item.boilerplate.pattern.blank": "Blank Pattern",
   "item.boilerplate.pattern.kind.crafting": "Crafting Pattern",
   "item.boilerplate.pattern.kind.processing": "Processing Pattern",
-  "item.boilerplate.warehouse_wand": "Warehouse Wand"
+  "item.boilerplate.warehouse_wand": "Warehouse Wand",
+  "subtitles.boilerplate.gantry.move": "Gantry moves",
+  "subtitles.boilerplate.pipe.thunk": "Pipe clunks"
 }

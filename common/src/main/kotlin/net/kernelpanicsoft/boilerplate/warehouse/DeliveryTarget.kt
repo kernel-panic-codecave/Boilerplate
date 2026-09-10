@@ -2,6 +2,7 @@ package net.kernelpanicsoft.boilerplate.warehouse
 
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
  * Where a [GantryJob.Retrieve]'s cargo goes once it lands in

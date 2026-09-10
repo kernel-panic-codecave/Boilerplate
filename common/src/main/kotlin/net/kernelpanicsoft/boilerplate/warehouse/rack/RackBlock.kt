@@ -22,7 +22,7 @@ import net.minecraft.world.phys.shapes.VoxelShape
  * player-placeable cube (see [net.kernelpanicsoft.boilerplate.datagen.BoilerplateBlockStateProvider]
  * for its `cubeAll` model) whose only direct interaction is [useWithoutItem] echoing its
  * [RackBlockEntity.describeContents] to the action bar; real reads/writes go through
- * [net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlockEntity]'s gantry, pipes,
+ * [net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity]'s gantry, pipes,
  * or the warehouse terminal, not a per-rack GUI.
  */
 abstract class RackBlock<T>(properties: Properties) : BaseEntityBlock(properties) where T : BlockEntity, T : RackBlockEntity, T : ExtendedMenuProvider {

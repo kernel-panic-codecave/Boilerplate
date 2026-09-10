@@ -120,16 +120,24 @@ private val SELF_DROPS: List<Block> = listOf(
 	BlockRegistry.GlassPipe,
 	BlockRegistry.PressurePipe,
 	BlockRegistry.WarehouseController,
-	BlockRegistry.GantryRail,
 	BlockRegistry.GeneralRack,
 	BlockRegistry.BulkRack,
 	BlockRegistry.UnstackableRack,
 	BlockRegistry.FluidTank,
+	BlockRegistry.DistributedMultiTank,
+	BlockRegistry.DistributedMultiBuffer,
+	BlockRegistry.Omnibuffer,
+	BlockRegistry.CreativeProvider,
 	BlockRegistry.CreativePressureSource,
 )
 
 /** The hidden per-attachment model blocks - present in the registry for model/baking purposes only, never obtainable. */
 private val HIDDEN_PART_BLOCKS: List<Block> = listOf(
+	// Not a part, but obtainable by exactly as much: a rail is laid and taken up by the warehouse
+	// controller itself (see WarehouseControllerBlockEntity), never placed by hand, and so has no
+	// BlockItem. In SELF_DROPS it would resolve through `asItem()` to `minecraft:air` - a table
+	// promising a drop that cannot exist.
+	BlockRegistry.GantryRail,
 	BlockRegistry.ExtractionHook,
 	BlockRegistry.FilterHook,
 	BlockRegistry.ProviderHook,

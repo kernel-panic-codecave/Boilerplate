@@ -8,6 +8,8 @@ import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.RequestRequesterStatusPacket
 import net.kernelpanicsoft.boilerplate.network.RequesterStatusPacket
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.network.UpdateParallelStockingPacket
+import net.kernelpanicsoft.boilerplate.pipe.hook.ParallelStocking
 import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.StockingRow
 import net.kernelpanicsoft.boilerplate.pipe.hook.RequesterHookType
@@ -30,6 +32,14 @@ class RequesterHookMenu(id: Int, inventory: Inventory, tile: MultipartBlockEntit
 
 	// No real slots: the whole configuration is the ghost row, edited through StockingRowMenu.
 	override fun registerSlotHandlers() = Unit
+
+	/** How this hook spreads its row across a far subnet - see [ParallelStocking]. */
+	val parallel: ParallelStocking get() = (tile.hooks[direction.name] as? RequesterHookState)?.parallel ?: ParallelStocking.EACH
+
+	/** Client-side: asks the server to change it. */
+	fun requestParallel(next: ParallelStocking) {
+		BoilerplateNetworkChannel.toServer(UpdateParallelStockingPacket(tile.blockPos, direction, next))
+	}
 
 	/** What this hook is currently doing, as last reported by the server - see [RequesterStatusPacket]. `null` until the first reply arrives. */
 	var status: RequesterStatusPacket? by mutableStateOf(null)

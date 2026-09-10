@@ -1,6 +1,5 @@
 package net.kernelpanicsoft.boilerplate.gametest
 
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.boilerplate.crafting.CraftStep
@@ -9,8 +8,7 @@ import net.kernelpanicsoft.boilerplate.crafting.Pattern
 import net.kernelpanicsoft.boilerplate.crafting.PatternKind
 import net.kernelpanicsoft.boilerplate.pipe.network.ItemPipeRouter
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
-import net.kernelpanicsoft.boilerplate.util.resourceCell
-import net.kernelpanicsoft.boilerplate.util.resourceStack
+import net.kernelpanicsoft.boilerplate.resource.resourceCell
 import net.minecraft.core.BlockPos
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper

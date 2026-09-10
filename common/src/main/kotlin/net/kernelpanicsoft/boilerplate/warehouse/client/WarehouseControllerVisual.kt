@@ -18,16 +18,15 @@ import dev.engine_room.flywheel.lib.math.MoreMath
 import dev.engine_room.flywheel.lib.model.Models
 import dev.engine_room.flywheel.lib.model.SingleMeshModel
 import net.kernelpanicsoft.boilerplate.client.WorldMeshMotion
-import net.kernelpanicsoft.boilerplate.client.preferredMaterial
+import net.kernelpanicsoft.boilerplate.client.InstancedMeshes
 import dev.engine_room.flywheel.lib.model.baked.BakedModelBuilder
 import dev.engine_room.flywheel.lib.model.baked.PartialModel
 import dev.engine_room.flywheel.lib.task.SimplePlan
 import dev.engine_room.flywheel.lib.visual.AbstractBlockEntityVisual
 import earth.terrarium.common_storage_lib.resources.ResourceStack
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
 import net.kernelpanicsoft.boilerplate.warehouse.*
 import net.minecraft.world.level.block.state.properties.BooleanProperty
@@ -55,6 +54,8 @@ import kotlin.math.sin
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.util.div
 import net.kernelpanicsoft.archie.util.rem
+import net.kernelpanicsoft.boilerplate.warehouse.block.GantryRailBlock
+import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 class WarehouseControllerVisual(
 	visualizationContext: VisualizationContext,
@@ -66,6 +67,9 @@ class WarehouseControllerVisual(
 	private val zRailInstances = ArrayList<TransformedInstance>()
 	private val yRodInstances = ArrayList<TransformedInstance>()
 	private var bottomRodInstance: TransformedInstance? = null
+
+	/** The connection state and clip height [bottomRodInstance]'s geometry was cut for - see the rebuild guard in `beginFrame`. */
+	private var bottomRodShape: Pair<BlockState, Float>? = null
 	private var headInstance: TransformedInstance? = null
 	private var carriedItemInstances: List<TransformedInstance> = emptyList()
 	private var carriedItemsCacheKey: List<ResourceStack<ResourceComponent>> = emptyList()
@@ -365,13 +369,24 @@ class WarehouseControllerVisual(
 			val state = connectionState(
 				bottomY, bottomY, railY, DOWN_PROPERTY, UP_PROPERTY
 			)
-			val mesh = buildClippedRodMesh(state, clipFraction)
-			bottomRodInstance?.delete()
-			val instancer = instancerProvider().instancer(
-				InstanceTypes.TRANSFORMED, SingleMeshModel(mesh, Materials.CUTOUT_BLOCK)
-			)
+			// The rod is cut off wherever the head currently hangs, so its geometry really is
+			// per-height - but only while the gantry is moving. Rebuilding it regardless meant a
+			// fresh mesh, model and instancer every frame for a warehouse standing perfectly still,
+			// and an instancer coming or going costs Flywheel a re-sort of its entire draw list. The
+			// placement below still runs every frame: the head moves in x and z without the rod's
+			// own cut changing at all.
+			val shape = state to clipFraction
+			if (bottomRodInstance == null || bottomRodShape != shape) {
+				bottomRodInstance?.delete()
+				val mesh = buildClippedRodMesh(state, clipFraction)
+				val instancer = instancerProvider().instancer(
+					InstanceTypes.TRANSFORMED, SingleMeshModel(mesh, Materials.CUTOUT_BLOCK)
+				)
+				bottomRodInstance = instancer.createInstance()
+				bottomRodShape = shape
+			}
 			val relBottomY = (visualPos.y + (bottomY + 0.5 - origin.y - 0.5)).toFloat()
-			bottomRodInstance = instancer.createInstance().apply {
+			bottomRodInstance?.apply {
 				setIdentityTransform()
 				translate(headOffsetX, relBottomY, headOffsetZ)
 				setChanged()
@@ -379,6 +394,7 @@ class WarehouseControllerVisual(
 		} else {
 			bottomRodInstance?.delete()
 			bottomRodInstance = null
+			bottomRodShape = null
 		}
 
 		if (headInstance == null) {
@@ -405,9 +421,9 @@ class WarehouseControllerVisual(
 		if (carried != carriedItemsCacheKey) {
 			carriedItemInstances.forEach(Instance::delete)
 			carriedItemInstances = carried.map { stack ->
-				// The mesh picks its own material, exactly as it does for pipe cargo - see MaterialMesh.
-				val mesh = meshFor(stack)!!
-				val model = SingleMeshModel(mesh, mesh.preferredMaterial())
+				// One shared model per mesh, exactly as pipe cargo uses - a model built here instead
+				// would give each carried stack an instancer of its own. See InstancedMeshes.modelOf.
+				val model = InstancedMeshes.modelOf(meshFor(stack)!!)
 				instancerProvider().instancer(InstanceTypes.TRANSFORMED, model).createInstance()
 			}
 			carriedItemsCacheKey = carried
@@ -466,6 +482,7 @@ class WarehouseControllerVisual(
 		yRodInstances.clear()
 		bottomRodInstance?.delete()
 		bottomRodInstance = null
+		bottomRodShape = null
 		headInstance?.delete()
 		headInstance = null
 		carriedItemInstances.forEach(Instance::delete)

@@ -154,7 +154,7 @@ fun ResourceFakeSlot(resource: ResourceComponent, amount: Long, isHovered: Boole
  * writes its own.
  *
  * An item stack draws its count itself (see
- * [net.kernelpanicsoft.boilerplate.network.ResourceKind.drawsOwnAmount]); a sprite draws nothing, so
+ * [net.kernelpanicsoft.boilerplate.resource.ResourceKind.drawsOwnAmount]); a sprite draws nothing, so
  * everything else needs the number handed to it. In the kind's own **authored** unit - millibuckets,
  * not the droplets Fabric counts fluids in - because this is a label a player reads.
  *
@@ -163,8 +163,23 @@ fun ResourceFakeSlot(resource: ResourceComponent, amount: Long, isHovered: Boole
  * to pass `null` and nothing downstream could tell that apart from "this kind writes its own".
  */
 internal fun amountLabelFor(resource: ResourceComponent?, amount: Long): String? {
+	val kind = ResourceKindRegistry.forResource(resource ?: return null) ?: return null
+	return authoredAmountLabelFor(resource, kind.toAuthored(amount))
+}
+
+/**
+ * [amountLabelFor] for an amount that is *already* in the kind's authored unit.
+ *
+ * Both units are in play across the GUI and only the surface holding the number knows which one it
+ * has: a warehouse's stock and a stocking row's target are platform amounts, while a pattern
+ * terminal's ghost cells are authored all the way until
+ * [net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu.encode] converts them. Running
+ * an authored amount through [amountLabelFor] would convert it a second time, which on Fabric turns
+ * a 1000mB cell into a "12" and on NeoForge silently looks right.
+ */
+internal fun authoredAmountLabelFor(resource: ResourceComponent?, authored: Long): String? {
 	if (resource == null || resource.isBlank) return null
 	val kind = ResourceKindRegistry.forResource(resource) ?: return null
 	if (kind.drawsOwnAmount) return null
-	return formatCount(kind.toAuthored(amount))
+	return formatCount(authored)
 }

@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import net.kernelpanicsoft.archie.serialization.serializers.SItemStack
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookMenu
 import net.minecraft.client.Minecraft
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 
 /**
  * Server -> client: the aggregated contents of every warehouse a

@@ -4,11 +4,17 @@ import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gametest.assertTrue
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
-import net.kernelpanicsoft.boilerplate.network.roomFor
+import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.pipe.gui.DrainResult
+import net.kernelpanicsoft.boilerplate.pipe.gui.drainContainerIntoNetwork
 import net.kernelpanicsoft.boilerplate.pipe.gui.fillContainerFromInbox
+import net.kernelpanicsoft.boilerplate.registry.BlockRegistry
+import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.server.level.ServerLevel
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookType
-import net.kernelpanicsoft.boilerplate.registry.FluidStorageKind
+import net.kernelpanicsoft.boilerplate.resource.FluidStorageKind
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.gametest.framework.GameTest
 import net.minecraft.gametest.framework.GameTestHelper
@@ -37,6 +43,37 @@ import net.minecraft.world.level.material.Fluids
  */
 @Suppress("unused")
 class TerminalContainerTransferGameTest {
+
+	/**
+	 * A container the network cannot route is reported as such, not as "this was never a container".
+	 *
+	 * The two used to be one `null`, and the caller stored the item on it - so a right-click meaning
+	 * "empty this into the network", made at a moment when nothing could take the contents, deposited
+	 * the *container itself* instead. That is how a full tank goes missing into storage, and telling
+	 * the two apart is the only thing that prevents it.
+	 */
+	@GameTest(template = SMALL, timeoutTicks = 20)
+	fun GameTestHelper.testAnUnroutableContainerIsNotMistakenForANonContainer() {
+		val hookPos = BlockPos(0, 2, 0)
+		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
+		val tile = getBlockEntity(hookPos) as MultipartBlockEntity
+		tile.hooks.getOrPut(Direction.NORTH.name) { TerminalHookType.createState() }
+		val level = level as ServerLevel
+
+		// A full bucket, with nothing anywhere for its water to route to.
+		val water = ItemStack(Items.WATER_BUCKET)
+		val unroutable = drainContainerIntoNetwork(level, absolutePos(hookPos), Direction.NORTH, tile, water)
+		assertTrue(unroutable is DrainResult.NothingRoutable) {
+			"Expected a full bucket with nowhere to send its water to report NothingRoutable, got $unroutable"
+		}
+
+		// A plain item is the case that *should* fall back to being stored.
+		val diamond = drainContainerIntoNetwork(level, absolutePos(hookPos), Direction.NORTH, tile, ItemStack(Items.DIAMOND))
+		assertTrue(diamond is DrainResult.NotAContainer) {
+			"Expected a plain diamond to report NotAContainer, got $diamond"
+		}
+		succeed()
+	}
 
 	@GameTest(template = SMALL, timeoutTicks = 20)
 	fun GameTestHelper.testABucketAnswersByTheAmountAskedForNotItsCapacity() {

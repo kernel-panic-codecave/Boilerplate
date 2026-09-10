@@ -1,7 +1,9 @@
 package net.kernelpanicsoft.boilerplate.pipe.hook
 
+import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import kotlinx.serialization.builtins.serializer
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.world.level.BlockGetter
@@ -23,10 +25,19 @@ import net.minecraft.world.level.BlockGetter
 class FilterHookState : SortingHookState(FilterHookType.ID) {
 
 	/**
-	 * How many of a matching resource must move at once, or [NOT_BATCHED] to accept any amount.
+	 * How much of a matching resource must move at once, in that resource's own **authored** unit,
+	 * or [NOT_BATCHED] to accept any amount.
 	 *
 	 * Applies to whatever the filter already passes: the filter says *what* may go, this says *how
-	 * many at a time*, and neither needs to restate the other.
+	 * much at a time*, and neither needs to restate the other.
+	 *
+	 * Authored rather than the platform's own count, because one filter gates every kind that can
+	 * cross its face and there is no single kind to read it as. `1000` is a thousand items or a
+	 * bucket of fluid, exactly as a thousand in any other amount field in this mod is - the
+	 * conversion happens per resource, where the batch is actually applied, in [batchForRoute].
+	 * Stored as a platform count instead, a fluid batch would have meant droplets on Fabric and
+	 * millibuckets on NeoForge, and the same saved number would have gated eighty-one times as much
+	 * fluid on one loader as the other.
 	 */
 	var batchSize: Long by field(Long.serializer()) { NOT_BATCHED }
 
@@ -36,16 +47,38 @@ class FilterHookState : SortingHookState(FilterHookType.ID) {
 	companion object {
 		/** [batchSize]'s "off" value: accept whatever arrives, in whatever quantity. */
 		const val NOT_BATCHED = 1L
+
+		/**
+		 * The largest [batchSize] worth offering, in authored units - the most any registered kind
+		 * lets a single amount be authored as, never less than a stack.
+		 *
+		 * The same ceiling a pattern cell of that kind uses
+		 * ([net.kernelpanicsoft.boilerplate.resource.ResourceKind.maxAuthored]), so it is sixty-four
+		 * buckets of a measured kind and sixty-four thousand of a counted one - not a number picked
+		 * to keep some widget usable. It was a flat item-shaped `64`, which put every measured kind
+		 * out of reach: a fluid delivery is a whole bucket, so the entire settable range expressed
+		 * less than a sixteenth of one and a fluid line could not be batched at all.
+		 */
+		val maxBatchSize: Long
+			get() = ResourceKindRegistry.storageKinds()
+				.maxOfOrNull { it.maxAuthored }
+				?.coerceAtLeast(STACK_BATCH) ?: STACK_BATCH
+
+		/** The floor under [maxBatchSize] - a stack, which is one whole of a counted kind. */
+		private const val STACK_BATCH = 64L
 	}
 }
 
 /**
- * The batch multiple a delivery along [route] must satisfy, or [FilterHookState.NOT_BATCHED] when
- * nothing along it batches.
+ * The batch multiple a delivery along [route] must satisfy in **authored** units, or
+ * [FilterHookState.NOT_BATCHED] when nothing along it batches.
  *
  * Read from the hook on the *last hop* - the face the delivery actually crosses - derived the same
  * way the deposit derives it, so this asks the hook that will really gate the insert rather than
  * some other face of the same pipe.
+ *
+ * Callers gating a real amount want [batchForRoute], which converts this into the unit the resource
+ * being moved is counted in.
  *
  * @param from where the route started, used when the route is a single hop and has no prior step.
  */
@@ -82,11 +115,30 @@ fun batchedForRoute(
 	level: BlockGetter,
 	from: BlockPos,
 	route: List<BlockPos>,
+	resource: ResourceComponent,
 	desired: Long,
 	room: Long = Long.MAX_VALUE,
 ): Long {
 	val capped = minOf(desired, room)
 	if (capped <= 0) return 0
-	val batch = batchAtRouteEnd(level, from, route)
+	val batch = batchForRoute(level, from, route, resource)
 	return if (batch <= FilterHookState.NOT_BATCHED) capped else (capped / batch) * batch
+}
+
+/**
+ * [batchAtRouteEnd]'s multiple in the unit [resource] is actually counted in - what every site
+ * comparing a batch against a real amount needs.
+ *
+ * A batch is authored in the unit a player types (see [FilterHookState.batchSize]); an amount in
+ * flight is the platform's own count, which for a fluid is droplets on Fabric. Converting here, per
+ * resource, is what lets one face gate items and fluids at once and mean the right thing for each.
+ *
+ * @return the multiple in [resource]'s own units, at least `1`, or [FilterHookState.NOT_BATCHED]
+ *   when nothing along [route] batches.
+ */
+fun batchForRoute(level: BlockGetter, from: BlockPos, route: List<BlockPos>, resource: ResourceComponent): Long {
+	val authored = batchAtRouteEnd(level, from, route)
+	if (authored <= FilterHookState.NOT_BATCHED) return FilterHookState.NOT_BATCHED
+	val kind = ResourceKindRegistry.forResource(resource) ?: return authored
+	return kind.toPlatform(authored).coerceAtLeast(1L)
 }

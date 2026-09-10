@@ -42,7 +42,7 @@ class FilterCardEditor(
 	}
 
 	/** Which [FilterConditionType] this card is - fixed by the item itself, see [FilterCardItem]. */
-	fun type(): ResourceLocation = (stack().item as? FilterCardItem)?.conditionTypeId ?: ItemConditionType.ID
+	fun type(): ResourceLocation = (stack().item as? FilterCardItem)?.conditionTypeId ?: ResourceConditionType.ID
 
 	/** This card's own live condition state, or `null` if its stack has gone. */
 	fun state(): FilterConditionState? = stack().takeIf { !it.isEmpty }?.let { FilterCardState(it).currentState() }

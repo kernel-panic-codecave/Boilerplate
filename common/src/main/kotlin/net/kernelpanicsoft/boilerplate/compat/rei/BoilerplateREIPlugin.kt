@@ -21,7 +21,6 @@ import me.shedaniel.rei.api.common.transfer.info.stack.SlotAccessor
 import me.shedaniel.rei.api.common.util.EntryStacks
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
-import net.kernelpanicsoft.boilerplate.util.itemStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.world.item.ItemStack
 import net.kernelpanicsoft.boilerplate.compat.ViewerResourceStacks

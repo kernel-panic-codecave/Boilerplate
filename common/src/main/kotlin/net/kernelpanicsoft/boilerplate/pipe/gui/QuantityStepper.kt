@@ -14,15 +14,32 @@ import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
 import net.minecraft.network.chat.Component
 
 /**
- * How much each step button moves the amount.
- *
- * A stack and a stack-of-stacks, plus one, because the amounts people actually type are overwhelmingly
- * multiples of those. Reaching 64 by pressing `+1` sixty-four times is the thing this exists to stop.
+ * How much each step button moves the amount when the caller names no kind of its own - a stack and
+ * a stack-of-stacks, plus one, because the amounts people actually type are overwhelmingly multiples
+ * of those. Reaching 64 by pressing `+1` sixty-four times is the thing this exists to stop.
  */
 private val DEFAULT_STEPS = listOf(1L, 10L, 64L)
+
+/**
+ * The step buttons for [kind] - its whole scroll ladder, smallest first.
+ *
+ * The same four sizes the wheel moves by (see [scrollStepFor]), so the two ways to reach an amount
+ * agree on which ones are worth reaching: `1 / 10 / 100 / 1000` mB for a fluid, `1 / 4 / 16 / 64`
+ * for items. Duplicates collapse, so a kind whose ladder rungs coincide gets fewer buttons rather
+ * than two that do the same thing.
+ */
+internal fun stepperStepsFor(kind: ResourceKind?): List<Long> {
+	if (kind == null) return DEFAULT_STEPS
+	val steps = kind.scrollSteps
+	return listOf(kind.authoredStep, steps.shift, steps.control, steps.shiftAndControl)
+		.map { it.coerceAtLeast(1L) }
+		.distinct()
+		.sorted()
+}
 
 /**
  * A number field flanked by symmetric decrement/increment buttons - `-64 -10 -1 [ 64 ] +1 +10 +64`.

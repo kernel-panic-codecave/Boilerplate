@@ -10,7 +10,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.StockingRow
 import net.kernelpanicsoft.boilerplate.pipe.hook.UNBOUNDED_STOCK
 import net.kernelpanicsoft.boilerplate.pipe.hook.configuredFilterOn
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardState
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ItemConditionState
+import net.kernelpanicsoft.boilerplate.pipe.hook.filter.ResourceConditionState
 import net.kernelpanicsoft.boilerplate.pipe.hook.wantedAmount
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
 import net.minecraft.gametest.framework.GameTest
@@ -36,10 +36,10 @@ class StockingRowGameTest {
 
 	/** A filter card naming [items], marked configured the way the card editor marks one. */
 	private fun configuredCard(vararg items: net.minecraft.world.item.Item): ItemResource {
-		val stack = ItemStack(ItemRegistry.ItemFilterCard)
+		val stack = ItemStack(ItemRegistry.ResourceFilterCard)
 		FilterCardState(stack).apply {
-			(currentState() as ItemConditionState).let { state ->
-				items.forEachIndexed { index, item -> state.itemMatches[index] = ItemResource.of(ItemStack(item)) }
+			(currentState() as ResourceConditionState).let { state ->
+				items.forEachIndexed { index, item -> state.resourceMatches[index] = ItemResource.of(ItemStack(item)) }
 			}
 			touchCurrentState()
 			configured = true
@@ -117,7 +117,7 @@ class StockingRowGameTest {
 	 */
 	@GameTest(template = SMALL, timeoutTicks = 5)
 	fun GameTestHelper.testABlankCardEntryIsStockedAsAnOrdinaryItem() {
-		val blank = ItemResource.of(ItemStack(ItemRegistry.ItemFilterCard))
+		val blank = ItemResource.of(ItemStack(ItemRegistry.ResourceFilterCard))
 		val row = row()
 		row.target(blank, 3)
 

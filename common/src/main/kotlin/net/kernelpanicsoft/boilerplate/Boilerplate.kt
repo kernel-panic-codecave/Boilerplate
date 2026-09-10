@@ -11,8 +11,10 @@ import net.kernelpanicsoft.archie.events.datagen.ADatagenEvents
 import net.kernelpanicsoft.archie.events.gametest.AGametestEvents
 import net.kernelpanicsoft.archie.gametest.platform.AGameTestPlatform
 import net.kernelpanicsoft.archie.registries.CustomModelRegistry
+import net.kernelpanicsoft.archie.util.withMinecraftClient
 import net.kernelpanicsoft.boilerplate.datagen.BoilerplateDatagen
 import net.kernelpanicsoft.boilerplate.debug.DebugOverlayViewers
+import net.kernelpanicsoft.boilerplate.debug.ResourceTrace
 import net.kernelpanicsoft.boilerplate.gametest.BoilerplateGameTest
 import net.kernelpanicsoft.boilerplate.network.BoilerplateNetworkChannel
 import net.kernelpanicsoft.boilerplate.network.DebugNetworkSync
@@ -21,6 +23,7 @@ import net.kernelpanicsoft.boilerplate.pipe.network.PipeNetworkManager
 import net.kernelpanicsoft.boilerplate.power.network.PressurePipeNetworkManager
 import net.kernelpanicsoft.boilerplate.registry.*
 import net.kernelpanicsoft.boilerplate.warehouse.WarehouseBlockEventListener
+import net.kernelpanicsoft.boilerplate.warehouse.client.GantrySounds
 import net.kernelpanicsoft.boilerplate.warehouse.client.WarehouseControllerVisual
 import org.slf4j.Logger
 
@@ -73,9 +76,23 @@ object Boilerplate {
 		CreativeTabRegistry.init()
 		BlockRegistry.init()
 		ItemRegistry.init()
+		SoundRegistry.init()
 		TileRegistry.init()
 		GuiRegistry.init()
 		LootRegistry.init()
+
+		// Before anything can start a resource reload, which is why this is here and not in
+		// [initClient]. Flywheel registers a PartialModel for every one that *exists* when
+		// `ModelEvent.RegisterAdditional` fires, and populates each from the baked map afterwards -
+		// so a PartialModel constructed between those two events is in Flywheel's map, was never
+		// registered for baking, and ends up with a null baked model. Client setup is close enough to
+		// the initial reload for that to be a race, and touching this class's own model location here
+		// - at mod construction, seconds earlier - takes it out of the running entirely. Reaching the
+		// [WarehouseControllerVisual] companion at all is what constructs its PartialModel.
+		//
+		// [withMinecraftClient], not [onClient]: a data run is the client distribution with no game
+		// behind it and has no models to bake.
+		withMinecraftClient { CustomModelRegistry.register(MOD, WarehouseControllerVisual.HEAD_MODEL_RL) }
 
 		WarehouseBlockEventListener.register()
 
@@ -85,7 +102,10 @@ object Boilerplate {
 		TickEvent.SERVER_LEVEL_POST.register { level -> PressurePipeNetworkManager.get(level).tick(level) }
 		TickEvent.SERVER_LEVEL_POST.register { level -> DebugNetworkSync.tickLevel(level) }
 		TickEvent.SERVER_LEVEL_POST.register { level -> WarehouseDebugSync.tickLevel(level) }
-		PlayerEvent.PLAYER_QUIT.register { player -> DebugOverlayViewers.setViewer(player.uuid, on = false) }
+		// Per server tick, not per level: a trace line names a position but the sequence is one
+		// story across every dimension, and splitting the flush per level would interleave it.
+		TickEvent.SERVER_POST.register { server -> ResourceTrace.flushToViewers(server) }
+		PlayerEvent.PLAYER_QUIT.register { player -> DebugOverlayViewers.setViewer(player.uuid, flags = emptySet()) }
 
 		if (AGameTestPlatform.isGameTest) {
 			AGametestEvents += MOD
@@ -105,7 +125,7 @@ object Boilerplate {
 	@JvmStatic
 	fun initClient() {
 		requireFlywheel()
-		CustomModelRegistry.register(MOD, WarehouseControllerVisual.HEAD_MODEL_RL)
+		GantrySounds.register()
 	}
 
 	/**

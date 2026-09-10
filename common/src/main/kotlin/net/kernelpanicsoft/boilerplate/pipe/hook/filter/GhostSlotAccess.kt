@@ -41,9 +41,23 @@ internal fun markHookStateDirty(level: Level, pos: BlockPos) {
 	level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
 }
 
-/** A [CommittableItemAccess] for one slot of a [CombinedConditionState.children] ghost grid nested inside [parent]'s own stack - see [FilterCardTarget.ChildSlot]. Recurses arbitrarily deep since [commit] propagates up through [parent] in turn. */
+/**
+ * A [CommittableItemAccess] for one slot of a [CombinedConditionState.children] ghost grid nested
+ * inside [parent]'s own stack - see [FilterCardTarget.ChildSlot]. Recurses arbitrarily deep since
+ * [commit] propagates up through [parent] in turn.
+ *
+ * [parent] is a plain [ItemContainerAccess], not a [CommittableItemAccess]: a chain of nested cards
+ * always bottoms out at a *real* slot - a player's inventory or an open menu's - and neither of
+ * those is committable, nor should be. There is nothing to write back for them, because a real
+ * slot's stack is the live one and [FilterCardState] mutates it where it lies. Only the ghost-backed
+ * levels in between are materialized copies that have to be written home, so only they recurse.
+ *
+ * Requiring a committable parent is what this used to do, and since the only two things that can be
+ * one are the far end of a chain that never is, the cast simply threw - every edit to a card nested
+ * inside a combined card failed server-side and the child's configuration was silently dropped.
+ */
 class GhostChildItemAccess(
-	private val parent: CommittableItemAccess,
+	private val parent: ItemContainerAccess,
 	private val slot: Int,
 ) : CommittableItemAccess {
 	private val cached: ItemStack by lazy {
@@ -58,6 +72,8 @@ class GhostChildItemAccess(
 		val parentState = FilterCardState(parent.getStack())
 		(parentState.currentState() as? CombinedConditionState)?.children?.set(slot, ItemResource.of(cached))
 		parentState.touchCurrentState()
-		parent.commit()
+		// Only a ghost-backed parent has anywhere further to write; a real slot was written in place
+		// by the line above.
+		(parent as? CommittableItemAccess)?.commit()
 	}
 }

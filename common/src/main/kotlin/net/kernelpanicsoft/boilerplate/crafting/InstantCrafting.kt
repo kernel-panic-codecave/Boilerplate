@@ -1,9 +1,9 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
 import net.kernelpanicsoft.archie.transfer.ArchieItemStorage
-import net.kernelpanicsoft.boilerplate.network.SItemResource
-import net.kernelpanicsoft.boilerplate.network.SResourceStack
-import net.kernelpanicsoft.boilerplate.util.resourceStack
+import net.kernelpanicsoft.boilerplate.resource.SItemResource
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
+import net.kernelpanicsoft.boilerplate.resource.resourceStack
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.crafting.CraftingInput

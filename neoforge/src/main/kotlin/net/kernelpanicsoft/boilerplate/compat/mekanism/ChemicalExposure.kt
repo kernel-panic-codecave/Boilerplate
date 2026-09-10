@@ -17,11 +17,10 @@ import net.minecraft.world.level.block.entity.BlockEntityType
  * The whole of what this loader-registered kind needs in order to be visible from outside, and
  * reached only through [ChemicalStorageKind.exposeStorage]: [net.kernelpanicsoft.boilerplate.registry.TileRegistry]
  * registers every kind at once through
- * [net.kernelpanicsoft.boilerplate.network.exposeResourceStorage], so chemicals are exposed on the
- * Multipart and the warehouse controller by exactly the same code items and fluids are. This file
- * used to carry an object that registered those two by hand as well; it registered the same two
- * providers a second time, and only existed because the generic path did not reach a kind a loader
- * had registered.
+ * [net.kernelpanicsoft.boilerplate.resource.exposeResourceStorage], so chemicals are exposed on the
+ * Multipart and the warehouse controller by exactly the same code items and fluids are - so there is
+ * nothing here to register by hand, and registering them here as well would install each provider
+ * twice.
  */
 @Suppress("UNCHECKED_CAST")
 fun <T : BlockEntity> BlockEntityType<T>.exposeChemicalStorage(selector: (T, Direction?) -> CommonStorage<ChemicalResource>?) {

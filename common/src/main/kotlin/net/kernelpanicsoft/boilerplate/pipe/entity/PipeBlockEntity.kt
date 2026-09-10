@@ -1,5 +1,7 @@
 package net.kernelpanicsoft.boilerplate.pipe.entity
 
+import net.minecraft.sounds.SoundSource
+import net.kernelpanicsoft.boilerplate.registry.SoundRegistry
 import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import net.kernelpanicsoft.archie.block.entity.NBTBlockEntity
@@ -10,7 +12,7 @@ import net.kernelpanicsoft.boilerplate.pipe.client.PipeContentsClientCache
 import net.kernelpanicsoft.boilerplate.pipe.hook.InterfaceHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PendingDelivery
 import net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookState
-import net.kernelpanicsoft.boilerplate.pipe.hook.batchAtRouteEnd
+import net.kernelpanicsoft.boilerplate.pipe.hook.batchForRoute
 import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
@@ -23,8 +25,10 @@ import net.kernelpanicsoft.boilerplate.power.PressureLine
 import net.kernelpanicsoft.boilerplate.registry.NetworkTypeRegistry
 import net.kernelpanicsoft.boilerplate.registry.Registrars
 import net.kernelpanicsoft.boilerplate.registry.TileRegistry
+import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.world.item.DyeColor
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntityType
@@ -63,7 +67,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	private var lastSyncedItems: List<TravelingItem> = emptyList()
 
 	/**
-	 * How much faster than [SEGMENT_SPEED] this segment is currently moving items, from whatever
+	 * How much faster than its unpressurised rate this segment is currently moving items, from whatever
 	 * pressure its own line has *available* - see [refreshSpeedMultiplier]. Synced to clients
 	 * ([net.kernelpanicsoft.boilerplate.network.PipeContentsSyncPacket]) so their dead reckoning
 	 * runs at the same rate rather than drifting against the server between syncs.
@@ -85,22 +89,26 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	}
 
 	/**
-	 * Archie's [listField] decodes a fresh list from storage on every property access; only the
-	 * structural operations [net.kernelpanicsoft.archie.serialization.ObservableList] actually
-	 * intercepts (`add`/`removeAt`/`set`/`clear`, ...) persist. [travelingItems] is fetched exactly
-	 * once here and touched only through index-based mutation, with [TravelingItem.copy] standing
-	 * in for field mutation - in-place mutation of an element already in the list, or removal via
-	 * an `Iterator`, silently affects only a throwaway copy.
+	 * Archie's [listField] decodes a fresh list from storage on every property access, and every
+	 * intercepted mutation of the list it hands back (`add`/`removeAt`/`set`/`clear`, ...) persists
+	 * the *whole* list. Advancing this segment's cargo one entry at a time through that list would
+	 * therefore encode `n` items `n` times over per tick - a per-segment cost growing with the
+	 * square of what the segment carries, which on a pipe run full of fluid droplets is most of a
+	 * server tick on its own.
 	 *
-	 * The same one-snapshot rule cuts the other way for *additions*, and far more destructively:
-	 * nothing anywhere down this loop may append to **this** pipe's own [travelingItems] through a
-	 * second property access (`travelingItems += ...`), because each intercepted mutation persists a
-	 * whole-list write of whichever snapshot it was made against. An append through a fresh access
-	 * lands in storage and is then immediately overwritten by this loop's next `items` mutation
-	 * writing the original snapshot - which never contained it - back over the top, destroying the
-	 * item outright. Anything this loop needs to add goes through [items] itself (see
-	 * [redirectedDelivery]). Appending to a *different* pipe's [travelingItems] ([nextTile]'s, on a
-	 * hop) is fine - that's a separate holder with its own storage.
+	 * So the loop below works on a plain copy and commits the tick's whole result in one
+	 * [net.kernelpanicsoft.archie.serialization.ObservableList.setAll], leaving one decode and one
+	 * encode per segment per tick regardless of how much is in flight. [TravelingItem.copy] still
+	 * stands in for field mutation, since an entry is a value and mutating one in place would
+	 * change nothing anybody reads.
+	 *
+	 * The single-snapshot rule still holds for *additions*: nothing down this loop may append to
+	 * **this** segment's own [travelingItems] through a second property access
+	 * (`travelingItems += ...`), because that write lands in storage and is then overwritten by the
+	 * commit below - which never contained it - destroying the item outright. Anything this loop
+	 * needs to add goes into [items] itself (see [redirectedDelivery]). Appending to a *different*
+	 * pipe's [travelingItems] ([nextTile]'s, on a hop) is fine - that's a separate holder with its
+	 * own storage.
 	 */
 	open fun tick(level: Level, pos: BlockPos, state: BlockState) {
 		if (level.isClientSide) return
@@ -108,7 +116,11 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		for (type in networkTypesAt(serverLevel, pos)) type.managerFor(serverLevel).ensureRegistered(serverLevel, pos)
 		var hopped = false
 
-		val items = travelingItems
+		val stored = travelingItems
+		val items = ArrayList(stored)
+		// Before anything is advanced, so the loop below and the commit at the end both work on the
+		// merged form - see [coalesceTravelingItems].
+		coalesceTravelingItems(items, BoilerplateConfig.Gameplay.Pipes.mergeProgressWindow.toFloat(), ::mergeCapacityOf)
 		if (items.isNotEmpty()) refreshSpeedMultiplier(serverLevel)
 		val segmentSpeed = (1f / BoilerplateConfig.Gameplay.Pipes.ticksPerSegment) * speedMultiplier
 		var index = 0
@@ -154,7 +166,10 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					hopped = true
 					continue
 				}
-				nextTile.travelingItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace, item.reservationId)
+				// Read once and reused for the sync below: every access to the property decodes the
+				// receiving segment's whole list afresh, and a hop has no need of two.
+				val nextItems = nextTile.travelingItems
+				nextItems += TravelingItem(item.stack, direction?.opposite ?: item.fromDirection, 0f, item.path.drop(1), item.color, item.targetFace, item.reservationId)
 				// Push the *receiving* segment's contents on this same tick, not just this one's.
 				// Both halves of a hand-off have to reach the client anchored to the same server
 				// tick or the item is briefly drawn by neither: this segment's own sync (below)
@@ -164,7 +179,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				// reads as a flicker every time anything crosses a block boundary.
 				// [PipeContentsClientCache] already documents this pairing as the invariant it
 				// dead-reckons against; this is what actually upholds it.
-				nextTile.syncNow(serverLevel, nextTile.travelingItems)
+				nextTile.syncNow(serverLevel, nextItems)
 				items.removeAt(index)
 				hopped = true
 				continue
@@ -215,16 +230,16 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			// not land as one. A prediction would need to know how much the destination will really
 			// accept, and no probe can answer that for every storage shape - a simulated insert is
 			// the storage's own answer but over-reports on a part-filled vanilla container (see
-			// [net.kernelpanicsoft.boilerplate.network.roomFor]), while walking its slots is only
+			// [net.kernelpanicsoft.boilerplate.resource.roomFor]), while walking its slots is only
 			// meaningful for a storage whose slots are a faithful partition, which several of this
 			// mod's own are not. A real insert is exact for all of them, and the surplus is put back
 			// where it came from in the same call - no tick passes, so nothing observes the blip.
 			//
 			// An unbatched face is unaffected: the multiple is one, so nothing is ever taken back
 			// and this is the plain partial insert it always was.
-			val allowed = batchedForRoute(serverLevel, pos, listOf(nextPos), item.stack.amount)
+			val allowed = batchedForRoute(serverLevel, pos, listOf(nextPos), resource, item.stack.amount)
 			var inserted = if (allowed <= 0L) 0L else insert.insert(allowed)
-			val surplus = batchSurplus(serverLevel, pos, nextPos, inserted)
+			val surplus = batchSurplus(serverLevel, pos, nextPos, resource, inserted)
 			if (surplus > 0L) inserted -= insert.takeBack(surplus)
 			// The one place a delivery's whole journey ends, and so the one worth reporting: a
 			// stalled arrival is not lost, but it is indistinguishable from lost to whoever was
@@ -237,6 +252,11 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 				inserted >= item.stack.amount -> {
 					reservationOwner?.pendingDeliveries?.removeIf { it.id == item.reservationId }
 					items.removeAt(index)
+					// Out of the tube and into whatever was waiting - the mirror of [acceptEntry].
+					// On this branch only: a partial insert leaves the remainder still in the pipe,
+					// and a stack dribbling into a nearly-full chest would otherwise thunk once per
+					// tick until it finished.
+					thunk(serverLevel, nextPos, EXIT_PITCH)
 					hopped = true
 				}
 				inserted > 0 -> {
@@ -251,6 +271,11 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			}
 		}
 
+		// The tick's whole result, in one write - see this method's own KDoc for why it is not
+		// committed entry by entry. `stored` is this segment's only decoded snapshot, so comparing
+		// against it is comparing against what is actually persisted right now.
+		if (items != stored) stored.setAll(items)
+
 		ticksSinceSync++
 		if (hopped || (items.isNotEmpty() && ticksSinceSync >= SYNC_INTERVAL_TICKS)) {
 			syncNow(serverLevel, items)
@@ -259,8 +284,9 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 	/**
 	 * Re-reads this segment's own pressure line and maps whatever it currently *holds* onto
-	 * [speedMultiplier] - `1.0`x with no line or an empty one, rising to [MAX_SPEED_MULTIPLIER] once
-	 * [PRESSURE_FOR_MAX_SPEED] is available.
+	 * [speedMultiplier] - `1.0`x with no line or an empty one, rising to
+	 * [net.kernelpanicsoft.boilerplate.config.BoilerplateConfig.Gameplay.Pipes.maxSpeedMultiplier]
+	 * once that category's own `pressureForMaxSpeed` is available.
 	 *
 	 * Deliberately a **simulate-only** read (`extract(..., true)`): pipes are scaled *by* pressure,
 	 * they don't spend it. Every other [net.kernelpanicsoft.boilerplate.power.PressureConsumer] in
@@ -279,6 +305,24 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 * actually holds something: [PressureLine.find] walks its network's members looking for an
 	 * endpoint, which is far too expensive to repeat per pipe per tick.
 	 */
+	/**
+	 * The most one merged delivery of [resource] may carry, in this segment - one whole of that
+	 * resource's own kind (a stack, a bucket) times
+	 * [net.kernelpanicsoft.boilerplate.config.BoilerplateConfig.Gameplay.Pipes.mergeMaxWholes].
+	 *
+	 * Converted through the kind's own [net.kernelpanicsoft.boilerplate.resource.ResourceKind.toPlatform]
+	 * because a whole is authored in the unit a player thinks in - millibuckets for a fluid - while a
+	 * delivery counts in the platform's, which on Fabric is droplets.
+	 *
+	 * `0` for a resource of no registered kind, which forbids merging rather than guessing: nothing
+	 * here knows what a whole of it would even be, and such a delivery is on its way out of the
+	 * network as a jam anyway.
+	 */
+	private fun mergeCapacityOf(resource: ResourceComponent): Long {
+		val kind = ResourceKindRegistry.forResource(resource) ?: return 0L
+		return kind.toPlatform(kind.wholeAuthored(resource)) * BoilerplateConfig.Gameplay.Pipes.mergeMaxWholes
+	}
+
 	private fun refreshSpeedMultiplier(level: ServerLevel) {
 		ticksSincePressureCheck++
 		if (ticksSincePressureCheck < PRESSURE_REFRESH_INTERVAL_TICKS) return
@@ -328,9 +372,9 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 *
 	 * `0` for an unbatched face, so nothing is ever clawed back on an ordinary line.
 	 */
-	private fun batchSurplus(level: ServerLevel, pos: BlockPos, nextPos: BlockPos, inserted: Long): Long {
+	private fun batchSurplus(level: ServerLevel, pos: BlockPos, nextPos: BlockPos, resource: ResourceComponent, inserted: Long): Long {
 		if (inserted <= 0L) return 0L
-		val batch = batchAtRouteEnd(level, pos, listOf(nextPos))
+		val batch = batchForRoute(level, pos, listOf(nextPos), resource)
 		if (batch <= FilterHookState.NOT_BATCHED) return 0L
 		return inserted % batch
 	}
@@ -404,20 +448,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 */
 	private fun reservationOwnerAt(level: ServerLevel, pos: BlockPos, item: TravelingItem): TerminalHookState? {
 		val reservationId = item.reservationId ?: return null
-		val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return null
-		fun TerminalHookState.holdsReservation() = pendingDeliveries.any { it.id == reservationId }
-
-		val targetFace = item.targetFace
-		if (targetFace != null) {
-			// Only ever this face's own hook - a same-id reservation on any other face belongs to a
-			// different terminal entirely and must not be matched, so no fallback scan here.
-			return (tile.hooks[targetFace.name] as? TerminalHookState)?.takeIf { it.holdsReservation() }
-		}
-		for ((_, entry) in tile.hooks) {
-			val state = entry as? TerminalHookState ?: continue
-			if (state.holdsReservation()) return state
-		}
-		return null
+		return reservationOwner(level, pos, item.targetFace, reservationId)
 	}
 
 	/**
@@ -460,11 +491,16 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	 * state too.
 	 */
 	private fun syncNow(level: ServerLevel, items: List<TravelingItem>) {
-		if (lastSyncedTick == level.gameTime && lastSyncedItems == items) return
+		// Cut to what the renderer reads before anything else looks at it - see
+		// [TravelingItem.forClient]. Deduping on the cut form rather than the full one is the point
+		// as much as the payload is: two ticks whose deliveries differ only somewhere far down a
+		// route they have not reached yet are the same picture, and there is nothing to send.
+		val payload = items.map { it.forClient() }
+		if (lastSyncedTick == level.gameTime && lastSyncedItems == payload) return
 		lastSyncedTick = level.gameTime
-		lastSyncedItems = items.toList()
+		lastSyncedItems = payload
 		ticksSinceSync = 0
-		syncToNearbyPlayers(level, blockPos, items)
+		syncToNearbyPlayers(level, blockPos, payload)
 	}
 
 	private fun syncToNearbyPlayers(level: ServerLevel, pos: BlockPos, items: List<TravelingItem>) {
@@ -474,15 +510,97 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		)
 	}
 
+	/**
+	 * Takes [stack] as a resource **entering** the network here - pulled out of an inventory, pushed
+	 * in by a machine, or handed over by a hook - as opposed to hopping in from another pipe, and
+	 * sounds the tube for it.
+	 *
+	 * @param from the face it came in through. Cosmetic, as [TravelingItem.fromDirection] documents.
+	 * @param route the path it will follow, from this segment to its destination.
+	 * @param color the routing colour it carries, if it was pulled through a coloured hook.
+	 * @param targetFace the face of the destination to insert into, if the delivery names one.
+	 * @param reservationId the reservation this delivery completes, if it is for one.
+	 *
+	 * The distinction is the whole reason this exists rather than callers appending directly. A
+	 * segment-to-segment hop is sealed: nothing enters or leaves the tube, no air moves around the
+	 * cargo, and there is nothing to hear. Crossing the boundary *into* the network is the event
+	 * worth a sound - and it is also, conveniently, rare enough to be worth one, where a hop happens
+	 * for every resource on every segment on every tick.
+	 *
+	 * Constructing the [TravelingItem] here rather than taking one is what makes that boundary a
+	 * single place instead of a convention nine callers have to remember - and it is the reason the
+	 * one append that must *not* sound, the segment-to-segment hop in [tick], is visibly not this.
+	 */
+	fun acceptEntry(
+		stack: SResourceStack<*>,
+		from: Direction,
+		route: List<BlockPos>,
+		color: DyeColor? = null,
+		targetFace: Direction? = null,
+		reservationId: Long? = null,
+	) {
+		// No progress parameter, unlike [TravelingItem] itself: something entering the network has
+		// not travelled anywhere yet, and every caller passed a literal `0f` to say so. The only
+		// appends that legitimately carry progress are made by the transport loop, on its own list.
+		travelingItems += TravelingItem(stack, from, 0f, route, color, targetFace, reservationId)
+		(level as? ServerLevel)?.let { thunk(it, blockPos, ENTRY_PITCH) }
+	}
+
 	companion object {
-		/** Progress gained per tick at `1.0`x; 1f / SEGMENT_SPEED ticks to cross one pipe segment. Scaled up by [speedMultiplier] - see [refreshSpeedMultiplier]. */
-		const val SEGMENT_SPEED = 1f / 20f
+		/**
+		 * The terminal hook at [pos] (on [targetFace], where the delivery names one) still holding
+		 * [reservationId], or `null` if nothing does - see [reservationOwnerAt] for why the face
+		 * matters.
+		 *
+		 * Public because a delivery that has not set off yet needs the same answer: a boundary
+		 * crossing holds its reservation across two legs and a whole reload, by which time the
+		 * terminal may have cancelled it, been broken, or simply never recorded it. Shipping against a
+		 * reservation nobody owns is what jams an arrival at the far end, so the sender asks first.
+		 */
+		fun reservationOwner(level: ServerLevel, pos: BlockPos, targetFace: Direction?, reservationId: Long): TerminalHookState? {
+			val tile = level.getBlockEntity(pos) as? MultipartBlockEntity ?: return null
+			fun TerminalHookState.holdsReservation() = pendingDeliveries.any { it.id == reservationId }
 
-		/** Available pressure at or above which a segment runs at [MAX_SPEED_MULTIPLIER]. In the same units as a compressor's own 4,000 capacity, so one well-fed compressor saturates a run. */
-		const val PRESSURE_FOR_MAX_SPEED = 2_000L
+			if (targetFace != null) {
+				// Only ever this face's own hook - a same-id reservation on any other face belongs to
+				// a different terminal entirely and must not be matched, so no fallback scan here.
+				return (tile.hooks[targetFace.name] as? TerminalHookState)?.takeIf { it.holdsReservation() }
+			}
+			for ((_, entry) in tile.hooks) {
+				val state = entry as? TerminalHookState ?: continue
+				if (state.holdsReservation()) return state
+			}
+			return null
+		}
 
-		/** The most [refreshSpeedMultiplier] will scale [SEGMENT_SPEED] by, however much pressure is available. */
-		const val MAX_SPEED_MULTIPLIER = 3.0
+		/**
+		 * The tube taking or releasing something, played at [pos] around [pitch].
+		 *
+		 * Jittered within a narrow band on every play. The clip is a fifth of a second and several
+		 * can land in the same tick on a busy network; identical repeats of a sound that short stop
+		 * reading as a machine and start reading as a machine gun. The three waveform variants
+		 * behind the event do the rest.
+		 */
+		internal fun thunk(level: ServerLevel, pos: BlockPos, pitch: Float) {
+			val jitter = level.random.nextFloat() * THUNK_PITCH_JITTER - THUNK_PITCH_JITTER / 2f
+			level.playSound(null, pos, SoundRegistry.PipeThunk, SoundSource.BLOCKS, THUNK_VOLUME, pitch + jitter)
+		}
+
+		private const val THUNK_VOLUME = 0.35f
+
+		/**
+		 * Entry sits above exit, so the two ends of a journey are told apart by ear.
+		 *
+		 * Which way round follows the air: taking something in is the tube closing on it, tight and
+		 * bright, while releasing it opens into the room and lands lower. They are about two and a
+		 * half semitones apart - far enough to hear as two different events, close enough to still
+		 * be the same tube.
+		 */
+		private const val ENTRY_PITCH = 1.08f
+		private const val EXIT_PITCH = 0.92f
+
+		/** Spread of the per-play random offset, centred on whichever pitch was asked for. */
+		private const val THUNK_PITCH_JITTER = 0.10f
 
 		/** How often a segment holding items re-resolves its own pressure line - see [refreshSpeedMultiplier] for why this isn't every tick. */
 		const val PRESSURE_REFRESH_INTERVAL_TICKS = 20

@@ -9,6 +9,7 @@ import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
+import net.kernelpanicsoft.archie.gui.modifiers.input.MouseButton
 import net.kernelpanicsoft.archie.gui.modifiers.input.onScroll
 import net.kernelpanicsoft.archie.gui.nodes.UINode
 import net.minecraft.world.item.ItemStack
@@ -83,14 +84,25 @@ fun GhostSlot(
 			if (!resource.isBlank) onAmountScroll(event.scrollY.sign.toInt())
 		}
 	}
+	fun place() {
+		val held = carried()
+		val heldResource = if (held.isEmpty) null else ItemResource.of(held)
+		if (heldResource != null && filter(heldResource)) onPlace(heldResource)
+		else if (heldResource == null && !resource.isBlank) onClear()
+	}
 	Clickable(
-		onClick = {
-			val held = carried()
-			val heldResource = if (held.isEmpty) null else ItemResource.of(held)
-			if (heldResource != null && filter(heldResource)) onPlace(heldResource)
-			else if (heldResource == null && !resource.isBlank) onClear()
-		},
+		onClick = { place() },
 		modifier = effectiveModifier,
+		// Right-click opens [handleClick]'s own editor when there is one.
+		//
+		// A host screen wires [ClickHandler] to consume the right button before Compose ever sees
+		// it, so on those screens this never fires. It exists for where nothing does: the card
+		// editor is a *layer*, and a layer has no `mouseClicked` of its own to intercept from - so
+		// the click fell through to [onClick], which with an empty cursor over an occupied slot
+		// means [onClear]. Right-clicking a card to configure it wiped it instead.
+		onAuxClick = { _, button ->
+			if (button == MouseButton.RIGHT && handleClick != null) handleClick() else place()
+		},
 	) { isHovered, _, _ ->
 		LaunchedEffect(isHovered, resource, handleClick) {
 			clickHandler.setHovered(if (isHovered) handleClick else null)

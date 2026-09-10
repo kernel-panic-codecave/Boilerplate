@@ -1,18 +1,16 @@
 package net.kernelpanicsoft.boilerplate.crafting
 
 import net.kernelpanicsoft.boilerplate.config.BoilerplateConfig
-import earth.terrarium.common_storage_lib.resources.ResourceComponent
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import earth.terrarium.common_storage_lib.storage.base.CommonStorage
-import net.kernelpanicsoft.boilerplate.network.ResourceKind
-import net.kernelpanicsoft.boilerplate.network.ResourceStorage
-import net.kernelpanicsoft.boilerplate.network.resourceField
+import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.ResourceStorage
+import net.kernelpanicsoft.boilerplate.resource.resourceField
 import net.kernelpanicsoft.boilerplate.pipe.attachment.FluidStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ItemStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.attachment.ResourceStorageExposer
 import net.kernelpanicsoft.boilerplate.pipe.entity.MultipartBlockEntity
-import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 
 /**
  * A staging member of a Crafting CPU multiblock - see [CraftingCpuMemberState] for the job queue
@@ -32,9 +30,9 @@ class CraftingBufferEncasementState :
 	/**
 	 * This member's own staging row - [LOCAL_SLOTS] slots, each taking whatever claims it first.
 	 *
-	 * [SLOT_MILLIBUCKETS] is what one slot holds of a *measured* kind. It is the figure the Crafting
-	 * Tank's own tanks used to hold, inherited when that block was removed: a buffer is the only
-	 * place a cluster stages fluid now, so staging capacity should not have shrunk with it.
+	 * The configured buffer capacity is what one slot holds of a *measured* kind, and it is sized
+	 * generously on purpose: a buffer is the only place a cluster stages fluid, so this figure alone
+	 * decides how much of one a job can hold at a time.
 	 */
 	val localStorage: ResourceStorage by resourceField(LOCAL_SLOTS, capacity = BoilerplateConfig.Gameplay.Capacities.craftingBufferMillibuckets)
 
@@ -65,7 +63,5 @@ class CraftingBufferEncasementState :
 		/** [localStorage]'s own slot count - the unit a cluster's combined capacity grows by per encased segment. */
 		private const val LOCAL_SLOTS = 9
 
-		/** What one buffer slot holds of a measured kind, in millibuckets - sixteen buckets, the same as the Crafting Tank this replaced. */
-		private const val SLOT_MILLIBUCKETS = 16_000L
 	}
 }

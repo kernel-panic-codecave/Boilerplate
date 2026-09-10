@@ -3,16 +3,15 @@ package net.kernelpanicsoft.boilerplate.registry
 import dev.architectury.registry.client.rendering.RenderTypeRegistry
 import net.kernelpanicsoft.archie.registries.ADeferredRegistryHolder
 import net.kernelpanicsoft.archie.util.blockProperties
-import net.kernelpanicsoft.archie.util.onClient
+import net.kernelpanicsoft.archie.util.withMinecraftClient
 import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.pipe.block.*
+import net.kernelpanicsoft.boilerplate.creative.CreativeProviderBlock
 import net.kernelpanicsoft.boilerplate.power.block.CreativePressureSourceBlock
 import net.kernelpanicsoft.boilerplate.power.block.PressurePipeBlock
-import net.kernelpanicsoft.boilerplate.warehouse.GantryRailBlock
-import net.kernelpanicsoft.boilerplate.warehouse.WarehouseControllerBlock
-import net.kernelpanicsoft.boilerplate.warehouse.rack.BulkRackBlock
-import net.kernelpanicsoft.boilerplate.warehouse.rack.GeneralRackBlock
-import net.kernelpanicsoft.boilerplate.warehouse.rack.UnstackableRackBlock
+import net.kernelpanicsoft.boilerplate.warehouse.block.GantryRailBlock
+import net.kernelpanicsoft.boilerplate.warehouse.block.WarehouseControllerBlock
+import net.kernelpanicsoft.boilerplate.warehouse.rack.*
 import net.kernelpanicsoft.boilerplate.warehouse.tank.FluidTankBlock
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.registries.Registries
@@ -122,6 +121,27 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 		})
 	}
 
+	val DistributedMultiTank: DistributedMultiTankBlock by register("distributed_multi_tank") {
+		DistributedMultiTankBlock(blockProperties(Blocks.IRON_BLOCK) {
+			noOcclusion()
+			requiresCorrectToolForDrops()
+		})
+	}
+
+	val DistributedMultiBuffer: DistributedMultiBufferBlock by register("distributed_multi_buffer") {
+		DistributedMultiBufferBlock(blockProperties(Blocks.IRON_BLOCK) {
+			noOcclusion()
+			requiresCorrectToolForDrops()
+		})
+	}
+
+	val Omnibuffer: OmnibufferBlock by register("omnibuffer") {
+		OmnibufferBlock(blockProperties(Blocks.IRON_BLOCK) {
+			noOcclusion()
+			requiresCorrectToolForDrops()
+		})
+	}
+
 	val PressurePipe: PressurePipeBlock by register("pressure_pipe") {
 		PressurePipeBlock(blockProperties(Blocks.COPPER_BLOCK) {
 			noOcclusion()
@@ -141,6 +161,10 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 		FluidTankBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
 	}
 
+	val CreativeProvider: CreativeProviderBlock by register("creative_provider") {
+		CreativeProviderBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
+	}
+
 	val CreativePressureSource: CreativePressureSourceBlock by register("creative_pressure_source") {
 		CreativePressureSourceBlock(blockProperties(Blocks.IRON_BLOCK) { requiresCorrectToolForDrops() })
 	}
@@ -149,10 +173,11 @@ object BlockRegistry : ADeferredRegistryHolder<Block>(Boilerplate.MOD, Registrie
 	{
 		super.init()
 		listen {
-			onClient {
-				RenderTypeRegistry.register(RenderType.cutout(), GantryRail)
-
-			}
+			// [withMinecraftClient], not [onClient]: a data run is the client distribution with no
+			// game behind it, so an onClient block runs there too - and NeoForge refuses a render
+			// layer set outside client loading ("Render layers can only be set during client
+			// loading"). A run that draws nothing needs none.
+			withMinecraftClient { RenderTypeRegistry.register(RenderType.cutout(), GantryRail) }
 		}
 	}
 }

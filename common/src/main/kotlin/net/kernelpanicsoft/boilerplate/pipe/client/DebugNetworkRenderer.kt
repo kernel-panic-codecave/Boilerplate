@@ -31,10 +31,11 @@ import org.joml.Vector3f
  * it stopped at, destinations it probed and ones that rejected the item); and the route it
  * actually settled on, bright yellow.
  *
- * Only ever reached while the overlay is on - [net.kernelpanicsoft.boilerplate.debug.client.DebugOverlay]
- * owns vanilla's F3+B hitbox toggle and the announcement of it to the server, so route-search
- * tracing and snapshot broadcasting only run while at least one player is actually looking, on any
- * environment, dev or production.
+ * Only ever reached while [net.kernelpanicsoft.boilerplate.debug.DebugFlag.NETWORK] is on -
+ * [net.kernelpanicsoft.boilerplate.debug.client.DebugOverlay] owns the dispatch and
+ * [net.kernelpanicsoft.boilerplate.debug.client.DebugFlags] the announcement of it to the server,
+ * so route-search tracing and snapshot broadcasting only run while at least one player has asked
+ * for this particular overlay, on any environment, dev or production.
  *
  * Delta-free: it draws boxes and line segments under the frame's rotation-only pose stack at
  * camera-relative coordinates, exactly like vanilla's hit outline, then flushes its own

@@ -168,9 +168,8 @@ publisher {
 		github("github_token".localOrEnv)
 	}
 
-	// CurseForge addresses a project by its numeric id (shown as "Project ID" on the project page),
-	// where Modrinth takes the slug. Fill this in once the CurseForge project is published.
-	curseID = "CURSEFORGE_PROJECT_ID"
+	// CurseForge addresses a project by its numeric id, where Modrinth takes the slug.
+	curseID = "1691611"
 	modrinthID = "boilerplate-logistics"
 	githubRepo = "mod_source".prop!!
 

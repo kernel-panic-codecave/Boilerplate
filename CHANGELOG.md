@@ -134,6 +134,7 @@ All notable changes to Boilerplate are documented here, generated automatically 
 - **warehouse:** expose the controller as a fluid destination ([d7ae448](https://github.com/kernel-panic-codecave/Boilerplate/commit/d7ae448eab46e7b1425a8318661adde8de9c9111)) - KernelPanic
 - **hooks:** a requester does nothing for an interface on its own subnet ([35fe956](https://github.com/kernel-panic-codecave/Boilerplate/commit/35fe956a8d6c09fc812337fb9d9088cf6bd87059)) - KernelPanic
 - **pipe:** don't let a typeless tag take a multipart's whole block entity down ([7f1f68f](https://github.com/kernel-panic-codecave/Boilerplate/commit/7f1f68f9f2662ab0468cfedac1b19b6913f48fec)) - KernelPanic
+- **release:** build the jars the publisher ships, and the notes it ships them with ([94b00bf](https://github.com/kernel-panic-codecave/Boilerplate/commit/94b00bfb06b8890ebacec0235c55b29b9f10a7fb)) - KernelPanic
 
 ### Refactoring
 
@@ -179,7 +180,11 @@ All notable changes to Boilerplate are documented here, generated automatically 
 - bump NeoForge; drop Compose copy deps; add issue tracker; stack recipe viewers ([638067e](https://github.com/kernel-panic-codecave/Boilerplate/commit/638067e5a21df0809ca3a17ba1a0d664c3a6422e)) - KernelPanic
 - **publish:** modpublisher, mirroring Archie's own setup ([e377175](https://github.com/kernel-panic-codecave/Boilerplate/commit/e37717579604ac96ae53bfdbd81d3190c88e28c8)) - KernelPanic
 - **publish:** point at the real CurseForge project ([05aae88](https://github.com/kernel-panic-codecave/Boilerplate/commit/05aae883eee88e5d64080ecf31d4a57b579e5e83)) - KernelPanic
-- **publish:** release-notes workflow, maven publishing, -SNAPSHOT as alpha ([d236bd3](https://github.com/kernel-panic-codecave/Boilerplate/commit/d236bd35d51b4a116869f46794d3e02859db31f3)) - KernelPanic
+- **publish:** tag-triggered release, maven publishing, -SNAPSHOT as alpha ([deb1058](https://github.com/kernel-panic-codecave/Boilerplate/commit/deb1058638dbb1d8c0f507bf408678d60cccb903)) - KernelPanic
+
+### CI/CD
+
+- release runs `publish`, and a re-tag regenerates its notes ([dbebce7](https://github.com/kernel-panic-codecave/Boilerplate/commit/dbebce7384300a7dde54747bb581422be3bb9de4)) - KernelPanic
 
 ### Chores
 
@@ -205,4 +210,5 @@ All notable changes to Boilerplate are documented here, generated automatically 
 - Rename LICENSE to LICENSE.md ([4ccc5d7](https://github.com/kernel-panic-codecave/Boilerplate/commit/4ccc5d7b5dc75cb6de8ce3abb74231d23e923d63)) - KernelPanic
 - Revert "feat(crafting): let the terminal grid pull ingredients on shift/ctrl-click" ([823bf90](https://github.com/kernel-panic-codecave/Boilerplate/commit/823bf90473c554b00e96c470540cf0fda94fa99b)) - KernelPanic
 - Revert the outbound-buffer "fixes" in 5fda185 and 8898ef7 ([bfd1ed8](https://github.com/kernel-panic-codecave/Boilerplate/commit/bfd1ed8a4839d9360e160fc979e8b77cd2054038)) - KernelPanic
+- Update GitHub Sponsors username in FUNDING.yml ([c208d1b](https://github.com/kernel-panic-codecave/Boilerplate/commit/c208d1b16d2a9037cecc01cb78df700b9780c8a2)) - KernelPanic
 

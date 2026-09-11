@@ -2,13 +2,15 @@ name: release
 
 # Publishes a tagged version: the fused jar goes to CurseForge, Modrinth and a GitHub release via
 # `publishMod` (see the `publisher {}` block in build.gradle.kts), with the changelog it uploads
-# generated from the commits since the previous tag.
+# generated from the commits since the previous tag. `publish` depends on `publishMod`, so the run
+# also pushes the maven artifacts to Reposilite - which is what lets an addon compile against the
+# version that was just released, rather than only being able to download its jar.
 #
 # Cut a release by tagging the branch tip: `git tag v0.1.0 && git push origin v0.1.0`. A
 # `-SNAPSHOT` version in gradle.properties publishes as an alpha; anything else as a release.
 #
-# Needs CURSEFORGE_API_KEY and MODRINTH_API_KEY as repository secrets. The GitHub release uses the
-# workflow's own token.
+# Needs CURSEFORGE_API_KEY, MODRINTH_API_KEY and REPOSILITE_USERNAME/REPOSILITE_PASSWORD as
+# repository secrets. The GitHub release uses the workflow's own token.
 
 on:
   push:
@@ -50,4 +52,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
           MODRINTH_API_KEY: ${{ secrets.MODRINTH_API_KEY }}
-        run: ./gradlew publishMod --console=plain
+          REPOSILITE_USERNAME: ${{ secrets.REPOSILITE_USERNAME }}
+          REPOSILITE_PASSWORD: ${{ secrets.REPOSILITE_PASSWORD }}
+        run: ./gradlew publish --console=plain

@@ -74,10 +74,19 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
           BRANCH_NAME="release-notes/${{ github.ref_name }}"
-          git checkout -b "$BRANCH_NAME"
+          # -B, not -b: re-tagging a version that already has a notes branch would otherwise
+          # fail here rather than regenerating it.
+          git checkout -B "$BRANCH_NAME"
           git add CHANGELOG.md
           git commit -m "docs: release notes for ${{ github.ref_name }}"
-          git push origin "$BRANCH_NAME"
+          git push --force origin "$BRANCH_NAME"
+
+          # An existing PR for this tag is already pointed at the branch just force-pushed, so
+          # creating a second one would fail - reuse it.
+          if gh pr view "$BRANCH_NAME" --json number >/dev/null 2>&1; then
+            echo "PR for $BRANCH_NAME already open - updated in place."
+            exit 0
+          fi
 
           gh pr create \
             --base "${{ steps.base.outputs.branch }}" \

@@ -1,0 +1,86 @@
+name: release-notes
+
+# Generates CHANGELOG.md for a tagged release and opens a PR with it. See
+# .github/scripts/generate_release_notes.py for how entries are sourced (merged PR titles, parsed
+# for a Conventional Commits prefix) and .github/workflows/pr-title-lint.yml for how those titles
+# are kept in that shape.
+#
+# Cut a release by tagging the branch tip: `git tag v0.1.0 && git push origin v0.1.0` (or via
+# `gh release create v0.1.0 --target main`). Tag names must match `v*`.
+#
+# Uploading the jar itself is not part of this - `./gradlew publishMod` does that, by hand, once
+# the changelog PR is merged.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+
+      - name: Determine the branch this tag was cut from
+        id: base
+        run: |
+          git fetch origin --prune
+          # --points-at (not --contains) requires the tag to sit exactly at a branch tip, not
+          # just be reachable from one - keeps this deterministic when a tag is reachable from
+          # several branches, and enforces the "tag the tip" invariant this workflow assumes.
+          BRANCH=$(git branch -r --points-at "${{ github.sha }}" \
+            | sed 's/^[* ]*origin\///' \
+            | grep -E '^[0-9]+\.[0-9]+\.x$|^main$' \
+            | head -n1)
+          if [ -z "$BRANCH" ]; then
+            echo "::error::Tag ${{ github.ref_name }} isn't at the tip of a recognized release branch (expected an N.N.x or main branch tip)."
+            exit 1
+          fi
+          echo "Releasing from $BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/generate_release_notes.py \
+            --repo "${{ github.repository }}" \
+            --new-tag "${{ github.ref_name }}" \
+            --changelog-path CHANGELOG.md
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # --porcelain, not `git diff`: on the first release CHANGELOG.md is a new *untracked*
+          # file, which git diff does not report, so the guard would skip the PR that first time.
+          if [ -z "$(git status --porcelain -- CHANGELOG.md)" ]; then
+            echo "Nothing new to record since the previous tag - skipping PR."
+            exit 0
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          BRANCH_NAME="release-notes/${{ github.ref_name }}"
+          git checkout -b "$BRANCH_NAME"
+          git add CHANGELOG.md
+          git commit -m "docs: release notes for ${{ github.ref_name }}"
+          git push origin "$BRANCH_NAME"
+
+          gh pr create \
+            --base "${{ steps.base.outputs.branch }}" \
+            --head "$BRANCH_NAME" \
+            --title "docs: release notes for ${{ github.ref_name }}" \
+            --body "Auto-generated changelog for [${{ github.ref_name }}](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})."

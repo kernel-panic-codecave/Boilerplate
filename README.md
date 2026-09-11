@@ -1,5 +1,16 @@
 ![Banner](https://cdn.modrinth.com/data/cached_images/9b7b261ed9e0e72297e71d27014df708c85cfe9d.png)
 
+[![Modrinth downloads](https://badges.moddingx.org/modrinth/downloads/boilerplate-logistics?style=flat)](https://modrinth.com/project/boilerplate-logistics)
+[![CurseForge downloads](https://badges.moddingx.org/curseforge/downloads/1691611?style=flat)](https://www.curseforge.com/minecraft/mc-mods/boilerplate-logistics)
+[![MC versions](https://badges.moddingx.org/modrinth/versions/boilerplate-logistics?style=flat)](https://modrinth.com/project/boilerplate-logistics)
+
+<!--
+Badges from https://github.com/ModdingX/ModBadges.
+The CurseForge endpoint takes the *numeric* project id, not the slug - replace
+CURSEFORGE_PROJECT_ID above with the number shown under "Project ID" on the
+project page once it is published. Modrinth accepts the slug as it stands.
+-->
+
 **Boilerplate** is a steampunk pneumatic-tube logistics and storage mod, in the spirit of the
 original Logistics Pipes.
 

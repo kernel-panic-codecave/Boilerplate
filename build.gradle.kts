@@ -10,6 +10,7 @@ plugins {
 	alias(libs.plugins.kotlin.compose)
 	alias(libs.plugins.compose)
 	alias(libs.plugins.modfusioner)
+	alias(libs.plugins.modpublisher)
 }
 
 architectury.minecraft = libs.versions.minecraft.get()
@@ -157,11 +158,66 @@ fusioner {
 	}
 }
 
+// Uploads the merged jar to CurseForge, Modrinth and a GitHub release. Keys come from
+// local.properties on a developer machine or CURSEFORGE_API_KEY/MODRINTH_API_KEY/GITHUB_TOKEN in
+// CI, the same way every other credential in this build is resolved.
+publisher {
+	apiKeys {
+		curseforge("curseforge_api_key".localOrEnv)
+		modrinth("modrinth_api_key".localOrEnv)
+		github("github_token".localOrEnv)
+	}
+
+	// CurseForge addresses a project by its numeric id (shown as "Project ID" on the project page),
+	// where Modrinth takes the slug. Fill this in once the CurseForge project is published.
+	curseID = "CURSEFORGE_PROJECT_ID"
+	modrinthID = "boilerplate-logistics"
+	githubRepo = "mod_source".prop!!
+
+	projectVersion = "${libs.versions.minecraft.get()}-${project.version}"
+	displayName = "Boilerplate-Merged-${projectVersion.get()}"
+	gameVersions = listOf(libs.versions.minecraft.get())
+	loaders = listOf("neoforge", "fabric")
+	curseEnvironment = "both"
+	versionType = "alpha"
+	artifact = tasks.fusejars.get()
+	javaVersions = listOf(JavaVersion.VERSION_21)
+
+	changelog = file("build/latest-changelog.md")
+
+	// Both sides of the same dependency list, because the two platforms slug some of these
+	// differently - `kotlinlangforge` on CurseForge against `kotlin-lang-forge` on Modrinth.
+	curseDepends {
+		required = listOf("fabric-api", "fabric-language-kotlin", "kotlinlangforge", "architectury-api", "cloth-config", "archie")
+	}
+
+	modrinthDepends {
+		required = listOf("fabric-api", "fabric-language-kotlin", "kotlin-lang-forge", "architectury-api", "cloth-config", "archie")
+	}
+}
+
 tasks {
 	build {
 		finalizedBy(fusejars)
 	}
 	assemble {
 		finalizedBy(fusejars)
+	}
+	// Writes build/latest-changelog.md (what the publisher uploads) and folds the same entry into
+	// CHANGELOG.md, from the commits since the previous tag.
+	register<Exec>("generateChangelog") {
+		group = "publishing"
+		workingDir = rootDir
+		commandLine(
+			"python3", ".github/scripts/generate_release_notes.py",
+			"--repo", "mod_source".prop!!.removePrefix("https://github.com/"),
+			"--new-tag", "v${project.version}",
+			"--range-end", "HEAD",
+			"--changelog-path", "CHANGELOG.md",
+			"--latest-path", "build/latest-changelog.md",
+		)
+	}
+	listOf("publishCurseforge", "publishModrinth", "publishGitHub", "publishMod").forEach {
+		named(it) { dependsOn(getByName("generateChangelog")) }
 	}
 }

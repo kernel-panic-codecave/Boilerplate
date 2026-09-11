@@ -13,6 +13,7 @@ architectury-plugin = { require = "[3.4, 3.5[" }
 architectury-loom = { require = "1.17.491" }
 
 modfusioner = "1.0.12"
+modpublisher = "2.1.4"
 
 archie-plugin = "1.0.4-SNAPSHOT"
 archie = "1.0.0-SNAPSHOT"
@@ -120,5 +121,6 @@ architectury-loom = { id = "dev.architectury.loom", version.ref = "architectury-
 
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 modfusioner = { id = "com.hypherionmc.modutils.modfusioner", version.ref = "modfusioner" }
+modpublisher = { id = "com.hypherionmc.modutils.modpublisher", version.ref = "modpublisher" }
 
 archie = { id = "net.kernelpanicsoft.archie.archie-plugin", version.ref = "archie-plugin" }

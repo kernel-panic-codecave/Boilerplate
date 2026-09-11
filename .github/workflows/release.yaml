@@ -54,4 +54,10 @@ jobs:
           MODRINTH_API_KEY: ${{ secrets.MODRINTH_API_KEY }}
           REPOSILITE_USERNAME: ${{ secrets.REPOSILITE_USERNAME }}
           REPOSILITE_PASSWORD: ${{ secrets.REPOSILITE_PASSWORD }}
-        run: ./gradlew publish --console=plain
+        # `assemble` before `publish`, not `publish` alone: fusejars is wired as a finalizer of
+        # build/assemble, so publishing on its own fuses whatever loader jars a fresh checkout
+        # happens to have - which is none, producing a merged jar CurseForge rejects for having no
+        # neoforge.mods.toml in it. assemble rather than build, because build pulls in the gametests
+        # and those need the headless GL stack that only the check workflow sets up; main is already
+        # gated on that suite before a tag is ever cut from it.
+        run: ./gradlew assemble publish --console=plain

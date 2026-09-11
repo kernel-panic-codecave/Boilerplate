@@ -252,11 +252,25 @@ tasks {
 	named("publish") {
 		dependsOn(publishMod)
 	}
+	// The loader jars fusioner merges are named as bare paths in its own config, so nothing tells
+	// Gradle they are this task's inputs - on a fresh checkout `fusejars` would otherwise run with
+	// neither side built and produce a merged jar with no loader metadata in it, which CurseForge
+	// rejects for having no neoforge.mods.toml. Locally it is masked by a previous build having
+	// left the jars behind.
+	fusejars {
+		dependsOn(":boilerplate-fabric:remapJar", ":boilerplate-neoforge:remapJar")
+	}
 	// Writes build/latest-changelog.md (what the publisher uploads) and folds the same entry into
 	// CHANGELOG.md, from the commits since the previous tag.
 	register<Exec>("generateChangelog") {
 		group = "publishing"
 		workingDir = rootDir
+		val latestChangelog = rootDir.resolve("build/latest-changelog.md")
+		doFirst { latestChangelog.parentFile.mkdirs() }
+		// The script writes nothing at all when the range comes out empty - a tag sitting on the
+		// commit it was cut from, most obviously - and the publisher then fails on a changelog file
+		// that does not exist. A release with nothing to report is still a release.
+		doLast { if (!latestChangelog.exists()) latestChangelog.writeText("No changes recorded for this release.\n") }
 		commandLine(
 			"python3", ".github/scripts/generate_release_notes.py",
 			"--repo", "mod_source".prop!!.removePrefix("https://github.com/"),

@@ -85,9 +85,16 @@ def gh_json(*args: str) -> dict | None:
 
 
 def detect_previous_tag(new_tag: str) -> str | None:
-    """Most recent tag reachable from new_tag other than new_tag itself, by creation order."""
+    """Most recent tag reachable from new_tag, by creation order, excluding any that point at
+    new_tag's own commit.
+
+    Excluded by *commit*, not by name: the pre-publish flow walks up to HEAD rather than to the tag
+    (the tag may not exist yet), so a release being re-cut - where the tag has already been pushed
+    and sits on HEAD - would otherwise find that very tag as its own predecessor and report an
+    empty range."""
+    head = run("git", "rev-list", "-n", "1", new_tag)
     tags = run("git", "tag", "--sort=creatordate", "--merged", new_tag).splitlines()
-    tags = [t for t in tags if t != new_tag]
+    tags = [t for t in tags if t != new_tag and run("git", "rev-list", "-n", "1", t) != head]
     return tags[-1] if tags else None
 
 

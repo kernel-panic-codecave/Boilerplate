@@ -203,7 +203,35 @@ fusioner {
 // gradle.properties stays a snapshot while a cycle is in progress and the release type follows from
 // it, instead of being a second thing to remember to change at release time.
 val isSnapshot = project.version.toString().endsWith("-SNAPSHOT")
-val releaseVersion = project.version.toString().removeSuffix("-SNAPSHOT") + if (isSnapshot) "-alpha" else ""
+val baseVersion = project.version.toString().removeSuffix("-SNAPSHOT")
+
+/** [args] run as `git` in the repo root, as lines; empty when git is unavailable or the call fails. */
+fun git(vararg args: String): List<String> = runCatching {
+	val process = ProcessBuilder(listOf("git") + args).directory(rootDir).redirectErrorStream(false).start()
+	process.inputStream.bufferedReader().readLines().also { process.waitFor() }
+}.getOrDefault(emptyList())
+
+/**
+ * The alpha number this release gets: one past the highest already cut for [baseVersion].
+ *
+ * Counted from the tags rather than kept in a file, so it resets on its own the moment the base
+ * version changes - `0.2.0-SNAPSHOT` starts again at `alpha1` without anyone remembering to. An
+ * unnumbered `-alpha` tag is alpha 0, so the first numbered release after one is `alpha1`.
+ *
+ * Tags on the current commit do not count, so re-cutting a release that has not shipped yet
+ * republishes the same number instead of burning one per attempt.
+ */
+val alphaNumber: Int by lazy {
+	val head = git("rev-list", "-n", "1", "HEAD").firstOrNull()
+	git("tag", "--list", "v$baseVersion-alpha*")
+		.filter { tag -> head == null || git("rev-list", "-n", "1", tag).firstOrNull() != head }
+		// An unnumbered `-alpha` counts as alpha 0 - the one cut before the numbering existed - so
+		// the release after it is alpha1 rather than the count starting over on top of it.
+		.mapNotNull { tag -> tag.substringAfterLast("-alpha").let { if (it.isEmpty()) 0 else it.toIntOrNull() } }
+		.maxOrNull()?.plus(1) ?: 1
+}
+
+val releaseVersion = if (isSnapshot) "$baseVersion-alpha$alphaNumber" else baseVersion
 
 // Uploads the merged jar to CurseForge, Modrinth and a GitHub release. Keys come from
 // local.properties on a developer machine or CURSEFORGE_API_KEY/MODRINTH_API_KEY/GITHUB_TOKEN in

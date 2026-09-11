@@ -15,6 +15,7 @@ import net.kernelpanicsoft.boilerplate.Boilerplate
 import net.kernelpanicsoft.boilerplate.resource.SResourceStack
 import net.kernelpanicsoft.boilerplate.pipe.block.PipeBlock
 import net.kernelpanicsoft.boilerplate.registry.Registrars
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.core.BlockPos
 import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
 import net.kernelpanicsoft.boilerplate.resource.roomFor
@@ -230,6 +231,7 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 		avoid: Set<BlockPos> = emptySet(),
 		accepts: (ResourceComponent) -> Boolean = { true },
 		limitFor: (ResourceComponent) -> Long = { extractionBatch },
+		queueWholes: Int = BoilerplateConfig.Gameplay.Pipes.destinationQueueWholes,
 	): RoutedExtraction? {
 		val storage = api.find(level, sourcePos, face) ?: return null
 		for (slotIndex in 0 until storage.size()) {
@@ -255,7 +257,7 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 			// machine whose recipe consumes a fixed number at a time.
 			// Capped at what the destination will actually take, then rounded down to a whole
 			// multiple - see batchedForRoute, the rule every push site shares.
-			val room = acceptedAtRouteEnd(level, from, route, resource, available)
+			val room = acceptedAtRouteEnd(level, from, route, resource, available, queueWholes)
 			val batched = batchedForRoute(level, from, route, resource, available, room)
 			if (batched <= 0) continue
 
@@ -274,12 +276,32 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 	}
 
 	/**
-	 * How much of [resource] the block at the end of [route] will accept right now.
+	 * How much of [resource] may still be sent toward the block at the end of [route] - what it can
+	 * hold, plus a queue's worth of slack, less whatever is already on its way.
 	 *
 	 * Probed against the face the delivery actually lands on - opposite the last hop - so this
 	 * asks the storage the insert will really reach rather than another side of the same block.
+	 *
+	 * A storage answers only for itself, and knows nothing of the pipes pointing at it: the room a
+	 * chest reports is room every extractor probing it this tick is told about, and each of them
+	 * then pulls a batch for it. [InboundCensus] is what the already-committed deliveries are
+	 * subtracted from that with - without it the surplus leaves its source, reaches the last
+	 * segment, and stalls there indefinitely.
+	 *
+	 * The slack is what stops that correction from starving a destination that is *consuming*.
+	 * Room alone is a figure measured at the moment of the pull, and a delivery does not arrive at
+	 * that moment - it arrives a trip later, by which time a machine has eaten through what it had
+	 * and sat idle waiting. Allowing a bounded amount to be queued at the door means the next
+	 * delivery is already most of the way there when room for it appears. How much slack that is is
+	 * the caller's own [queueWholes] - see
+	 * [net.kernelpanicsoft.boilerplate.pipe.hook.ExtractionHookState.queueWholes].
+	 *
+	 * Room is asked for over `amount + incoming` rather than `amount`, because
+	 * [net.kernelpanicsoft.boilerplate.resource.roomFor] answers no higher than the limit it is
+	 * given: asking for `amount` and subtracting `incoming` would report a full destination
+	 * whenever one batch happened to be in flight, however empty it actually was.
 	 */
-	private fun acceptedAtRouteEnd(level: ServerLevel, from: BlockPos, route: List<BlockPos>, resource: T, amount: Long): Long {
+	private fun acceptedAtRouteEnd(level: ServerLevel, from: BlockPos, route: List<BlockPos>, resource: T, amount: Long, queueWholes: Int): Long {
 		if (amount <= 0) return 0
 		val destination = route.lastOrNull() ?: return 0
 		val previous = if (route.size >= 2) route[route.size - 2] else from
@@ -289,7 +311,28 @@ abstract class ResourceNetworkType<T : ResourceComponent>(val resourceClass: Cla
 			destination.z - previous.z,
 		) ?: return 0
 		val target = api.find(level, destination, face.opposite) ?: return 0
-		return target.roomFor(resource, amount)
+		val incoming = InboundCensus.headedFor(level, destination, resource)
+		val committable = target.roomFor(resource, amount + incoming) + queueHeadroomFor(resource, queueWholes)
+		return (committable - incoming).coerceAtLeast(0L)
+	}
+
+	/**
+	 * How much of [resource] may be queued in the pipes for one destination over and above what it
+	 * can hold, in [resource]'s own platform count.
+	 *
+	 * [wholes] is in whole units - a stack, a bucket - because that is the quantity a player thinks
+	 * of a delivery in, and converted here because an amount in flight is counted in the platform's
+	 * own unit, which for a fluid is droplets on Fabric. It comes from the pulling hook rather than
+	 * straight from the config: the right slack is a property of the run, and one network carries
+	 * both long hauls to hungry machines and short hops to a chest.
+	 *
+	 * `0` for a resource of no registered kind: nothing here knows what a whole of it would be, and
+	 * guessing would hand out slack measured in the wrong unit entirely.
+	 */
+	private fun queueHeadroomFor(resource: T, wholes: Int): Long {
+		if (wholes <= 0) return 0L
+		val kind = ResourceKindRegistry.forResource(resource) ?: return 0L
+		return kind.toPlatform(kind.wholeAuthored(resource)) * wholes
 	}
 }
 

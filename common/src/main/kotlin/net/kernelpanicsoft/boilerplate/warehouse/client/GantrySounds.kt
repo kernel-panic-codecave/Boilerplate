@@ -33,6 +33,12 @@ object GantrySounds {
 
 	private val running = HashMap<BlockPos, GantryLoop>()
 
+	/**
+	 * Game time each controller's spin-down will have finished by, so the next run does not start
+	 * over the top of it - see [RESTART_QUIET_TICKS].
+	 */
+	private val quietUntil = HashMap<BlockPos, Double>()
+
 	fun register() {
 		ClientTickEvent.CLIENT_POST.register { minecraft -> tick(minecraft) }
 	}
@@ -43,6 +49,7 @@ object GantrySounds {
 			// Left the world. The sound manager has dropped these already; forgetting them here
 			// stops the next world from thinking a gantry it has never seen is still running.
 			running.clear()
+			quietUntil.clear()
 			return
 		}
 		val now = level.gameTime.toDouble()
@@ -53,7 +60,16 @@ object GantrySounds {
 			val moving = state != null && state.isMoving
 			val loop = running[controller]
 			when {
+				// Still inside the previous run's spin-down. A gantry that stops and immediately takes
+				// its next job - which is most of them, since the queue hands one straight to the
+				// next - would otherwise fire its start clip over a stop clip that has not finished,
+				// and the two motors together read as a stutter rather than a machine picking up
+				// again. The head moves silently for those few ticks, which is the cheaper artefact:
+				// a missing start is a machine already running, a doubled one is a broken machine.
+				moving && loop == null && now < (quietUntil[controller] ?: Double.NEGATIVE_INFINITY) -> Unit
+
 				moving && loop == null -> {
+					quietUntil.remove(controller)
 					val at = state!!.pos
 					level.playLocalSound(at.x, at.y, at.z, SoundRegistry.GantryStart, SoundSource.BLOCKS, MOTOR_VOLUME, 1.0f, false)
 					GantryLoop(controller, at, delayTicks = START_TICKS).also {
@@ -77,6 +93,7 @@ object GantrySounds {
 					state?.pos?.let { at ->
 						minecraft.soundManager.play(GantryStop(controller, at))
 					}
+					quietUntil[controller] = now + RESTART_QUIET_TICKS
 				}
 			}
 		}
@@ -84,6 +101,7 @@ object GantrySounds {
 		// A controller that left the cache entirely - unloaded, or broken mid-run - never reports
 		// "stopped", so its loop would otherwise run forever.
 		for (controller in running.keys.filter { it !in known }) running.remove(controller)?.release()
+		quietUntil.keys.retainAll(known)
 	}
 
 	/**
@@ -199,4 +217,14 @@ object GantrySounds {
 	 * a 0.62s clip against twelve ticks left 0.02s of spin-up still playing under the loop.
 	 */
 	private const val START_TICKS = 6
+
+	/**
+	 * How long a controller stays silent after stopping before it may sound a new run, in client
+	 * ticks.
+	 *
+	 * `gantry_stop.ogg`'s own length plus a breath - the clip is 0.35s, which is seven ticks exactly
+	 * (see `gantry_end` in `tools/sfx/synth.py`), and the two extra are what keep the next spin-up
+	 * from beginning on the very tick the last one released rather than after it.
+	 */
+	private const val RESTART_QUIET_TICKS = 9
 }

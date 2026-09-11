@@ -30,10 +30,7 @@ object ChemicalStorageKind : ResourceStorageKind {
 
 	override fun <T : BlockEntity> BlockEntityType<T>.exposeStorage(
 		selector: (tile: T, direction: Direction?) -> CommonStorage<*>?
-	)
-	{
-		exposeChemicalStorage { tile, direction -> selector(tile, direction)?.cast() }
-	}
+	) = exposeChemicalStorage { tile, direction -> selector(tile, direction)?.cast() }
 
 	/**
 	 * A Mekanism chemical tank item, or anything else exposing the same capability - what a click on

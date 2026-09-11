@@ -7,11 +7,10 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardTarget
 import net.minecraft.server.level.ServerPlayer
 
 /**
- * Client -> server: middle-clicking a ghost slot that holds a
+ * Client -> server: right-clicking a slot that holds a
  * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem] asks to open its own
- * editor - see [net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler]. [target] is
- * always [FilterCardTarget.HookFilterSlot]/[FilterCardTarget.ChildSlot] in practice (a
- * [FilterCardTarget.PlayerSlot] card is opened directly by
+ * editor. [target] is always [FilterCardTarget.MenuSlot]/[FilterCardTarget.ChildSlot] in
+ * practice (a [FilterCardTarget.PlayerSlot] card is opened directly by
  * [net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem.use] instead, no round trip
  * needed), but nothing here assumes that - [FilterCardItem.openFilterCardMenu] handles any target.
  */

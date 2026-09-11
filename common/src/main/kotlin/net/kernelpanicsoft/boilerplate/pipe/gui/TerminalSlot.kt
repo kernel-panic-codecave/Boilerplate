@@ -2,10 +2,10 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import net.kernelpanicsoft.archie.gui.composables.input.Clickable
 import net.kernelpanicsoft.archie.gui.composables.theme.TextureStates
@@ -14,14 +14,16 @@ import net.kernelpanicsoft.archie.gui.layout.BoxMeasurePolicy
 import net.kernelpanicsoft.archie.gui.layout.Layout
 import net.kernelpanicsoft.archie.gui.layout.Renderer
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
+import net.kernelpanicsoft.archie.gui.modifiers.appearance.tooltip
+import net.kernelpanicsoft.archie.gui.modifiers.input.MouseButton
 import net.kernelpanicsoft.archie.gui.modifiers.size
 import net.kernelpanicsoft.archie.gui.nodes.UINode
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.util.extension.drawThemeState
 import net.kernelpanicsoft.archie.gui.util.extension.invoke
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
-import androidx.compose.runtime.getValue
 
 /**
  * One cell of a virtual (non-slot-backed) result grid, e.g. [StoreResultsGrid]'s - the same
@@ -32,16 +34,17 @@ import androidx.compose.runtime.getValue
  * ones. An empty cell still hover-highlights, then, but isn't clickable and shows no hand cursor -
  * there's nothing a click on it would do, unlike an occupied one.
  *
- * @param onHovered Told whenever this cell's own hovered state changes, so the caller (see
- *   [TerminalHookScreen.hoveredStack]/[TerminalHookScreen.renderTooltip]) can track which single stack (if
- *   any) across the whole grid should get a tooltip.
+ * @param onHovered Told whenever this cell's own hovered state changes, so the caller can track
+ *   which single stack (if any) across the whole grid the pointer is on - what a recipe viewer
+ *   (JEI/REI/EMI) reads for its focused stack, since a virtual cell is not a real
+ *   [net.minecraft.world.inventory.Slot] for it to discover. The cell's *tooltip* is declared here
+ *   and needs no such tracking.
  * @param countText Overrides the vanilla count-label decoration (e.g. `""` to hide it entirely) -
  *   for a cell whose [stack]'s own `amount` is a display placeholder rather than a real count, like
  *   an autocraftable-but-out-of-stock entry showing "Craft" instead of `0`.
- * @param handleClick Offered a [clickHandler]-registered action only when [stack] is
- *   non-`null` and the caller passes one (e.g. [StoreResultsGrid]'s own "open the autocraft dialog
- *   for an in-stock, also-craftable entry" interaction) - see [ClickHandler]'s own KDoc for
- *   why detecting the actual click happens one level up, at the screen.
+ * @param handleMiddleClick A middle-click action, offered only when [stack] is non-`null` and the caller
+ *   passes one (e.g. [StoreResultsGrid]'s own "open the autocraft dialog for an in-stock,
+ *   also-craftable entry" interaction).
  * @param handleRightClick The same, for a right-click - [StoreResultsGrid] uses it for "empty the
  *   container I am holding into the network", the bundle's own gesture for the same idea. A
  *   left-click still means "store the item itself", because a filled bucket is a reasonable thing
@@ -57,29 +60,34 @@ fun TerminalSlot(
 	onHovered: (Boolean) -> Unit = {},
 	modifier: Modifier = Modifier,
 	countText: String? = null,
-	clickHandler: ClickHandler? = null,
-	handleClick: (() -> Unit)? = null,
-	rightClickHandler: ClickHandler? = null,
 	handleRightClick: (() -> Unit)? = null,
+	handleMiddleClick: (() -> Unit)? = null,
 	enabled: Boolean = true,
 ) {
-	Clickable(showHandCursor = stack != null && enabled, enabled = enabled, onClick = { onClick() }, modifier = modifier) { isHovered, _, _ ->
-		// Keyed on the hover state itself, never on [handleClick] - that lambda is freshly
-		// allocated each recomposition, so keying on it restarted this effect on every pass and
-		// re-reported hover for all 27 cells continuously. The registered action reads the latest
-		// lambda through the wrapper rather than capturing whichever one was current when the
-		// effect happened to run.
-		val currentHandleClick by rememberUpdatedState(handleClick)
-		val currentHandleRightClick by rememberUpdatedState(handleRightClick)
-		LaunchedEffect(isHovered, enabled, handleClick != null) {
-			onHovered(isHovered)
-			clickHandler?.setHovered(if (isHovered && enabled && handleClick != null) ({ currentHandleClick?.invoke() }) else null)
-		}
-		// Its own effect rather than a second line in the one above: the two are keyed on different
-		// things, and a cell may offer one without the other.
-		LaunchedEffect(isHovered, enabled, handleRightClick != null) {
-			rightClickHandler?.setHovered(if (isHovered && enabled && handleRightClick != null) ({ currentHandleRightClick?.invoke() }) else null)
-		}
+	// Read through a wrapper rather than captured: these lambdas are freshly allocated on every
+	// recomposition, so the click callback must reach the latest one rather than whichever was
+	// current when it was first composed.
+	val currentHandleRightClick by rememberUpdatedState(handleRightClick)
+	val currentHandleMiddleClick by rememberUpdatedState(handleMiddleClick)
+	// Declared on the cell rather than tracked by the screen: the renderer finds the hovered node
+	// itself, so this needs no per-screen plumbing and cannot stick showing a stale cell when the
+	// pointer leaves the window without an EXIT event ever arriving.
+	val hoveredResource = stack?.resource as? ResourceComponent
+	val effectiveModifier =
+		if (hoveredResource == null) modifier else modifier.tooltip(tooltipFor(hoveredResource, stack.amount))
+	Clickable(
+		showHandCursor = stack != null && enabled,
+		enabled = enabled,
+		onClick = { onClick() },
+		modifier = effectiveModifier,
+		onAuxClick = { _, button ->
+			if (enabled) when (button) {
+				MouseButton.RIGHT -> currentHandleRightClick?.invoke()
+				MouseButton.MIDDLE -> currentHandleMiddleClick?.invoke()
+			}
+		},
+	) { isHovered, _, _ ->
+		LaunchedEffect(isHovered) { onHovered(isHovered) }
 		// Whatever kind the row happens to hold draws its own face - a terminal lists everything the
 		// network stores, which is no longer only items. A kind with no display of its own still
 		// gets the empty frame rather than a hole in the grid.

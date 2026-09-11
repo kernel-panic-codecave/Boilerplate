@@ -17,12 +17,13 @@ import net.minecraft.world.item.DyeColor
 
 /**
  * Self-contained state for one [ExtractionHookType] attachment - what it pulls, how often, how much
- * of it, and how it spreads what it pulls across the destinations that would take it.
+ * of it, how much of it may be waiting at the far end, and how it spreads what it pulls across the
+ * destinations that would take it.
  *
  * [intervalTicks] and [amountAuthored] are the two an upgrade system will eventually drive instead
- * of the player setting them directly. They live here rather than only in the config because they
- * are per-hook by nature: one extractor draining a furnace bank and another trickling into a
- * processing line want different answers on the same network.
+ * of the player setting them directly. They, and [queueWholes], live here rather than only in the
+ * config because they are per-hook by nature: one extractor draining a furnace bank and another
+ * trickling into a processing line want different answers on the same network.
  */
 class ExtractionHookState : HookHolderState(ExtractionHookType.ID) {
 	/** Ticks since this hook last attempted an extraction; resets to 0 on every attempt, successful or not. */
@@ -60,6 +61,23 @@ class ExtractionHookState : HookHolderState(ExtractionHookType.ID) {
 	 * to read a platform count as. The conversion happens per resource, in [ExtractionHookType].
 	 */
 	var amountAuthored: Long by field(Long.serializer()) { KIND_DEFAULT_AMOUNT }
+
+	/**
+	 * How much this hook may have queued in the pipes for one destination beyond what that
+	 * destination can currently hold, in whole units of whatever it turns out to be pulling - a
+	 * stack of an item, a bucket of a fluid.
+	 *
+	 * Per-hook because the right answer is a property of the *run*, not of the network: a machine at
+	 * the end of a long pipe needs enough queued at its door to cover the trip or it idles for the
+	 * length of the pipe every cycle, while an extractor feeding a chest two blocks away needs none
+	 * of that and would only be tying up stock in a tube. See
+	 * [net.kernelpanicsoft.boilerplate.pipe.network.InboundCensus] for what the queue is measured
+	 * against, and [net.kernelpanicsoft.boilerplate.config.BoilerplateConfig.Gameplay.Pipes.destinationQueueWholes]
+	 * for the pack-wide figure a fresh hook starts from.
+	 *
+	 * `0` sends only what fits at the moment of the pull.
+	 */
+	var queueWholes: Int by field(Int.serializer()) { BoilerplateConfig.Gameplay.Pipes.destinationQueueWholes }
 
 	/**
 	 * Whether this hook may pull [resource] at all.
@@ -117,6 +135,9 @@ class ExtractionHookState : HookHolderState(ExtractionHookType.ID) {
 
 		/** The slowest this hook may be set to run, in ticks between pulls - matches the config slider's own range. */
 		const val MAX_INTERVAL_TICKS = 200
+
+		/** The most [queueWholes] may be set to - matches the config slider's own range. */
+		const val MAX_QUEUE_WHOLES = 16
 	}
 }
 

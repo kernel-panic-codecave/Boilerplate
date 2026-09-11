@@ -29,15 +29,11 @@ import net.minecraft.world.entity.player.Inventory
 class InterfaceHookScreen(private val menu: InterfaceHookMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<InterfaceHookMenu>(menu, playerInventory, title) {
 
-	private val clickHandler = ClickHandler(1)
 
 	init {
 		start { content() }
 	}
 
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
-	}
 
 	@Composable
 	fun content() {
@@ -59,7 +55,6 @@ class InterfaceHookScreen(private val menu: InterfaceHookMenu, playerInventory: 
 						columns = InterfaceHookState.SLOTS,
 						carried = { menu.carried },
 						onSet = ::set,
-						clickHandler = clickHandler,
 					)
 					Label(Component.literal("Stock"))
 					Slots("stock", InterfaceHookState.SLOTS, 1)

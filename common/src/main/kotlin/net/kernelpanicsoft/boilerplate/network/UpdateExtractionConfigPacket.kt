@@ -36,6 +36,7 @@ data class UpdateExtractionConfigPacket(
 	val distribution: @Serializable(with = ExtractionDistributionSerializer::class) ExtractionDistribution,
 	val intervalTicks: Int,
 	val amount: Long,
+	val queueWholes: Int,
 ) {
 	fun handleOnServer(context: IPacketContext) {
 		val level = context.player.level() as? ServerLevel ?: return
@@ -48,6 +49,7 @@ data class UpdateExtractionConfigPacket(
 		// turn one hook into a pull on every tick of the server's own loop.
 		hookState.intervalTicks = intervalTicks.coerceIn(1, ExtractionHookState.MAX_INTERVAL_TICKS)
 		hookState.amountAuthored = amount.coerceIn(ExtractionHookState.KIND_DEFAULT_AMOUNT, MAX_AMOUNT)
+		hookState.queueWholes = queueWholes.coerceIn(0, ExtractionHookState.MAX_QUEUE_WHOLES)
 		// A cursor into a set of destinations chosen under the old settings means nothing under the
 		// new ones - most obviously when the distribution mode itself just changed.
 		hookState.servedThisCycle.clear()

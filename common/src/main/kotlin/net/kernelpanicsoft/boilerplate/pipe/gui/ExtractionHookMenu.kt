@@ -13,8 +13,9 @@ import net.minecraft.core.Direction
 import net.minecraft.world.entity.player.Inventory
 
 /**
- * Menu for the extraction hook on [tile]'s [direction] face: its filter card and the three settings
- * that decide what one pull does - where it goes, how often it happens, and how much it moves.
+ * Menu for the extraction hook on [tile]'s [direction] face: its filter card and the four settings
+ * that decide what one pull does - where it goes, how often it happens, how much it moves, and how
+ * much of it may be waiting at the destination.
  *
  * Reads the hook's own state when the screen opens rather than observing it live, the same way
  * [SortingHookMenu] does and for the same reason: a nested
@@ -48,6 +49,9 @@ class ExtractionHookMenu(id: Int, inventory: Inventory, tile: MultipartBlockEnti
 	 * uses, since both are "how much of one resource crosses in one go" and both are kind-agnostic.
 	 */
 	fun maxAmount(): Long = net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookState.maxBatchSize
+
+	/** How much this hook may keep queued at a destination past what it can hold, in whole units. */
+	fun queueWholes(): Int = state()?.queueWholes ?: BoilerplateConfig.Gameplay.Pipes.destinationQueueWholes
 
 	/** A real, vanilla-[net.minecraft.world.inventory.Slot]-backed card slot, exactly as [SortingHookMenu] registers its own. */
 	override fun registerSlotHandlers() {

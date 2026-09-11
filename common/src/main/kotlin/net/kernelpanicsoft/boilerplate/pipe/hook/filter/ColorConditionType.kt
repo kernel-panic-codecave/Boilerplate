@@ -13,7 +13,6 @@ import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.theme.SimpleThemeState
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.util.DyeColorSerializer
 import net.kernelpanicsoft.boilerplate.util.SDyeColor
 import net.minecraft.network.chat.Component
@@ -37,7 +36,7 @@ object ColorConditionType : FilterConditionType<ColorConditionState>() {
 		state.color != null && context.color == state.color
 
 	@Composable
-	override fun content(editor: FilterCardEditor, state: ColorConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: ColorConditionState) {
 		var color by remember { mutableStateOf(state.color) }
 
 		Label(Component.literal("Color"))

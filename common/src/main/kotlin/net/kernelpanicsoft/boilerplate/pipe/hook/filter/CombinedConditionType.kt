@@ -9,10 +9,9 @@ import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
 import net.kernelpanicsoft.archie.gui.layer.LocalLayerManager
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.resource.ItemResourceSerializer
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.pipe.gui.GhostSlotGrid
 import net.kernelpanicsoft.boilerplate.pipe.gui.filterCardEditor
+import net.kernelpanicsoft.boilerplate.resource.ItemResourceSerializer
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -39,7 +38,7 @@ object CombinedConditionType : FilterConditionType<CombinedConditionState>() {
 	}
 
 	@Composable
-	override fun content(editor: FilterCardEditor, state: CombinedConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: CombinedConditionState) {
 		val layers = LocalLayerManager.current
 		var operator by remember { mutableStateOf(state.operator) }
 		var children by remember { mutableStateOf(state.children.toList()) }
@@ -62,24 +61,17 @@ object CombinedConditionType : FilterConditionType<CombinedConditionState>() {
 			onPlace = { index, resource ->
 				children = children.toMutableList().also { it[index] = resource }
 				state.children[index] = resource
-				editor.push(state::children, children, ListSerializer(ItemResourceSerializer))
+				editor.push(state::children, state.children.toList(), ListSerializer(ItemResourceSerializer))
 			},
 			onClear = { index ->
 				children = children.toMutableList().also { it[index] = ItemResource.BLANK }
 				state.children[index] = ItemResource.BLANK
-				editor.push(state::children, children, ListSerializer(ItemResourceSerializer))
+				editor.push(state::children, state.children.toList(), ListSerializer(ItemResourceSerializer))
 			},
-			clickHandler = clickHandler,
-			// A child card opens *on top of* this editor rather than replacing it - which is the
-			// whole reason the editor is a layer. Nest as deep as the cards do.
-			handleClick = { index ->
+			handleRightClick = { index ->
 				if (children[index].item !is FilterCardItem) null
 				else ({ layers.filterCardEditor(FilterCardTarget.ChildSlot(editor.target, index), editor.carried) })
 			},
-			// Only another filter card is meaningful here - evaluateGhostSlot's plain-item
-			// identity fallback would silently "work" but defeats the point of a *combined*
-			// condition, which exists to compose other conditions, not re-express a single item
-			// match a plain ResourceConditionType card already covers.
 			filter = { it.item is FilterCardItem },
 		)
 	}

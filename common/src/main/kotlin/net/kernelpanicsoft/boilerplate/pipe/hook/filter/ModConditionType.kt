@@ -8,7 +8,6 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
@@ -23,7 +22,7 @@ object ModConditionType : FilterConditionType<ModConditionState>() {
 		state.modId.isNotBlank() && ResourceKindRegistry.forResource(context.resource)?.registryId(context.resource)?.namespace == state.modId
 
 	@Composable
-	override fun content(editor: FilterCardEditor, state: ModConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: ModConditionState) {
 		var modId by remember { mutableStateOf(state.modId) }
 
 		Label(Component.literal("Mod ID"))

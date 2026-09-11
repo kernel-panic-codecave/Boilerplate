@@ -34,7 +34,6 @@ fun StockingRowGrid(
 	columns: Int,
 	carried: () -> ItemStack,
 	onSet: (Int, ResourceComponent, Long) -> Unit,
-	clickHandler: ClickHandler,
 ) {
 	val layers = LocalLayerManager.current
 	ResourceGhostSlotGrid(
@@ -43,7 +42,6 @@ fun StockingRowGrid(
 		carried = carried,
 		onPlace = { index, resource -> onSet(index, resource, defaultAmountFor(resource, targets.getOrNull(index), amounts.getOrNull(index))) },
 		onClear = { index -> onSet(index, ItemResource.BLANK, 1L) },
-		clickHandler = clickHandler,
 		handleClick = { null },
 		amounts = amounts,
 		countText = { index -> countTextFor(targets.getOrNull(index), amounts.getOrNull(index)) },

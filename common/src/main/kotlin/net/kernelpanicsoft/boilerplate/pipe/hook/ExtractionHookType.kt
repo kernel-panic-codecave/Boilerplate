@@ -99,6 +99,7 @@ object ExtractionHookType : PipeHookType<ExtractionHookState>() {
 				level, pos, neighborPos, direction.opposite, color, avoid,
 				accepts = state::accepts,
 				limitFor = { resource -> amountFor(carrier, state, resource) },
+				queueWholes = state.queueWholes,
 			)
 
 			// Round-robin skips whatever this hook has already served, and when that leaves nothing

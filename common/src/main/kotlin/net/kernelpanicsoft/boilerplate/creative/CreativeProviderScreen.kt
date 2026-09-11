@@ -14,7 +14,6 @@ import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.pipe.gui.ResourceGhostSlot
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Inventory
@@ -29,8 +28,6 @@ import net.minecraft.world.entity.player.Inventory
  */
 class CreativeProviderScreen(private val menu: CreativeProviderMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<CreativeProviderMenu>(menu, playerInventory, title) {
-
-	private val clickHandler = ClickHandler(1)
 
 	init {
 		start { content() }
@@ -51,7 +48,6 @@ class CreativeProviderScreen(private val menu: CreativeProviderMenu, playerInven
 						carried = { menu.carried },
 						onPlace = { resource -> provided = resource; menu.requestProvide(resource) },
 						onClear = { provided = ItemResource.BLANK; menu.requestProvide(ItemResource.BLANK) },
-						clickHandler = clickHandler,
 					)
 				}
 			}

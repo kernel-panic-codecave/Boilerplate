@@ -8,7 +8,6 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
@@ -40,7 +39,7 @@ object TagConditionType : FilterConditionType<TagConditionState>() {
 	}
 
 	@Composable
-	override fun content(editor: FilterCardEditor, state: TagConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: TagConditionState) {
 		var tagId by remember { mutableStateOf(state.tagId) }
 
 		Label(Component.literal("Tag ID"))

@@ -15,6 +15,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.FilterHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.batchForRoute
 import net.kernelpanicsoft.boilerplate.pipe.hook.batchedForRoute
 import net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState
+import net.kernelpanicsoft.boilerplate.pipe.network.InboundCensus
 import net.kernelpanicsoft.boilerplate.pipe.network.NetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.ResourceNetworkType
 import net.kernelpanicsoft.boilerplate.pipe.network.SubnetBoundary
@@ -61,6 +62,15 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	val travelingItems by listField(TravelingItem.serializer()) { emptyList() }
 
 	private var ticksSinceSync = 0
+
+	/**
+	 * Game time this segment last sounded, or [NEVER_SOUNDED] before it ever has - for [thunk]'s own
+	 * debounce, through [maySound].
+	 *
+	 * Deliberately not persisted. A sound that was never played is nothing to restore, and a segment
+	 * reloading is free to sound on its very first delivery.
+	 */
+	private var lastThunkTick = NEVER_SOUNDED
 
 	/** The game tick this segment last pushed its contents on, and what it pushed - together they let [syncNow] drop a genuinely redundant repeat within one tick without suppressing a real second change. */
 	private var lastSyncedTick = -1L
@@ -276,6 +286,15 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		// against it is comparing against what is actually persisted right now.
 		if (items != stored) stored.setAll(items)
 
+		// Counted from the *final* list rather than the snapshot at the top: a delivery that hopped
+		// away this tick is counted by the segment it landed in, or by neither when that segment has
+		// already ticked - never twice, which is what would happen if both ends counted it. See
+		// [InboundCensus] for why one tick of undercount is the safe side of that trade.
+		for (item in items) {
+			val destination = item.path.lastOrNull() ?: continue
+			InboundCensus.record(serverLevel, destination, item.stack.resource as ResourceComponent, item.stack.amount)
+		}
+
 		ticksSinceSync++
 		if (hopped || (items.isNotEmpty() && ticksSinceSync >= SYNC_INTERVAL_TICKS)) {
 			syncNow(serverLevel, items)
@@ -321,6 +340,28 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	private fun mergeCapacityOf(resource: ResourceComponent): Long {
 		val kind = ResourceKindRegistry.forResource(resource) ?: return 0L
 		return kind.toPlatform(kind.wholeAuthored(resource)) * BoilerplateConfig.Gameplay.Pipes.mergeMaxWholes
+	}
+
+	/**
+	 * The tube taking or releasing something, played at [pos] around [pitch].
+	 *
+	 * Jittered within a narrow band on every play. The three waveform variants behind the event do
+	 * the rest, so no two plays are quite the same sound.
+	 *
+	 * Debounced per segment, and that is why this is an instance method rather than the companion
+	 * function it was. One segment can hand over several deliveries in a single tick - more so now
+	 * that cargo merges and a busy line carries a lot at once - and a fifth-of-a-second clip
+	 * repeated a dozen times in one moment stops reading as a machine and starts reading as a
+	 * machine gun. Silence is the right answer for the repeats: they are the same event to the ear.
+	 *
+	 * Per segment rather than globally, because a segment is a place. Two pipes working at once are
+	 * two machines and should sound like it; one pipe working twice in a tick is one machine.
+	 */
+	private fun thunk(level: ServerLevel, pos: BlockPos, pitch: Float) {
+		if (!maySound(level.gameTime, lastThunkTick)) return
+		lastThunkTick = level.gameTime
+		val jitter = level.random.nextFloat() * THUNK_PITCH_JITTER - THUNK_PITCH_JITTER / 2f
+		level.playSound(null, pos, SoundRegistry.PipeThunk, SoundSource.BLOCKS, THUNK_VOLUME, pitch + jitter)
 	}
 
 	private fun refreshSpeedMultiplier(level: ServerLevel) {
@@ -543,7 +584,15 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		// not travelled anywhere yet, and every caller passed a literal `0f` to say so. The only
 		// appends that legitimately carry progress are made by the transport loop, on its own list.
 		travelingItems += TravelingItem(stack, from, 0f, route, color, targetFace, reservationId)
-		(level as? ServerLevel)?.let { thunk(it, blockPos, ENTRY_PITCH) }
+		(level as? ServerLevel)?.let {
+			// Reported here rather than at each call site, so every way into the network - an
+			// extractor, a requester, an interface passing a delivery on - is seen by the room
+			// arithmetic that sized it, on the same tick and without any of them having to know.
+			route.lastOrNull()?.let { destination ->
+				InboundCensus.commit(it, destination, stack.resource as ResourceComponent, stack.amount)
+			}
+			thunk(it, blockPos, ENTRY_PITCH)
+		}
 	}
 
 	companion object {
@@ -573,19 +622,6 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 			return null
 		}
 
-		/**
-		 * The tube taking or releasing something, played at [pos] around [pitch].
-		 *
-		 * Jittered within a narrow band on every play. The clip is a fifth of a second and several
-		 * can land in the same tick on a busy network; identical repeats of a sound that short stop
-		 * reading as a machine and start reading as a machine gun. The three waveform variants
-		 * behind the event do the rest.
-		 */
-		internal fun thunk(level: ServerLevel, pos: BlockPos, pitch: Float) {
-			val jitter = level.random.nextFloat() * THUNK_PITCH_JITTER - THUNK_PITCH_JITTER / 2f
-			level.playSound(null, pos, SoundRegistry.PipeThunk, SoundSource.BLOCKS, THUNK_VOLUME, pitch + jitter)
-		}
-
 		private const val THUNK_VOLUME = 0.35f
 
 		/**
@@ -601,6 +637,29 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 
 		/** Spread of the per-play random offset, centred on whichever pitch was asked for. */
 		private const val THUNK_PITCH_JITTER = 0.10f
+
+		/**
+		 * How long one segment stays quiet after sounding, in ticks - see [thunk].
+		 *
+		 * The clip's own length. Anything shorter and two plays from the same place overlap, which is
+		 * the noise this exists to stop; anything longer and a steadily-working pipe starts skipping
+		 * deliveries it should be heard making.
+		 */
+		private const val THUNK_COOLDOWN_TICKS = 4L
+
+		/** [lastThunkTick] before a segment has ever sounded - see [maySound] for why it cannot simply be a very old tick. */
+		internal const val NEVER_SOUNDED = Long.MIN_VALUE
+
+		/**
+		 * Whether a segment that last sounded at [lastTick] may sound again at [now].
+		 *
+		 * [NEVER_SOUNDED] is tested for rather than treated as a very old tick, because it is not one:
+		 * `now - Long.MIN_VALUE` overflows to a *negative* number, which reads as "no time has passed
+		 * at all" and silences the segment permanently. That is not a hypothetical - it shipped, and
+		 * nothing caught it, because no test can hear a sound that was not played.
+		 */
+		internal fun maySound(now: Long, lastTick: Long): Boolean =
+			lastTick == NEVER_SOUNDED || now - lastTick >= THUNK_COOLDOWN_TICKS
 
 		/** How often a segment holding items re-resolves its own pressure line - see [refreshSpeedMultiplier] for why this isn't every tick. */
 		const val PRESSURE_REFRESH_INTERVAL_TICKS = 20

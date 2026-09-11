@@ -3,23 +3,20 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import androidx.compose.runtime.*
 import net.kernelpanicsoft.archie.gui.PlayerSlots
 import net.kernelpanicsoft.archie.gui.composables.basic.Label
-import net.kernelpanicsoft.archie.gui.composables.basic.Text
 import net.kernelpanicsoft.archie.gui.composables.containers.PLAYER_INVENTORY_GAP
 import net.kernelpanicsoft.archie.gui.composables.containers.Panel
-import net.kernelpanicsoft.archie.gui.composables.input.Button
 import net.kernelpanicsoft.archie.gui.composables.input.RadioGroup
 import net.kernelpanicsoft.archie.gui.composables.input.RadioOption
+import net.kernelpanicsoft.archie.gui.composables.input.TextButton
 import net.kernelpanicsoft.archie.gui.layer.LayerStackManager
 import net.kernelpanicsoft.archie.gui.layout.*
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.position.padding
 import net.kernelpanicsoft.archie.gui.modifiers.sizeIn
-import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.boilerplate.pipe.entity.FilterMode
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FILTER_CARD_CONTENT_WIDTH
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardEditor
 import net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardTarget
-import net.kernelpanicsoft.boilerplate.pipe.hook.filter.sharesCardWith
 import net.kernelpanicsoft.boilerplate.registry.FilterConditionTypeRegistry
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
@@ -37,10 +34,12 @@ import java.util.*
  * know what is being dropped into it.
  */
 fun LayerStackManager.filterCardEditor(target: FilterCardTarget, carried: () -> ItemStack) {
-	// One editor per card *chain*. Two editors along one chain each hold a base the other is
-	// overwriting - see [sharesCardWith] - so the second is refused rather than opened onto a card
-	// whose edits are about to be discarded. Refusing is also what stops a repeated right-click from
-	// stacking identical editors, each with its own stale optimistic state.
+	// One editor per card, so a repeated right-click cannot stack identical editors each holding
+	// its own stale optimistic state.
+	//
+	// Per *card*, not per chain: opening a child's editor requires its parent's to be open, since
+	// the parent's grid is the only place the child can be clicked. Refusing anything sharing a
+	// chain therefore refused every nested card there is - the one thing nesting exists for.
 	if (!claimEditor(this, target)) return
 
 	// onDismissRequest, not the Done button: it fires for every way out of a modal - the button,
@@ -48,7 +47,12 @@ fun LayerStackManager.filterCardEditor(target: FilterCardTarget, carried: () -> 
 	//
 	// The editor draws its own player inventory rather than leaving the host's exposed underneath.
 	// A layer renders above the host's slots and may well cover them, and slot hit-testing is depth
-	// gated, so a row drawn behind a modal is neither reliably visible nor reliably clickable - the
+	// gated, so a row drawn behind a modal is neither refun LayerStackManager.filterCardEditor(target: FilterCardTarget, carried: () -> ItemStack) {
+	//	// One editor per card *chain*. Two editors along one chain each hold a base the other is
+	//	// overwriting - see [sharesCardWith] - so the second is refused rather than opened onto a card
+	//	// whose edits are about to be discarded. Refusing is also what stops a repeated right-click from
+	//	// stacking identical editors, each with its own stale optimistic state.
+	//	if (!claimEditor(this, target)) returnliably visible nor reliably clickable - the
 	// player has to be able to pick a card up out of their inventory and drop it into a ghost slot
 	// here. There is only ever the one 36-slot player group in a menu, so [PlayerSlots] hands it to
 	// whichever layer is deepest and leaves the host holding an empty gap of the same size.
@@ -57,7 +61,7 @@ fun LayerStackManager.filterCardEditor(target: FilterCardTarget, carried: () -> 
 			Column {
 				val editor = FilterCardEditor(target, carried)
 				Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
-					Text(editor.stack().hoverName, dropShadow = false, color = LocalTheme.current.darkTextColor)
+					Label(editor.stack().hoverName)
 				}
 				FilterCardEditorContent(
 					editor = editor,
@@ -83,10 +87,10 @@ fun LayerStackManager.filterCardEditor(target: FilterCardTarget, carried: () -> 
  */
 private val openEditors = WeakHashMap<LayerStackManager, MutableSet<FilterCardTarget>>()
 
-/** Reserves [target] for an editor on [manager], or answers `false` if a card in its chain already has one. */
+/** Reserves [target] for an editor on [manager], or answers `false` if that same card already has one. */
 private fun claimEditor(manager: LayerStackManager, target: FilterCardTarget): Boolean = synchronized(openEditors) {
 	val open = openEditors.getOrPut(manager) { mutableSetOf() }
-	if (open.any { it.sharesCardWith(target) }) return@synchronized false
+	if (target in open) return@synchronized false
 	open += target
 	true
 }
@@ -117,7 +121,6 @@ private fun releaseEditor(manager: LayerStackManager, target: FilterCardTarget) 
  */
 @Composable
 fun FilterCardEditorContent(editor: FilterCardEditor, onClose: (() -> Unit)? = null) {
-	val clickHandler = remember { ClickHandler(1) }
 	var mode by remember { mutableStateOf(editor.mode()) }
 
 	run {
@@ -138,10 +141,10 @@ fun FilterCardEditorContent(editor: FilterCardEditor, onClose: (() -> Unit)? = n
 			val conditionType = FilterConditionTypeRegistry.byId(editor.type())
 			val state = editor.state()
 			if (conditionType != null && state != null) {
-				conditionType.content(editor, state, clickHandler)
+				conditionType.content(editor, state)
 			}
 			onClose?.let {
-				Button(onClick = { onClose() }) { Text(Component.literal("Done"), dropShadow = false) }
+				TextButton(Component.literal("Done")) { onClose() }
 			}
 		}
 	}

@@ -46,16 +46,12 @@ import kotlin.time.Duration.Companion.milliseconds
 class RequesterHookScreen(private val menu: RequesterHookMenu, playerInventory: Inventory, title: Component) :
 	ComposeContainerScreen<RequesterHookMenu>(menu, playerInventory, title)
 {
-	private val clickHandler = ClickHandler(1)
 
 	init
 	{
 		start { content() }
 	}
 
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
-	}
 
 	@Composable
 	fun content() {
@@ -86,7 +82,6 @@ class RequesterHookScreen(private val menu: RequesterHookMenu, playerInventory: 
 						columns = RequesterHookState.SLOTS,
 						carried = { menu.carried },
 						onSet = ::set,
-						clickHandler = clickHandler,
 					)
 					Text(
 						Component.literal("Scroll a target to set how many; below 1 is ∞ (just export)"),

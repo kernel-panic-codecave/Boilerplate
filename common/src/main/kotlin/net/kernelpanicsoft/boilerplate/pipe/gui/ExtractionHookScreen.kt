@@ -20,7 +20,7 @@ import net.minecraft.world.entity.player.Inventory
 
 /**
  * Configuration for the extraction hook on [ExtractionHookMenu.direction]'s face: what it may pull,
- * where it sends it, how often, and how much.
+ * where it sends it, how often, how much, and how much of it may queue at the far end.
  *
  * Speed and amount are settable here for now and are the two an upgrade system will eventually own
  * instead - which is why they read as plain numbers rather than tiers.
@@ -44,10 +44,11 @@ class ExtractionHookScreen(private val menu: ExtractionHookMenu, playerInventory
 		var distribution by remember { mutableStateOf(menu.distribution()) }
 		var interval by remember { mutableStateOf(menu.intervalTicks()) }
 		var amount by remember { mutableStateOf(menu.amount()) }
+		var queueWholes by remember { mutableStateOf(menu.queueWholes()) }
 
 		fun push() {
 			BoilerplateNetworkChannel.toServer(
-				UpdateExtractionConfigPacket(menu.pos, menu.direction, filterMode, distribution, interval, amount),
+				UpdateExtractionConfigPacket(menu.pos, menu.direction, filterMode, distribution, interval, amount, queueWholes),
 			)
 		}
 
@@ -99,6 +100,20 @@ class ExtractionHookScreen(private val menu: ExtractionHookMenu, playerInventory
 						leading = { Label(Component.literal("Amount:")) },
 						trailing = {
 							if (amount <= ExtractionHookState.KIND_DEFAULT_AMOUNT) Label(Component.literal("(one batch)"))
+						},
+					)
+
+					// How much may be waiting in the pipes at the destination on top of what it can
+					// hold - the buffer that stops a machine at the end of a long run idling for the
+					// length of that run every time it empties a slot. In whole units of whatever is
+					// being pulled, since one hook may pull either.
+					NumberField(
+						amount = queueWholes.toLong(),
+						range = 0L..ExtractionHookState.MAX_QUEUE_WHOLES.toLong(),
+						onAmountChange = { queueWholes = it.toInt(); push() },
+						leading = { Label(Component.literal("Queue:")) },
+						trailing = {
+							Label(Component.literal(if (queueWholes <= 0) "(none)" else "stacks / buckets"))
 						},
 					)
 				}

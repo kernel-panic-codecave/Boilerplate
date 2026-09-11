@@ -12,7 +12,6 @@ import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.kernelpanicsoft.boilerplate.pipe.gui.ResourceGhostSlotGrid
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.resource.ResourceComponentSerializer
@@ -64,14 +63,16 @@ object ResourceConditionType : FilterConditionType<ResourceConditionState>() {
 		if (matchComponents) kind.identityOf(resource) else kind.baseIdentityOf(resource)
 
 	@Composable
-	override fun content(editor: FilterCardEditor, state: ResourceConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: ResourceConditionState) {
 		var matches by remember { mutableStateOf(state.resourceMatches.toList()) }
 		var matchComponents by remember { mutableStateOf(state.matchComponents) }
 
+		// Drawn from the local copy, sent from the card - see the same split in
+		// [CombinedConditionType] for why the two differ.
 		fun set(index: Int, resource: ResourceComponent) {
 			matches = matches.toMutableList().also { it[index] = resource }
 			state.resourceMatches[index] = resource
-			editor.push(state::resourceMatches, matches, ListSerializer(ResourceComponentSerializer))
+			editor.push(state::resourceMatches, state.resourceMatches.toList(), ListSerializer(ResourceComponentSerializer))
 		}
 
 		Row(horizontalArrangement = Arrangement.spacedBy(4), verticalAlignment = Alignment.CenterVertically) {
@@ -94,9 +95,13 @@ object ResourceConditionType : FilterConditionType<ResourceConditionState>() {
 			resources = matches,
 			columns = 3,
 			carried = { editor.carried() },
+			// No corner label: a filter names resources, not quantities, and there is no amount here
+			// to report. Left to the grid's own default it would fall back to labelling each cell's
+			// notional amount of one - which an item stack hides for itself, but a fluid or chemical
+			// face draws whatever label it is handed, putting a meaningless "1" on every droplet.
+			countText = { null },
 			onPlace = { index, resource -> set(index, resource) },
 			onClear = { index -> set(index, ItemResource.BLANK) },
-			clickHandler = clickHandler,
 			handleClick = { null },
 		)
 	}

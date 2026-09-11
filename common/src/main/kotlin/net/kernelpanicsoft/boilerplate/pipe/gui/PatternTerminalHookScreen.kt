@@ -159,7 +159,6 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 									}
 								},
 								onClear = { index -> setInput(index, ItemResource.BLANK, 1) },
-								clickHandler = clickHandler,
 								handleClick = { null },
 								amounts = inputs.map { it.second },
 								countText = { index -> cellLabel(inputs.getOrNull(index)) },
@@ -172,7 +171,6 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 								carried = { menu.carried },
 								onPlace = { index, resource -> setInput(index, resource, defaultCellAmount(resource, inputs.getOrNull(index))) },
 								onClear = { index -> setInput(index, ItemResource.BLANK, 1) },
-								clickHandler = clickHandler,
 								handleClick = { null },
 								amounts = inputs.map { it.second },
 								countText = { index -> cellLabel(inputs.getOrNull(index)) },
@@ -208,8 +206,7 @@ class PatternTerminalHookScreen(menu: PatternTerminalHookMenu, playerInventory: 
 									carried = { menu.carried },
 									onPlace = { index, resource -> setOutput(index, resource, defaultCellAmount(resource, outputs.getOrNull(index))) },
 									onClear = { index -> setOutput(index, ItemResource.BLANK, 1) },
-									clickHandler = clickHandler,
-									handleClick = { null },
+										handleClick = { null },
 									amounts = outputs.map { it.second },
 									countText = { index -> cellLabel(outputs.getOrNull(index)) },
 									onAmountScroll = { index, delta ->

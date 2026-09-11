@@ -131,6 +131,7 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<FluidPipeNetworkGameTest>()
 		register<ExtractionHookConfigGameTest>()
 		register<FilterCardPersistenceGameTest>()
+		register<ThunkDebounceGameTest>()
 		register<PipeContentsHandoffGameTest>()
 		register<TravelingItemMergeGameTest>()
 		register<SpectatorMenuGameTest>()
@@ -185,5 +186,8 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<InterfaceCapacityGameTest>()
 		register<FilterBatchGameTest>()
 		register<ItemIconGameTest>()
+		register<StoreSortGameTest>()
+		register<ExtractionInFlightGameTest>()
+		register<FuzzySearchGameTest>()
 	}
 }

@@ -18,7 +18,6 @@ import net.kernelpanicsoft.boilerplate.client.BoilerplateTheme
 import net.kernelpanicsoft.boilerplate.network.*
 import net.kernelpanicsoft.boilerplate.resource.*
 import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
-import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.kernelpanicsoft.boilerplate.resource.resourceStack
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.network.chat.Component
@@ -30,15 +29,12 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 {
 
 	protected val contentWidth = 18 * COLUMNS
-	protected val clickHandler = ClickHandler(2)
 
 	/** Right-click, for "empty the container I am holding into the network" - see [StoreResultsGrid]. */
-	protected val rightClickHandler = ClickHandler(1)
 
 	/** The [StoreResultsGrid] row currently under the mouse, if any - not a real vanilla [net.minecraft.world.inventory.Slot], so a recipe viewer (JEI/REI/EMI) can't discover it the normal hovered-slot way; exposed publicly for exactly that lookup (see `compat/rei/BoilerplateREIPlugin`'s own `registerScreens`). */
 	var hoveredStack: SResourceStack<*>? = null
 		private set
-	private var sidebarTooltip: String? = null
 
 	/** This screen's own on-window rectangle - [leftPos]/[topPos]/[imageWidth]/[imageHeight] are `protected` on vanilla's own [AbstractContainerScreen], exposed publicly here since a recipe viewer's exclusion-zone registration needs the real occupied bounds to avoid overlapping its own item panel with this screen's fully custom (non-[net.minecraft.world.inventory.Slot]) content. */
 	val screenLeft get() = leftPos
@@ -49,11 +45,6 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 	init
 	{
 		start { content() }
-	}
-
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean
-	{
-		return clickHandler.tryHandle(button) || rightClickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
 	}
 
 	abstract val mainTabId: String
@@ -68,22 +59,28 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 					horizontalArrangement = Arrangement.spacedBy(2),
 					verticalAlignment = Alignment.Top
 				) {
-					var viewMode by remember { mutableStateOf(StoreViewMode.BOTH) }
+					// Seeded from the client config and written straight back to it, so a terminal
+					// opens the way the player last left one. The defaults live there too - name,
+					// ascending, being the only ordering that holds still while the network's
+					// contents move underneath it, so a row does not slide out from under the
+					// cursor between a player seeing it and clicking it.
+					var viewMode by remember { mutableStateOf(TerminalPreferences.viewMode) }
+					var sortMode by remember { mutableStateOf(TerminalPreferences.sortMode) }
+					var sortDirection by remember { mutableStateOf(TerminalPreferences.sortDirection) }
 					Column {
-						SidebarButton("↻", "Refresh", { sidebarTooltip = it }) {
+						SidebarButton("↻", "Refresh") {
 							BoilerplateNetworkChannel.toServer(RequestTerminalSearchResultsPacket)
 							BoilerplateNetworkChannel.toServer(RequestCraftableListPacket)
 						}
-						SidebarButton("⥮", "Defragment warehouses", { sidebarTooltip = it }) {
+						SidebarButton("⥮", "Defragment warehouses") {
 							BoilerplateNetworkChannel.toServer(RequestWarehouseDefragPacket)
 						}
-						StoreViewModeButton(viewMode, { sidebarTooltip = it }) {
-							viewMode = it
-							sidebarTooltip = it.tooltip
-						}
+						StoreViewModeButton(viewMode) { viewMode = it; TerminalPreferences.viewMode = it }
+						StoreSortModeButton(sortMode) { sortMode = it; TerminalPreferences.sortMode = it }
+						StoreSortDirectionButton(sortDirection) { sortDirection = it; TerminalPreferences.sortDirection = it }
 					}
 					TabContainerPanel(contentWidth = contentWidth) {
-						tab(id = mainTabId, title = mainTabLabel) { mainTab(viewMode) }
+						tab(id = mainTabId, title = mainTabLabel) { mainTab(viewMode, sortMode, sortDirection) }
 						tab(id = "jobs", title = Component.literal("Jobs")) { treeTab() }
 						additionalTabs()
 					}
@@ -93,7 +90,7 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 	}
 
 	@Composable
-	private fun mainTab(viewMode: StoreViewMode)
+	private fun mainTab(viewMode: StoreViewMode, sortMode: StoreSortMode, sortDirection: StoreSortDirection)
 	{
 		val layers = LocalLayerManager.current
 
@@ -113,6 +110,8 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 				results = menu.results,
 				craftable = menu.craftableResources,
 				mode = viewMode,
+				sortMode = sortMode,
+				sortDirection = sortDirection,
 				contentWidth = contentWidth,
 				carried = { menu.carried },
 				// The carried stack is an item by definition, so this widens rather than converts.
@@ -137,8 +136,6 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 					// the chosen Crafting CPU being the other half.
 					layers.craftRequestWizard(menu, resource)
 				},
-				clickHandler = clickHandler,
-				rightClickHandler = rightClickHandler,
 				onHoveredStackChanged = { hoveredStack = it },
 				enabled = menu.hasPressure,
 			)
@@ -198,34 +195,24 @@ abstract class AbstractTerminalHookScreen<T : AbstractTerminalHookMenu<T>>(prote
 	}
 
 	/**
-	 * Clears whatever's tracked as hovered before rendering anything, if [x]/[y] (this frame's own
-	 * mouse position) has drifted outside the screen's own bounds - hovering a cell then moving the
-	 * mouse straight off the window edge fires no further `mouseMoved` event for that cell (nothing
-	 * to fire it *to*, since the cursor is no longer over anything in-window), so the ENTER/EXIT
-	 * pair [TerminalSlot]/[SidebarButton] rely on to clear their own hover state never completes and
-	 * the tooltip would otherwise stay stuck showing whatever was last hovered. This runs every
-	 * frame regardless (unlike the event-driven hover tracking), so it self-corrects the instant the
-	 * reported position genuinely leaves the window - assuming the platform keeps reporting a
-	 * cursor position past the window edge rather than freezing at the last in-bounds one.
+	 * Clears [hoveredStack] before rendering anything, if [x]/[y] (this frame's own mouse position)
+	 * has drifted outside the screen's own bounds - hovering a cell then moving the mouse straight
+	 * off the window edge fires no further `mouseMoved` event for that cell (nothing to fire it
+	 * *to*, since the cursor is no longer over anything in-window), so the ENTER/EXIT pair
+	 * [TerminalSlot] relies on never completes and a recipe viewer would keep reading whatever was
+	 * last hovered as its focused stack. This runs every frame regardless (unlike the event-driven
+	 * hover tracking), so it self-corrects the instant the reported position genuinely leaves the
+	 * window - assuming the platform keeps reporting a cursor position past the window edge rather
+	 * than freezing at the last in-bounds one.
+	 *
+	 * Tooltips need none of this: each cell declares its own
+	 * ([net.kernelpanicsoft.archie.gui.modifiers.appearance.tooltip]) and the renderer re-finds the
+	 * hovered node from the live mouse position every frame.
 	 */
 	override fun renderTooltip(guiGraphics: GuiGraphics, x: Int, y: Int)
 	{
-		if (x < 0 || y < 0 || x > width || y > height)
-		{
-			hoveredStack = null
-			sidebarTooltip = null
-		}
+		if (x < 0 || y < 0 || x > width || y > height) hoveredStack = null
 		super.renderTooltip(guiGraphics, x, y)
-		sidebarTooltip?.let { guiGraphics.renderTooltip(font, Component.literal(it), x, y) }
-			// Every line the resource's own kind has to offer, not just its name - an item's tooltip
-			// is enchantments, durability, lore and whatever other mods attached to it, and drawing
-			// only the name threw all of it away.
-			?: hoveredStack?.let { stack ->
-				val resource = stack.resource as ResourceComponent
-				val kind = ResourceKindRegistry.forResource(resource)
-				val lines = kind?.display?.tooltipLines(resource, stack.amount) ?: listOf(resource.displayName())
-				guiGraphics.renderComponentTooltip(font, lines, x, y)
-			}
 	}
 
 	companion object {

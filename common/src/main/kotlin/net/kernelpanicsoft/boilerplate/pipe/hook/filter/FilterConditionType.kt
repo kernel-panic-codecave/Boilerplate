@@ -2,7 +2,6 @@ package net.kernelpanicsoft.boilerplate.pipe.hook.filter
 
 import androidx.compose.runtime.Composable
 import net.kernelpanicsoft.boilerplate.network.UpdateFilterCardFieldPacket
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 
 /**
  * A kind of condition a [FilterCardItem][net.kernelpanicsoft.boilerplate.pipe.hook.filter.FilterCardItem]
@@ -34,7 +33,7 @@ abstract class FilterConditionType<S : FilterConditionState> {
 	 * from - see [FilterCardEditor] for what that buys.
 	 */
 	@Composable
-	abstract fun content(editor: FilterCardEditor, state: S, clickHandler: ClickHandler)
+	abstract fun content(editor: FilterCardEditor, state: S)
 }
 
 /** How wide the card editor's own content column is - shared so a condition kind's fields line up with the mode selector above them. */

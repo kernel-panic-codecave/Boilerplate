@@ -150,23 +150,3 @@ private class MenuSlotItemAccess(
 		player.containerMenu.slots.getOrNull(slot)?.set(cached)
 	}
 }
-
-/**
- * This target and every card it is nested inside, outermost last - a [FilterCardTarget.ChildSlot]
- * chain walked up to whatever real slot ultimately holds it.
- */
-fun FilterCardTarget.cardChain(): List<FilterCardTarget> =
-	generateSequence(this) { (it as? FilterCardTarget.ChildSlot)?.parent }.toList()
-
-/**
- * Whether editing this target and [other] at once would have the two fighting over one card.
- *
- * True for the same target, and for a card and any card nested inside it: a child card is edited
- * through a *copy* materialized from its parent's own stack, and committing that copy rewrites the
- * parent wholesale (see [CommittableItemAccess]). Two editors open along one chain therefore each
- * hold a base the other is overwriting, and whichever writes last silently discards the other's
- * edits - most visibly on a list field like [CombinedConditionState.children], where a whole grid
- * goes back at once.
- */
-fun FilterCardTarget.sharesCardWith(other: FilterCardTarget): Boolean =
-	this in other.cardChain() || other in cardChain()

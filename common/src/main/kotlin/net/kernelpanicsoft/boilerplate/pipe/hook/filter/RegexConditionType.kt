@@ -10,7 +10,6 @@ import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.width
 import net.kernelpanicsoft.archie.util.rem
 import net.kernelpanicsoft.boilerplate.Boilerplate
-import net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 
@@ -27,7 +26,7 @@ object RegexConditionType : FilterConditionType<RegexConditionState>() {
 	}
 
 	@Composable
-	override fun content(editor: FilterCardEditor, state: RegexConditionState, clickHandler: ClickHandler) {
+	override fun content(editor: FilterCardEditor, state: RegexConditionState) {
 		var matcher by remember { mutableStateOf(state.matcher) }
 		var regex by remember { mutableStateOf(state.regex) }
 

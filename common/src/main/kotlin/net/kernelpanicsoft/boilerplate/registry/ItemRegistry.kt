@@ -240,8 +240,8 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 				 * chest still has to come out first.
 				 *
 				 * Passing rather than interrupting everywhere else leaves right-click alone where a
-				 * screen wants it - this mod's own ghost slots take one of their own (see
-				 * [net.kernelpanicsoft.boilerplate.pipe.gui.ClickHandler]).
+				 * screen wants it - this mod's own ghost slots take one of their own, through
+				 * [net.kernelpanicsoft.archie.gui.composables.input.Clickable]'s `onAuxClick`.
 				 */
 				ClientScreenInputEvent.MOUSE_CLICKED_PRE.register { client, screen, mouseX, mouseY, button ->
 					if (button != 1) return@register EventResult.pass()

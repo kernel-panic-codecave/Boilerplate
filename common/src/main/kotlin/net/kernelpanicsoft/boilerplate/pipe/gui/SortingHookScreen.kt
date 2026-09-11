@@ -52,15 +52,11 @@ class SortingHookScreen(private val menu: SortingHookMenu, playerInventory: Inve
 	ComposeContainerScreen<SortingHookMenu>(menu, playerInventory, title) {
 
 	private val contentWidth = 18 * 9
-	private val clickHandler = ClickHandler(1)
 
 	init {
 		start { content() }
 	}
 
-	override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-		return clickHandler.tryHandle(button) || super.mouseClicked(mouseX, mouseY, button)
-	}
 
 	@Composable
 	fun content() {

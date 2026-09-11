@@ -4,6 +4,9 @@ import net.kernelpanicsoft.archie.config.CategorySpec
 import net.kernelpanicsoft.archie.config.ConfigContainer
 import net.kernelpanicsoft.archie.config.ConfigSpec
 import net.kernelpanicsoft.boilerplate.Boilerplate
+import net.kernelpanicsoft.boilerplate.pipe.gui.StoreSortDirection
+import net.kernelpanicsoft.boilerplate.pipe.gui.StoreSortMode
+import net.kernelpanicsoft.boilerplate.pipe.gui.StoreViewMode
 import net.minecraft.network.chat.Component
 
 /**
@@ -86,6 +89,36 @@ object BoilerplateConfig : ConfigContainer(Boilerplate.MOD) {
 			 * One extraction already moves exactly one whole, so a limit of `1` leaves nothing to
 			 * merge; the default is what caps how much a saturated run can collapse by.
 			 */
+			/**
+			 * How much may be on its way to one destination beyond what that destination can hold
+			 * right now, in whole units of the resource's own kind - a stack for an item, a bucket
+			 * for a fluid.
+			 *
+			 * Counting what is already in flight ([net.kernelpanicsoft.boilerplate.pipe.network.InboundCensus])
+			 * stops an extractor filling a run with deliveries that have nowhere to land. Clamping it
+			 * to *exactly* the room left, though, means a machine that is consuming has to empty a
+			 * slot, be probed, and then wait out the whole trip before anything arrives - so it
+			 * starves for the length of the pipe, every cycle. This is the slack that keeps the line
+			 * primed: enough queued at the door to cover the trip, and a hard ceiling on how much can
+			 * pile up there.
+			 *
+			 * The default covers a long run to a hungry machine: enough queued that the trip itself
+			 * is never what the destination is waiting on. `0` sends only what fits at the moment of
+			 * the pull, which is exact but leaves a consuming destination idle for one round trip out
+			 * of every cycle.
+			 *
+			 * What a *fresh* hook starts at, not a figure every hook obeys: the right slack belongs to
+			 * the run, so each extractor keeps its own
+			 * ([net.kernelpanicsoft.boilerplate.pipe.hook.ExtractionHookState.queueWholes]) from the
+			 * moment it is placed, and changing this afterwards seeds new hooks without disturbing
+			 * anything already configured.
+			 */
+			var destinationQueueWholes by intSlider(
+				Component.literal("Destination queue"),
+				Component.literal("How much may be queued in the pipes for one destination beyond what it can currently hold, in stacks for items and buckets for fluids. Higher keeps a consuming machine fed across a long run; 0 sends only what fits right now."),
+				min = 0, max = 16, default = 8,
+			)
+
 			var mergeMaxWholes by intSlider(
 				Component.literal("Merge limit"),
 				Component.literal("The most one merged delivery may carry, in stacks for items and buckets for fluids. 1 disables merging."),
@@ -260,6 +293,34 @@ object BoilerplateConfig : ConfigContainer(Boilerplate.MOD) {
 				Component.literal("Crafting status poll"),
 				Component.literal("Milliseconds between a Crafting Buffer screen's job-status refreshes."),
 				default = 250L,
+			)
+
+			/**
+			 * Which rows a terminal lists - the sidebar's own cycle button writes straight back here
+			 * (see [net.kernelpanicsoft.boilerplate.pipe.gui.TerminalPreferences]), so the selection
+			 * outlives the screen rather than resetting every time one is opened.
+			 */
+			var terminalViewMode by enumSelector(
+				Component.literal("Terminal view"),
+				Component.literal("Which rows a terminal lists: what is in stock, what is craftable, or both."),
+				StoreViewMode::class,
+				default = StoreViewMode.BOTH,
+			)
+
+			/** Which key a terminal orders its rows by - written by the sidebar, as [terminalViewMode] is. */
+			var terminalSortMode by enumSelector(
+				Component.literal("Terminal sort"),
+				Component.literal("What a terminal orders its rows by: name, amount, or the mod each came from."),
+				StoreSortMode::class,
+				default = StoreSortMode.NAME,
+			)
+
+			/** Which way [terminalSortMode] runs - written by the sidebar, as [terminalViewMode] is. */
+			var terminalSortDirection by enumSelector(
+				Component.literal("Terminal sort direction"),
+				Component.literal("Which way a terminal's ordering runs."),
+				StoreSortDirection::class,
+				default = StoreSortDirection.ASCENDING,
 			)
 		}
 	}

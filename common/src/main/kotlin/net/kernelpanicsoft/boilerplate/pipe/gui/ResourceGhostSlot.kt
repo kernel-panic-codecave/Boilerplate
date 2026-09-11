@@ -3,17 +3,20 @@ package net.kernelpanicsoft.boilerplate.pipe.gui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
-import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.archie.gui.composables.input.Clickable
 import net.kernelpanicsoft.archie.gui.layout.Arrangement
 import net.kernelpanicsoft.archie.gui.layout.Column
 import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
+import net.kernelpanicsoft.archie.gui.modifiers.appearance.tooltip
 import net.kernelpanicsoft.archie.gui.modifiers.input.MouseButton
 import net.kernelpanicsoft.archie.gui.modifiers.input.onScroll
 import net.kernelpanicsoft.archie.gui.nodes.UINode
+import net.kernelpanicsoft.boilerplate.registry.ResourceKindRegistry
 import net.kernelpanicsoft.boilerplate.resource.ResourceKind
+import net.kernelpanicsoft.boilerplate.resource.displayName
 import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
 import net.minecraft.world.item.ItemStack
 import kotlin.math.sign
 
@@ -45,7 +48,6 @@ fun ResourceGhostSlot(
 	carried: () -> ItemStack,
 	onPlace: (ResourceComponent) -> Unit,
 	onClear: () -> Unit,
-	clickHandler: ClickHandler,
 	handleClick: (() -> Unit)? = null,
 	amount: Long = 1,
 	countText: String? = null,
@@ -53,7 +55,11 @@ fun ResourceGhostSlot(
 	onEditAmount: (() -> Unit)? = null,
 	modifier: Modifier = Modifier,
 ) {
-	var effectiveModifier = modifier
+	// Whatever the resource's own kind has to say about it - an item's enchantments, lore and the
+	// rest, a fluid's name and volume. Declared on the slot rather than reported to the screen: a
+	// ghost slot is not a real one, so vanilla's own hovered-slot tooltip never sees it, and the
+	// ones inside the filter card editor sit in a layer no host screen could track for them.
+	var effectiveModifier = modifier.tooltip(tooltipFor(resource, amount))
 	if (onAmountScroll != null) {
 		effectiveModifier = effectiveModifier.onScroll<UINode> { _, event ->
 			if (!resource.isBlank) onAmountScroll(event.scrollY.sign.toInt())
@@ -77,11 +83,6 @@ fun ResourceGhostSlot(
 		// The middle button is the amount gesture and the right one opens [handleClick]'s editor;
 		// anything else still places or clears, as every button did when they all went to [onClick] -
 		// vanilla's own ghost slots take either.
-		//
-		// Right-click has to be handled here and not only through [ClickHandler], which a host screen
-		// consumes the button with: the card editor is a *layer* and has no `mouseClicked` of its own
-		// to intercept from, so inside it the click fell through to [onClick] - clearing the very card
-		// the player right-clicked to configure.
 		onAuxClick = { _, button ->
 			when {
 				button == MouseButton.MIDDLE && !resource.isBlank -> onEditAmount?.invoke() ?: place()
@@ -90,9 +91,6 @@ fun ResourceGhostSlot(
 			}
 		},
 	) { isHovered, _, _ ->
-		LaunchedEffect(isHovered, resource, handleClick) {
-			clickHandler.setHovered(if (isHovered) handleClick else null)
-		}
 		val display = ResourceKindRegistry.forResource(resource)?.display
 		if (display == null) FakeSlot(null, isHovered, countText)
 		else display.SlotFace(resource, amount, isHovered, countText, enabled = true)
@@ -110,7 +108,6 @@ fun ResourceGhostSlotGrid(
 	carried: () -> ItemStack,
 	onPlace: (Int, ResourceComponent) -> Unit,
 	onClear: (Int) -> Unit,
-	clickHandler: ClickHandler,
 	handleClick: (Int) -> (() -> Unit)?,
 	amounts: List<Long>? = null,
 	/** Per-cell corner label. Omit it for [amountLabelFor] over the cell's own amount. */
@@ -129,7 +126,6 @@ fun ResourceGhostSlotGrid(
 						carried = carried,
 						onPlace = { onPlace(index, it) },
 						onClear = { onClear(index) },
-						clickHandler = clickHandler,
 						handleClick = handleClick(index),
 						amount = cellAmount,
 						// Labelled unless the caller says otherwise, rather than unlabelled unless
@@ -172,4 +168,17 @@ internal fun scrollStepFor(kind: ResourceKind?): Long {
 		shift -> steps.shift
 		else -> kind.authoredStep
 	}.coerceAtLeast(1L)
+}
+
+/**
+ * The tooltip lines for [resource], or none at all for a blank cell - an empty ghost slot is a
+ * placeholder, and naming it would be naming nothing.
+ *
+ * Asked of the resource's own kind, so a kind registered by an addon describes itself here with no
+ * edit: see [net.kernelpanicsoft.boilerplate.client.ResourceDisplayKind.tooltipLines].
+ */
+internal fun tooltipFor(resource: ResourceComponent, amount: Long): List<Component> {
+	if (resource.isBlank) return emptyList()
+	val kind = ResourceKindRegistry.forResource(resource) ?: return listOf(resource.displayName())
+	return kind.display?.tooltipLines(resource, amount) ?: listOf(resource.displayName())
 }

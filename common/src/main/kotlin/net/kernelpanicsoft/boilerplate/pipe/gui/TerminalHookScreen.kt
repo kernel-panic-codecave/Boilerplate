@@ -23,12 +23,11 @@ import net.minecraft.world.entity.player.Inventory
  * [net.kernelpanicsoft.boilerplate.pipe.hook.TerminalHookState.output], not an external chest
  * wired to some other face.
  *
- * Hovering a result cell or a sidebar icon tracks [hoveredStack]/[sidebarTooltip], read back by
- * the overridden [renderTooltip] - the same hook `ComposeContainerScreen.render` already calls
- * vanilla's own `AbstractContainerScreen.renderTooltip` through, genuinely *after* the whole
- * Compose tree finishes rendering rather than nested inside it, which is the only reliable way to
- * guarantee a tooltip paints above everything else (a hovered [TerminalSlot]'s own
- * `SlotHighlight` included).
+ * Result cells and sidebar icons declare their own tooltips
+ * ([net.kernelpanicsoft.archie.gui.modifiers.appearance.tooltip]); `ComposeContainerScreen.render`
+ * draws them after the whole Compose tree has finished, which is what guarantees a tooltip paints
+ * above everything else (a hovered [TerminalSlot]'s own `SlotHighlight` included). Hovering a
+ * result cell separately tracks [hoveredStack], which a recipe viewer reads as its focused stack.
  */
 class TerminalHookScreen(menu: TerminalHookMenu, playerInventory: Inventory, title: Component) :
 	AbstractTerminalHookScreen<TerminalHookMenu>(menu, playerInventory, title)

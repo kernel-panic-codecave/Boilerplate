@@ -26,7 +26,7 @@ import net.kernelpanicsoft.boilerplate.pipe.item.HookItem
 import net.kernelpanicsoft.boilerplate.pipe.item.PipeItem
 import net.kernelpanicsoft.boilerplate.power.CompressorEncasementType
 import net.kernelpanicsoft.boilerplate.power.PressureTankEncasementType
-import net.kernelpanicsoft.boilerplate.warehouse.item.WarehouseWandItem
+import net.kernelpanicsoft.boilerplate.warehouse.item.WarehousePlannerItem
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.client.renderer.item.ItemProperties
 import net.minecraft.core.registries.Registries
@@ -92,8 +92,8 @@ object ItemRegistry : ADeferredRegistryHolder<Item>(Boilerplate.MOD, Registries.
 		BlockItem(BlockRegistry.WarehouseController, itemProperties { tab(CreativeTabRegistry.Boilerplate) })
 	}
 
-	val WarehouseWand by register("warehouse_wand") {
-		WarehouseWandItem(itemProperties { tab(CreativeTabRegistry.Boilerplate); stacksTo(1) })
+	val WarehousePlanner by register("warehouse_planner") {
+		WarehousePlannerItem(itemProperties { tab(CreativeTabRegistry.Boilerplate); stacksTo(1) })
 	}
 
 	val GeneralRack by register("general_rack") {

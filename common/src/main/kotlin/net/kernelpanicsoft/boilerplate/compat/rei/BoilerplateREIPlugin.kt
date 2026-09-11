@@ -15,14 +15,23 @@ import me.shedaniel.rei.api.client.registry.transfer.simple.SimpleTransferHandle
 import me.shedaniel.rei.api.common.category.CategoryIdentifier
 import me.shedaniel.rei.api.common.display.Display
 import me.shedaniel.rei.api.common.display.SimpleGridMenuDisplay
+import me.shedaniel.rei.api.common.entry.EntryIngredient
 import me.shedaniel.rei.api.common.entry.InputIngredient
 import me.shedaniel.rei.api.common.entry.type.VanillaEntryTypes
 import me.shedaniel.rei.api.common.transfer.info.stack.SlotAccessor
 import me.shedaniel.rei.api.common.util.EntryStacks
+import net.kernelpanicsoft.boilerplate.compat.PatternFill
+import net.kernelpanicsoft.boilerplate.compat.ViewerResourceParsers
+import net.kernelpanicsoft.boilerplate.compat.craftingGridOf
+import net.kernelpanicsoft.boilerplate.compat.patternFillOf
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
+import net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu
+import earth.terrarium.common_storage_lib.resources.ResourceStack
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.crafting.RecipeHolder
 import net.kernelpanicsoft.boilerplate.compat.ViewerResourceStacks
 import me.shedaniel.rei.api.common.entry.EntryStack
 import dev.architectury.fluid.FluidStack
@@ -71,6 +80,7 @@ class BoilerplateREIPlugin : REIClientPlugin {
 	 * once it's arrived.
 	 */
 	override fun registerTransferHandlers(registry: TransferHandlerRegistry) {
+		registry.register(PatternFillHandler)
 		registry.register(object : SimpleTransferHandler {
 			override fun checkApplicable(context: TransferHandler.Context): TransferHandler.ApplicabilityResult =
 				if (context.menu is CraftingTerminalHookMenu && CATEGORY == context.display.categoryIdentifier && context.containerScreen != null) {
@@ -312,6 +322,89 @@ class BoilerplateREIPlugin : REIClientPlugin {
 		private const val COLOR_REQUESTABLE = 0x40FFA500
 		/** Not local and not reachable, but a known pattern could produce it somewhere reachable. */
 		private const val COLOR_CRAFTABLE = 0x400080FF
+	}
+}
+
+/**
+ * Fills a Pattern Terminal's ghost grid from whatever display REI is showing, whatever category it
+ * belongs to.
+ *
+ * A plain [TransferHandler] rather than the [SimpleTransferHandler] the Crafting Terminal uses:
+ * nothing here is a real [net.minecraft.world.inventory.Slot] and nothing is moved. A pattern is a
+ * *reference* to what a recipe needs, so the fill is one message describing the grid, and it
+ * succeeds whether or not the player owns any of the ingredients - which is also why
+ * [TransferHandler.Context.isActuallyCrafting] is the only gate: REI asks first to decide the
+ * button's own state, and only the real click should write anything.
+ *
+ * Applicable to every category, because a pattern terminal authors processing patterns - an
+ * unordered bag of inputs and outputs, needing no recipe type in particular. When the display does
+ * turn out to be backed by a vanilla crafting recipe, [patternFillOf] notices and switches the
+ * terminal to [net.kernelpanicsoft.boilerplate.crafting.PatternKind.CRAFTING] instead.
+ */
+private object PatternFillHandler : TransferHandler {
+	override fun checkApplicable(context: TransferHandler.Context): TransferHandler.ApplicabilityResult =
+		if (context.menu is PatternTerminalHookMenu && context.containerScreen != null) {
+			TransferHandler.ApplicabilityResult.createApplicable()
+		} else {
+			TransferHandler.ApplicabilityResult.createNotApplicable()
+		}
+
+	override fun handle(context: TransferHandler.Context): TransferHandler.Result {
+		val menu = context.menu as? PatternTerminalHookMenu ?: return TransferHandler.Result.createNotApplicable()
+		if (!context.isActuallyCrafting) return TransferHandler.Result.createSuccessful().blocksFurtherHandling()
+		menu.fillFromRecipe(fillOf(context.display))
+		return TransferHandler.Result.createSuccessful().blocksFurtherHandling()
+	}
+
+	/**
+	 * [display] as a pattern - resolved back to its own vanilla recipe where it has one, so a
+	 * crafting recipe keeps the shape [craftingGridOf] reads off it, and its displayed entries
+	 * otherwise.
+	 */
+	private fun fillOf(display: Display): PatternFill = patternFillOf(
+		craftingGridOf(backingRecipe(display)),
+		display.inputEntries.mapNotNull { stackOf(it) },
+		display.outputEntries.mapNotNull { stackOf(it) },
+	)
+
+	/**
+	 * The vanilla recipe [display] was generated from, or `null` for a display with no recipe behind
+	 * it at all (a mod-supplied one, an info page).
+	 *
+	 * REI identifies a display by the recipe's own id rather than handing the recipe over, so this
+	 * goes back through the client's own recipe manager - which holds every recipe the server synced
+	 * on join, so a crafting recipe is always found here even though the lookup is client-side.
+	 */
+	private fun backingRecipe(display: Display): RecipeHolder<*>? {
+		val id = display.displayLocation.orElse(null) ?: return null
+		return Minecraft.getInstance().level?.recipeManager?.byKey(id)?.orElse(null)
+	}
+
+	/**
+	 * [ingredient]'s first non-empty alternative as a resource, or `null` for one no registered kind
+	 * recognises.
+	 *
+	 * The first alternative for the same reason every other transfer in this mod picks it: a
+	 * tag-backed ingredient has several and a pattern cell can only name one.
+	 */
+	private fun stackOf(ingredient: EntryIngredient): ResourceStack<ResourceComponent>? =
+		ingredient.firstNotNullOfOrNull { entry -> if (entry.isEmpty) null else ReiResourceParsers.of(entry) }
+}
+
+/**
+ * How each resource kind is read back *out* of REI - the mirror of [ReiResourceStacks], and what
+ * lets a pattern be authored from a recipe naming a fluid rather than only from an item one.
+ */
+val ReiResourceParsers = ViewerResourceParsers<EntryStack<*>>().apply {
+	register("item") { entry ->
+		if (entry.type != VanillaEntryTypes.ITEM) null
+		else entry.castValue<ItemStack>().takeUnless { it.isEmpty }
+			?.let { ResourceStack(ItemResource.of(it), it.count.toLong()) }
+	}
+	register("fluid") { entry ->
+		if (entry.type != VanillaEntryTypes.FLUID) null
+		else entry.castValue<FluidStack>().takeUnless { it.isEmpty }
+			?.let { ResourceStack(FluidResource.of(it.fluid), it.amount.coerceAtLeast(1L)) }
 	}
 }
 

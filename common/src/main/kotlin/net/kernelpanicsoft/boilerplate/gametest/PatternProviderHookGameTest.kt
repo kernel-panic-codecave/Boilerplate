@@ -211,6 +211,7 @@ class PatternProviderHookGameTest {
 		val hookPos = BlockPos(3, 2, 2)
 		val northTablePos = hookPos.relative(Direction.NORTH)
 		val southTablePos = hookPos.relative(Direction.SOUTH)
+		placeCreativePressureSource(feedPipePos.above())
 
 		setBlock(rackPos, Blocks.CHEST.defaultBlockState())
 		setBlock(controllerPos, BlockRegistry.WarehouseController.defaultBlockState())

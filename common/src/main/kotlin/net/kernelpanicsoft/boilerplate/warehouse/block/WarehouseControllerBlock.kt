@@ -19,9 +19,9 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
 
 /**
- * A warehouse's single binding point - see [net.kernelpanicsoft.boilerplate.warehouse.item.WarehouseWandItem]/[net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity].
+ * A warehouse's single binding point - see [net.kernelpanicsoft.boilerplate.warehouse.item.WarehousePlannerItem]/[net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity].
  * Empty-handed use opens the controller's own filter/priority menu ([net.kernelpanicsoft.boilerplate.warehouse.gui.WarehouseControllerScreen]);
- * the wand's own bind interaction is item-based ([net.kernelpanicsoft.boilerplate.warehouse.item.WarehouseWandItem.useOn]) and keeps priority
+ * the planner's own bind interaction is item-based ([net.kernelpanicsoft.boilerplate.warehouse.item.WarehousePlannerItem.useOn]) and keeps priority
  * over it.
  */
 class WarehouseControllerBlock(properties: Properties) : BaseEntityBlock(properties) {

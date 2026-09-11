@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "boilerplate:item/warehouse_wand"
+    "layer0": "boilerplate:item/warehouse_planner"
   }
 }

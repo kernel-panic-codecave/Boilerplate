@@ -7,7 +7,7 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox
 import net.kernelpanicsoft.boilerplate.warehouse.entity.WarehouseControllerBlockEntity
 
 /**
- * The warehouse volume a [net.kernelpanicsoft.boilerplate.warehouse.item.WarehouseWandItem] binds to a [WarehouseControllerBlockEntity] - always
+ * The warehouse volume a [net.kernelpanicsoft.boilerplate.warehouse.item.WarehousePlannerItem] binds to a [WarehouseControllerBlockEntity] - always
  * normalized so [min]/[max] are the actual lower/upper corners regardless of the order the two
  * clicks that produced them came in (see [of]).
  */

@@ -94,7 +94,7 @@ internal object BoilerplateDatagen : ADatagenEventObject(Boilerplate.MOD) {
 				add("${ItemRegistry.Pattern.descriptionId}.kind.crafting", "Crafting Pattern")
 				add("${ItemRegistry.Pattern.descriptionId}.kind.processing", "Processing Pattern")
 
-				addItem("Warehouse Wand") { ItemRegistry.WarehouseWand }
+				addItem("Warehouse Planner") { ItemRegistry.WarehousePlanner }
 				addItem("Brass Wrench") { ItemRegistry.BrassWrench }
 				addItem("Diamond Wrench") { ItemRegistry.DiamondWrench }
 			}

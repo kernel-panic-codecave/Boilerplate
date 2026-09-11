@@ -85,7 +85,21 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 	var speedMultiplier: Float = 1f
 		private set
 
-	/** Ticks since [refreshSpeedMultiplier] last actually resolved a line - starts due, so the first tick with anything in it reads for real. */
+	/**
+	 * Whether this segment has any pressure behind it at all - see [refreshPressureState].
+	 *
+	 * A segment without it is **dead**: it does not advance what it holds, does not deliver, and is
+	 * not accepted as the next hop by the segment before it. That is the whole of the rule - a
+	 * network with nothing pushing it moves nothing, and a pipe run is not a place things can be
+	 * stored while you go and fix that.
+	 *
+	 * Starts `true` so a freshly-loaded segment carries on until its first real reading rather than
+	 * stalling for a tick on every chunk load.
+	 */
+	var hasPressure: Boolean = true
+		private set
+
+	/** Ticks since [refreshPressureState] last actually resolved a line - starts due, so the first tick reads for real. */
 	private var ticksSincePressureCheck = PRESSURE_REFRESH_INTERVAL_TICKS
 
 	override fun setRemoved() {
@@ -131,7 +145,18 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		// Before anything is advanced, so the loop below and the commit at the end both work on the
 		// merged form - see [coalesceTravelingItems].
 		coalesceTravelingItems(items, BoilerplateConfig.Gameplay.Pipes.mergeProgressWindow.toFloat(), ::mergeCapacityOf)
-		if (items.isNotEmpty()) refreshSpeedMultiplier(serverLevel)
+		// Read even while empty, unlike the rest of this loop: an empty segment still has to be able
+		// to answer whether the segment before it may hand over ([hasPressure]), and that answer is
+		// exactly what decides whether a dead run quietly fills up with cargo.
+		refreshPressureState(serverLevel)
+		if (!hasPressure) {
+			// Nothing advances, nothing arrives, nothing hops onward. What is already in the tube
+			// waits here until the air comes back, which is the point: a dead network is stopped,
+			// not slowed. The merge above still applies, since it only rewrites what is already here.
+			if (items != stored) stored.setAll(items)
+			recordInbound(serverLevel, items)
+			return
+		}
 		val segmentSpeed = (1f / BoilerplateConfig.Gameplay.Pipes.ticksPerSegment) * speedMultiplier
 		var index = 0
 		while (index < items.size) {
@@ -174,6 +199,16 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 					jamAndRelease(serverLevel, pos, item)
 					items.removeAt(index)
 					hopped = true
+					continue
+				}
+				// A dead segment takes nothing. The delivery waits at this end of the seam instead,
+				// the same stall a full destination causes - so a run that loses its pressure halfway
+				// backs up visibly rather than swallowing everything sent into it. Read from the
+				// neighbour's own last reading, so this is at worst [PRESSURE_REFRESH_INTERVAL_TICKS]
+				// behind the moment its supply actually ran out.
+				if (!nextTile.hasPressure) {
+					items[index] = item.copy(progress = 1f)
+					index++
 					continue
 				}
 				// Read once and reused for the sync below: every access to the property decodes the
@@ -286,14 +321,7 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		// against it is comparing against what is actually persisted right now.
 		if (items != stored) stored.setAll(items)
 
-		// Counted from the *final* list rather than the snapshot at the top: a delivery that hopped
-		// away this tick is counted by the segment it landed in, or by neither when that segment has
-		// already ticked - never twice, which is what would happen if both ends counted it. See
-		// [InboundCensus] for why one tick of undercount is the safe side of that trade.
-		for (item in items) {
-			val destination = item.path.lastOrNull() ?: continue
-			InboundCensus.record(serverLevel, destination, item.stack.resource as ResourceComponent, item.stack.amount)
-		}
+		recordInbound(serverLevel, items)
 
 		ticksSinceSync++
 		if (hopped || (items.isNotEmpty() && ticksSinceSync >= SYNC_INTERVAL_TICKS)) {
@@ -301,29 +329,6 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		}
 	}
 
-	/**
-	 * Re-reads this segment's own pressure line and maps whatever it currently *holds* onto
-	 * [speedMultiplier] - `1.0`x with no line or an empty one, rising to
-	 * [net.kernelpanicsoft.boilerplate.config.BoilerplateConfig.Gameplay.Pipes.maxSpeedMultiplier]
-	 * once that category's own `pressureForMaxSpeed` is available.
-	 *
-	 * Deliberately a **simulate-only** read (`extract(..., true)`): pipes are scaled *by* pressure,
-	 * they don't spend it. Every other [net.kernelpanicsoft.boilerplate.power.PressureConsumer] in
-	 * the mod draws what it uses, so this is the one place that reads the line without touching it -
-	 * a pipe run isn't machinery competing for supply, it just moves faster through a well-pressurised
-	 * network.
-	 *
-	 * Also deliberately never gates: an unpressurised pipe still runs at the baseline `1.0`x rather
-	 * than stopping. Pressure here is purely a bonus, unlike
-	 * [net.kernelpanicsoft.boilerplate.power.PressureConsumer.onPressureTick]'s hard `0.0` floor -
-	 * items already in flight have nowhere to wait, and stranding a network's entire contents the
-	 * moment a compressor runs dry is a much harsher failure than everything simply moving at its
-	 * old speed.
-	 *
-	 * Throttled to [PRESSURE_REFRESH_INTERVAL_TICKS], and only run at all while this segment
-	 * actually holds something: [PressureLine.find] walks its network's members looking for an
-	 * endpoint, which is far too expensive to repeat per pipe per tick.
-	 */
 	/**
 	 * The most one merged delivery of [resource] may carry, in this segment - one whole of that
 	 * resource's own kind (a stack, a bucket) times
@@ -364,18 +369,69 @@ open class PipeBlockEntity(type: BlockEntityType<*>, pos: BlockPos, state: Block
 		level.playSound(null, pos, SoundRegistry.PipeThunk, SoundSource.BLOCKS, THUNK_VOLUME, pitch + jitter)
 	}
 
-	private fun refreshSpeedMultiplier(level: ServerLevel) {
+	/**
+	 * Tells [InboundCensus] what [items] is still carrying and where each of it is bound.
+	 *
+	 * Counted from the *final* list rather than the snapshot at the top of the tick: a delivery that
+	 * hopped away is counted by the segment it landed in, or by neither when that segment has
+	 * already ticked - never twice, which is what would happen if both ends counted it. See
+	 * [InboundCensus] for why one tick of undercount is the safe side of that trade.
+	 *
+	 * A dead segment counts too. What it is holding is still committed against its destination's
+	 * room, and forgetting it would have an extractor elsewhere on the network size its next pull as
+	 * though the backlog stuck behind the dead stretch did not exist.
+	 */
+	private fun recordInbound(level: ServerLevel, items: List<TravelingItem>) {
+		for (item in items) {
+			val destination = item.path.lastOrNull() ?: continue
+			InboundCensus.record(level, destination, item.stack.resource as ResourceComponent, item.stack.amount)
+		}
+	}
+
+	/**
+	 * Re-reads this segment's own pressure line onto [hasPressure] and [speedMultiplier].
+	 *
+	 * No line, or a line with nothing in it, means **dead** - not slow. A pneumatic tube with no air
+	 * behind it is a pipe full of stationary cargo, and making that the failure is what stops a pipe
+	 * network being free infinite transport that pressure merely accelerates. Above zero it scales
+	 * from the baseline `1.0`x up to
+	 * [net.kernelpanicsoft.boilerplate.config.BoilerplateConfig.Gameplay.Pipes.maxSpeedMultiplier]
+	 * once that category's own `pressureForMaxSpeed` is available.
+	 *
+	 * Deliberately a **simulate-only** read (`extract(..., true)`): pipes are scaled *by* pressure,
+	 * they don't spend it. Every other [net.kernelpanicsoft.boilerplate.power.PressureConsumer] in
+	 * the mod draws what it uses, so this is the one place that reads the line without touching it -
+	 * a pipe run isn't machinery competing for supply, it just runs on whatever the network has.
+	 *
+	 * Throttled to [PRESSURE_REFRESH_INTERVAL_TICKS]: [PressureLine.find] walks its network's
+	 * members looking for an endpoint, which is far too expensive to repeat per pipe per tick. A
+	 * segment is therefore up to that many ticks behind its supply actually failing, in both
+	 * directions.
+	 */
+	private fun refreshPressureState(level: ServerLevel) {
 		ticksSincePressureCheck++
-		if (ticksSincePressureCheck < PRESSURE_REFRESH_INTERVAL_TICKS) return
+		// Throttled only while the segment is alive. A dead one re-reads every tick, because the
+		// throttle is otherwise the length of time a run stays stopped after its supply comes back -
+		// and it is what a freshly placed or freshly loaded segment sits out before it will carry
+		// anything at all, its own network not yet being registered on the tick it first looks.
+		// [PressureLine.find] memoises its walk per network per tick, so every dead segment on one
+		// network shares a single lookup.
+		if (hasPressure && ticksSincePressureCheck < PRESSURE_REFRESH_INTERVAL_TICKS) return
 		ticksSincePressureCheck = 0
 
 		val line = PressureLine.find(level, blockPos)
 		if (line == null) {
-			speedMultiplier = 1f
+			hasPressure = false
+			speedMultiplier = 0f
 			return
 		}
 		val pressureForMaxSpeed = BoilerplateConfig.Gameplay.Pipes.pressureForMaxSpeed
 		val available = line.extract(pressureForMaxSpeed, true)
+		hasPressure = available > 0
+		if (!hasPressure) {
+			speedMultiplier = 0f
+			return
+		}
 		val fraction = (available.toDouble() / pressureForMaxSpeed).coerceIn(0.0, 1.0)
 		speedMultiplier = (1.0 + fraction * (BoilerplateConfig.Gameplay.Pipes.maxSpeedMultiplier - 1.0)).toFloat()
 	}

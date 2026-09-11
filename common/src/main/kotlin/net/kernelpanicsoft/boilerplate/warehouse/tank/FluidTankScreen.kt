@@ -29,7 +29,7 @@ import net.minecraft.world.entity.player.Inventory
  * The fluid tank's screen: what it holds, how much, and how full it is.
  *
  * The mod's first fluid-native GUI. Everything it needs already existed - Archie's [FluidTank]
- * widget draws the fluid's own still sprite through `AFluidRenderPlatform`, which is the same
+ * widget draws the fluid's own still sprite through Architectury's `FluidStackHooks`, which is the same
  * loader seam the in-pipe droplet renderer goes through - so the work here was syncing the
  * contents, not drawing them.
  *

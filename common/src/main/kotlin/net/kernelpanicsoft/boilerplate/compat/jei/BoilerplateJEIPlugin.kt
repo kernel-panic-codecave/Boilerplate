@@ -1,6 +1,7 @@
 package net.kernelpanicsoft.boilerplate.compat.jei
 
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import mezz.jei.api.IModPlugin
 import mezz.jei.api.JeiPlugin
@@ -16,14 +17,19 @@ import mezz.jei.api.recipe.transfer.IRecipeTransferError
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandler
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper
 import mezz.jei.api.recipe.transfer.IRecipeTransferInfo
+import mezz.jei.api.recipe.transfer.IUniversalRecipeTransferHandler
 import mezz.jei.api.registration.IGuiHandlerRegistration
 import mezz.jei.api.registration.IRecipeTransferRegistration
 import mezz.jei.api.runtime.IClickableIngredient
 import net.kernelpanicsoft.archie.gui.util.extension.invoke
 import net.kernelpanicsoft.archie.gui.util.extension.pose
 import net.kernelpanicsoft.boilerplate.Boilerplate
+import net.kernelpanicsoft.boilerplate.compat.PatternFill
+import net.kernelpanicsoft.boilerplate.compat.craftingGridOf
+import net.kernelpanicsoft.boilerplate.compat.patternFillOf
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
+import net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.renderer.Rect2i
@@ -81,6 +87,7 @@ class BoilerplateJEIPlugin : IModPlugin {
 	 * click succeeds once it's arrived.
 	 */
 	override fun registerRecipeTransferHandlers(registration: IRecipeTransferRegistration) {
+		registration.addUniversalRecipeTransferHandler(PatternFillHandler)
 		val helper = registration.transferHelper
 		val transferInfo = object : IRecipeTransferInfo<CraftingTerminalHookMenu, RecipeHolder<CraftingRecipe>> {
 			override fun getContainerClass() = CraftingTerminalHookMenu::class.java
@@ -273,6 +280,68 @@ private class MissingIngredientError(private val menu: CraftingTerminalHookMenu,
 	override fun getTooltip(tooltip: ITooltipBuilder) {
 		tooltip.add(Component.translatable("jei.tooltip.error.recipe.transfer.missing"))
 	}
+}
+
+/**
+ * Fills a Pattern Terminal's ghost grid from whatever recipe JEI is showing, whatever type it is.
+ *
+ * Universal ([IUniversalRecipeTransferHandler]) rather than registered against one
+ * [mezz.jei.api.recipe.RecipeType], because a pattern terminal authors processing patterns - an
+ * unordered bag of inputs and outputs, needing no recipe type in particular. When the recipe does
+ * turn out to be a vanilla crafting one, [patternFillOf] notices and switches the terminal to
+ * [net.kernelpanicsoft.boilerplate.crafting.PatternKind.CRAFTING] instead.
+ *
+ * Nothing is moved and nothing is checked: a pattern is a *reference* to what a recipe needs, so
+ * the fill succeeds whether or not the player owns a single one of the ingredients, and the button
+ * is never greyed out here.
+ */
+private object PatternFillHandler : IUniversalRecipeTransferHandler<PatternTerminalHookMenu> {
+	override fun getContainerClass(): Class<out PatternTerminalHookMenu> = PatternTerminalHookMenu::class.java
+	override fun getMenuType(): Optional<MenuType<PatternTerminalHookMenu>> = Optional.of(GuiRegistry.PatternTerminalHook)
+
+	/**
+	 * @param maxTransfer ignored - a pattern names one run of a recipe however many times the player
+	 *   could afford to run it, so there is no "as much as possible" to honour.
+	 * @param doTransfer JEI calls this first as a dry run to decide the button's own state, then
+	 *   again on a real click. Only the real click writes, for the same reason the Crafting
+	 *   Terminal's own handler gates on it: the dry run is re-evaluated whenever JEI feels like it.
+	 * @return always `null` - a fill cannot fail, so JEI is never given an error to show.
+	 */
+	override fun transferRecipe(
+		container: PatternTerminalHookMenu,
+		recipe: Any,
+		recipeSlots: IRecipeSlotsView,
+		player: Player,
+		maxTransfer: Boolean,
+		doTransfer: Boolean,
+	): IRecipeTransferError? {
+		if (doTransfer) container.fillFromRecipe(fillOf(recipe, recipeSlots))
+		return null
+	}
+
+	/**
+	 * [recipe] as a pattern - read off the vanilla recipe itself when JEI is showing one, so a
+	 * crafting recipe keeps the shape [craftingGridOf] reads off it, and off the laid-out slots
+	 * otherwise.
+	 */
+	private fun fillOf(recipe: Any, recipeSlots: IRecipeSlotsView): PatternFill = patternFillOf(
+		craftingGridOf(recipe as? RecipeHolder<*>),
+		stacksOf(recipeSlots, RecipeIngredientRole.INPUT),
+		stacksOf(recipeSlots, RecipeIngredientRole.OUTPUT),
+	)
+
+	/**
+	 * Every slot playing [role], as resources, skipping the ones no registered kind recognises.
+	 *
+	 * Each slot contributes its first alternative for the same reason every other transfer in this
+	 * mod picks it: a tag-backed ingredient has several and a pattern cell can only name one.
+	 */
+	private fun stacksOf(recipeSlots: IRecipeSlotsView, role: RecipeIngredientRole): List<ResourceStack<ResourceComponent>> =
+		recipeSlots.getSlotViews(role).mapNotNull { view ->
+			view.allIngredientsList.firstNotNullOfOrNull { ingredient ->
+				ingredient?.let { JeiResourceParsers.of(it) }
+			}
+		}
 }
 
 /** Whether *any* of [view]'s possible alternatives ([resourcesOf], not just [IRecipeSlotView.getDisplayedItemStack]'s current cycling frame) shows up in [menu]'s own already-synced [CraftingTerminalHookMenu.results] - reachable somewhere the terminal could request it from, even if not physically present yet. */

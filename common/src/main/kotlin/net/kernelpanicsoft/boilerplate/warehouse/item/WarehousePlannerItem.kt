@@ -25,7 +25,7 @@ import net.minecraft.world.item.context.UseOnContext
  * else while both corners are already set restarts the selection from that click instead of
  * getting stuck waiting for a controller.
  */
-class WarehouseWandItem(properties: Properties) : Item(properties) {
+class WarehousePlannerItem(properties: Properties) : Item(properties) {
 	override fun useOn(context: UseOnContext): InteractionResult {
 		val level = context.level
 		val pos = context.clickedPos

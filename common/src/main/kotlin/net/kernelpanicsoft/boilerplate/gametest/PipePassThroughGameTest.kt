@@ -87,6 +87,7 @@ class PipePassThroughGameTest {
 		val hookPos = BlockPos(1, 2, 0)
 		val middlePos = BlockPos(1, 2, 1)
 		val destPos = BlockPos(1, 2, 2)
+		placeCreativePressureSource(middlePos.above())
 		val serverLevel = level as ServerLevel
 
 		setBlock(hookPos, BlockRegistry.Multipart.defaultBlockState())
@@ -184,6 +185,7 @@ class PipePassThroughGameTest {
 		setBlock(pushedIntoPos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(middlePos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+		placeCreativePressureSource(pushedIntoPos.above())
 
 		val diamond = ItemResource.of(ItemStack(Items.DIAMOND))
 

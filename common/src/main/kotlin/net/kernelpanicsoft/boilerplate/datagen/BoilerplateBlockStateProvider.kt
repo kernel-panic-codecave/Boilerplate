@@ -61,7 +61,7 @@ internal fun ABlockStateProvider.boilerplateBlockStates() {
 
 	val warehouseController = blockModels().getExistingFile(modLoc("warehouse_controller"))
 	simpleBlockWithItem(BlockRegistry.WarehouseController, warehouseController)
-	itemModels().basicItem(ItemRegistry.WarehouseWand)
+	itemModels().basicItem(ItemRegistry.WarehousePlanner)
 
 	val gantryRailCore = blockModels().getExistingFile(modLoc("gantry_rail_core"))
 	val gantryRailArm = blockModels().getExistingFile(modLoc("gantry_rail_arm"))

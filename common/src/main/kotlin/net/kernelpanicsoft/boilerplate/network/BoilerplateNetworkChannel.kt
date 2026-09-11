@@ -51,6 +51,7 @@ object BoilerplateNetworkChannel : NetworkChannel(Boilerplate.MOD % "main") {
 		serverbound(RequestCraftGridPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestPatternGridPreviewPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetPatternKindPacket::class) { packet, context -> packet.handleOnServer(context) }
+		serverbound(FillPatternFromRecipePacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestCraftingBufferStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(RequestRequesterStatusPacket::class) { packet, context -> packet.handleOnServer(context) }
 		serverbound(SetStockingTargetPacket::class) { packet, context -> packet.handleOnServer(context) }

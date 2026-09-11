@@ -31,7 +31,7 @@ import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.entity.ChestBlockEntity
 import net.minecraft.world.phys.Vec3
 
-/** GameTest coverage for [net.kernelpanicsoft.boilerplate.warehouse.item.WarehouseWandItem]'s bind flow. */
+/** GameTest coverage for [net.kernelpanicsoft.boilerplate.warehouse.item.WarehousePlannerItem]'s bind flow. */
 @Suppress("unused")
 class WarehouseGameTest {
 	@GameTest(template = SMALL, timeoutTicks = 20)
@@ -43,7 +43,7 @@ class WarehouseGameTest {
 		placeAdjacentPressureSource(controllerPos.below())
 
 		val player = makeMockPlayer(GameType.CREATIVE)
-		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehouseWand))
+		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehousePlanner))
 
 		useBlock(cornerOnePos, player)
 		useBlock(cornerTwoPos, player)
@@ -68,7 +68,7 @@ class WarehouseGameTest {
 		placeAdjacentPressureSource(controllerPos.below())
 
 		val player = makeMockPlayer(GameType.CREATIVE)
-		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehouseWand))
+		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehousePlanner))
 
 		useBlock(cornerOnePos, player)
 		useBlock(cornerTwoPos, player)
@@ -419,7 +419,7 @@ class WarehouseGameTest {
 		placeAdjacentPressureSource(controllerPos.below())
 
 		val player = makeMockPlayer(GameType.CREATIVE)
-		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehouseWand))
+		player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack(ItemRegistry.WarehousePlanner))
 
 		useBlock(cornerOnePos, player)
 		useBlock(cornerTwoPos, player)

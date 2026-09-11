@@ -903,6 +903,7 @@ class SubnetBoundaryGameTest {
 		val interfacePos = BlockPos(0, 2, 0)
 		val pipePos = BlockPos(0, 2, 1)
 		val destPos = BlockPos(0, 2, 2)
+		placeCreativePressureSource(pipePos.above())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
 		val interfaceTile = hookAt(interfacePos)
@@ -974,6 +975,7 @@ class SubnetBoundaryGameTest {
 		val feederPos = BlockPos(0, 2, 1)
 		val pipePos = BlockPos(1, 2, 0)
 		val destPos = BlockPos(2, 2, 0)
+		placeCreativePressureSource(pipePos.above())
 		setBlock(feederPos, Blocks.CHEST.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
@@ -1010,6 +1012,7 @@ class SubnetBoundaryGameTest {
 		val pipePos = BlockPos(1, 2, 0)
 		val filterPipePos = BlockPos(2, 2, 0)
 		val destPos = BlockPos(2, 2, 1)
+		placeCreativePressureSource(pipePos.above())
 		setBlock(feederPos, Blocks.CHEST.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
 
@@ -1051,6 +1054,7 @@ class SubnetBoundaryGameTest {
 		val pipePos = BlockPos(1, 3, 0)
 		val filterPipePos = BlockPos(2, 3, 0)
 		val machineBPos = BlockPos(2, 2, 0)
+		placeCreativePressureSource(pipePos.above())
 		setBlock(machineAPos, Blocks.CHEST.defaultBlockState())
 		setBlock(machineBPos, Blocks.CHEST.defaultBlockState())
 
@@ -1093,6 +1097,7 @@ class SubnetBoundaryGameTest {
 		val machine2Pos = BlockPos(2, 2, 0)
 		val interface2Pos = BlockPos(2, 3, 0)
 		val pipePos = BlockPos(1, 3, 0)
+		placeCreativePressureSource(pipePos.above())
 		setBlock(machine1Pos, Blocks.CHEST.defaultBlockState())
 		setBlock(machine2Pos, Blocks.CHEST.defaultBlockState())
 

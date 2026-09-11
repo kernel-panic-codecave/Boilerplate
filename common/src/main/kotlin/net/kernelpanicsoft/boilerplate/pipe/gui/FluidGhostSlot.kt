@@ -16,7 +16,7 @@ import net.kernelpanicsoft.archie.gui.layout.Row
 import net.kernelpanicsoft.archie.gui.modifiers.Modifier
 import net.kernelpanicsoft.archie.gui.modifiers.size
 import net.kernelpanicsoft.archie.gui.nodes.UINode
-import net.kernelpanicsoft.archie.gui.render.AFluidRenderPlatform
+import dev.architectury.hooks.fluid.FluidStackHooks
 import net.kernelpanicsoft.archie.gui.theme.LocalTheme
 import net.kernelpanicsoft.archie.gui.util.extension.drawThemeState
 import net.kernelpanicsoft.archie.gui.util.extension.invoke
@@ -90,7 +90,7 @@ fun FluidGhostSlotGrid(
 
 /**
  * The slot frame with [resource]'s own still texture and tint painted inside it, through
- * [AFluidRenderPlatform] - the same bridge [net.kernelpanicsoft.archie.gui.composables.basic.FluidTank]
+ * [FluidStackHooks] - the same lookup [net.kernelpanicsoft.archie.gui.composables.basic.FluidTank]
  * uses, so a modded fluid looks the same here as it does anywhere else.
  *
  * The sprite is stretched to the slot interior rather than tiled: at 16x16 inside an 18x18 frame
@@ -104,8 +104,8 @@ internal fun FluidSlotFace(resource: FluidResource, isHovered: Boolean, countTex
 		return
 	}
 	SpriteSlotFace(
-		AFluidRenderPlatform.getStillSprite(resource.type),
-		AFluidRenderPlatform.getTintColor(resource.type),
+		FluidStackHooks.getStillTexture(resource.type),
+		FluidStackHooks.getColor(resource.type),
 		isHovered,
 		countText,
 	)

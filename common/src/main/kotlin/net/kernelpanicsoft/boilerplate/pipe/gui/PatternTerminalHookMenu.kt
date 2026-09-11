@@ -14,6 +14,7 @@ import net.kernelpanicsoft.boilerplate.pipe.hook.CraftingTerminalHookState
 import net.kernelpanicsoft.boilerplate.pipe.hook.PatternTerminalHookState
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
 import net.kernelpanicsoft.boilerplate.registry.ItemRegistry
+import net.kernelpanicsoft.boilerplate.compat.PatternFill
 import net.minecraft.core.Direction
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -184,6 +185,42 @@ class PatternTerminalHookMenu(id: Int, inventory: Inventory, tile: MultipartBloc
 		if (index !in state.ghostOutputs.indices) return
 		state.ghostOutputs[index] = resource
 		state.ghostOutputAmounts[index] = amount.coerceAtLeast(1)
+	}
+
+	/**
+	 * Client-side: replaces the whole ghost grid with [fill]'s cells and switches to its kind - what
+	 * a recipe viewer's transfer button does to this terminal.
+	 *
+	 * See [net.kernelpanicsoft.boilerplate.network.FillPatternFromRecipePacket] for why the whole
+	 * grid and the kind travel together rather than as one message per cell.
+	 */
+	fun fillFromRecipe(fill: PatternFill) {
+		BoilerplateNetworkChannel.toServer(FillPatternFromRecipePacket(fill.kind, fill.inputs, fill.outputs))
+	}
+
+	/**
+	 * Server-side: applies [fillFromRecipe]'s request.
+	 *
+	 * The kind is set first, since it decides what the cells mean - a per-cell input amount is only
+	 * read in [PatternKind.PROCESSING] ([PatternTerminalHookState.ghostInputAmounts]), and the output
+	 * cells are only read there at all.
+	 *
+	 * Cells past the grid are dropped and a short list leaves the rest blank, so a viewer showing a
+	 * recipe with more ingredients than a pattern can hold fills what it can rather than failing or
+	 * writing over whatever a previous recipe left behind.
+	 */
+	fun applyRecipeFill(kind: PatternKind, inputs: List<ResourceStack<*>>, outputs: List<ResourceStack<*>>) {
+		val state = tile.hooks[direction.name] as? PatternTerminalHookState ?: return
+		state.patternKind = kind
+		for (index in 0 until PatternTerminalHookState.GRID_SIZE) {
+			val input = inputs.getOrNull(index)
+			state.ghostInputs[index] = (input?.resource as? ResourceComponent)?.takeIf { input.amount > 0 } ?: ItemResource.BLANK
+			state.ghostInputAmounts[index] = input?.amount?.coerceAtLeast(1L) ?: 1L
+
+			val output = outputs.getOrNull(index)
+			state.ghostOutputs[index] = (output?.resource as? ResourceComponent)?.takeIf { output.amount > 0 } ?: ItemResource.BLANK
+			state.ghostOutputAmounts[index] = output?.amount?.coerceAtLeast(1L) ?: 1L
+		}
 	}
 
 	/** Client-side: asks the server to try [PatternEncoder.encodeAndConsume]ing the current ghost grid. */

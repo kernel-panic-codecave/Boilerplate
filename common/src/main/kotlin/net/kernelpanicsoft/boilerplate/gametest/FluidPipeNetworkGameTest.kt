@@ -130,6 +130,7 @@ class FluidPipeNetworkGameTest {
 		val secondPos = BlockPos(4, 2, 5)
 		setBlock(firstPos, BlockRegistry.Pipe.defaultBlockState())
 		setBlock(secondPos, BlockRegistry.Pipe.defaultBlockState())
+		placeCreativePressureSource(firstPos.above())
 
 		val water = FluidResource.of(Fluids.WATER)
 		val bucket = FluidAmounts.toPlatformAmount(1000L)

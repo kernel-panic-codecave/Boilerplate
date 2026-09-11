@@ -1,10 +1,13 @@
 package net.kernelpanicsoft.boilerplate.compat.jei
 
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
 import mezz.jei.api.gui.builder.IClickableIngredientFactory
+import mezz.jei.api.ingredients.ITypedIngredient
 import mezz.jei.api.ingredients.IIngredientType
 import mezz.jei.api.runtime.IClickableIngredient
 import mezz.jei.api.constants.VanillaTypes
+import net.kernelpanicsoft.boilerplate.compat.ViewerResourceParsers
 import net.kernelpanicsoft.boilerplate.compat.ViewerResourceStacks
 import net.minecraft.client.renderer.Rect2i
 import java.util.Optional
@@ -37,5 +40,21 @@ val JeiResourceStacks = ViewerResourceStacks<JeiIngredient<*>>().apply {
 	register("item") { resource, amount ->
 		(resource as? ItemResource)?.takeIf { !it.isBlank }
 			?.let { JeiIngredient(VanillaTypes.ITEM_STACK, it.toStack(amount.toInt().coerceAtLeast(1))) }
+	}
+}
+
+/**
+ * How each resource kind is read back *out* of JEI - the mirror of [JeiResourceStacks], and what
+ * lets a pattern be authored from a recipe naming something other than an item.
+ *
+ * Split across the loaders for exactly the reason [JeiResourceStacks] is: JEI's fluid ingredient
+ * type cannot be named from `common`, so each loader registers its own parser next to its own
+ * converter, and every further kind plugs in the same way.
+ */
+val JeiResourceParsers = ViewerResourceParsers<ITypedIngredient<*>>().apply {
+	register("item") { ingredient ->
+		ingredient.getIngredient(VanillaTypes.ITEM_STACK).orElse(null)
+			?.takeUnless { it.isEmpty }
+			?.let { ResourceStack(ItemResource.of(it), it.count.toLong()) }
 	}
 }

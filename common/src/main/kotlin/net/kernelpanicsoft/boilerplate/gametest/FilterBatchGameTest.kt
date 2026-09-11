@@ -272,6 +272,7 @@ class FilterBatchGameTest {
 		val destPos = BlockPos(0, 2, 2)
 		setBlock(pipePos, BlockRegistry.Multipart.defaultBlockState())
 		setBlock(destPos, Blocks.CHEST.defaultBlockState())
+		placeCreativePressureSource(pipePos.above())
 
 		val dest = getBlockEntity(destPos) as ChestBlockEntity
 		dest.setItem(0, ItemStack(Items.DIAMOND, 62))

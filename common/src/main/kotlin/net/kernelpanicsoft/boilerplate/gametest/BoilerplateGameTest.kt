@@ -189,5 +189,7 @@ internal fun AGametestEvents.ArchieGameTestBuilder.boilerplateGameTests() {
 		register<StoreSortGameTest>()
 		register<ExtractionInFlightGameTest>()
 		register<FuzzySearchGameTest>()
+		register<PatternRecipeFillGameTest>()
+		register<DeadNetworkGameTest>()
 	}
 }

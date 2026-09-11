@@ -5,7 +5,9 @@ import dev.emi.emi.api.EmiPlugin
 import dev.emi.emi.api.EmiRegistry
 import dev.emi.emi.api.recipe.EmiRecipe
 import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories
+import dev.emi.emi.api.recipe.EmiPlayerInventory
 import dev.emi.emi.api.recipe.handler.EmiCraftContext
+import dev.emi.emi.api.recipe.handler.EmiRecipeHandler
 import dev.emi.emi.api.recipe.handler.StandardRecipeHandler
 import dev.emi.emi.api.stack.EmiIngredient
 import dev.emi.emi.api.stack.EmiStack
@@ -14,14 +16,22 @@ import dev.emi.emi.api.widget.Bounds
 import dev.emi.emi.api.widget.SlotWidget
 import dev.emi.emi.api.widget.Widget
 import earth.terrarium.common_storage_lib.resources.ResourceComponent
+import earth.terrarium.common_storage_lib.resources.ResourceStack
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
+import net.kernelpanicsoft.boilerplate.compat.PatternFill
+import net.kernelpanicsoft.boilerplate.compat.ViewerResourceParsers
 import net.kernelpanicsoft.boilerplate.compat.ViewerResourceStacks
+import net.kernelpanicsoft.boilerplate.compat.craftingGridOf
+import net.kernelpanicsoft.boilerplate.compat.patternFillOf
 import net.kernelpanicsoft.boilerplate.pipe.gui.AbstractTerminalHookScreen
 import net.kernelpanicsoft.boilerplate.pipe.gui.CraftingTerminalHookMenu
+import net.kernelpanicsoft.boilerplate.pipe.gui.PatternTerminalHookMenu
 import net.kernelpanicsoft.boilerplate.registry.GuiRegistry
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
 import net.minecraft.world.inventory.Slot
+import net.minecraft.world.level.material.Fluid
 import java.util.*
 
 /**
@@ -52,6 +62,7 @@ import java.util.*
  */
 open class BoilerplateEmiPlugin : EmiPlugin {
 	override fun register(registry: EmiRegistry) {
+		registry.addRecipeHandler(GuiRegistry.PatternTerminalHook, PatternFillHandler)
 		registry.addRecipeHandler(
 			GuiRegistry.CraftingTerminalHook,
 			object : StandardRecipeHandler<CraftingTerminalHookMenu> {
@@ -223,6 +234,77 @@ open class BoilerplateEmiPlugin : EmiPlugin {
 		private const val COLOR_REQUESTABLE = 0x44FFA500
 		/** Not local and not reachable, but a known pattern could produce it somewhere reachable. */
 		private const val COLOR_CRAFTABLE = 0x440080FF
+	}
+}
+
+/**
+ * Fills a Pattern Terminal's ghost grid from whatever recipe EMI is showing, whatever category it
+ * belongs to.
+ *
+ * Deliberately not a [StandardRecipeHandler] like the Crafting Terminal's own: nothing here is a
+ * real [Slot] and nothing is moved. A pattern is a *reference* to what a recipe needs, so the fill
+ * is a single message describing the grid rather than EMI's own simulated clicks, and it succeeds
+ * whether or not the player owns a single one of the ingredients.
+ *
+ * [supportsRecipe] accepts everything for the same reason: a pattern terminal authors processing
+ * patterns, which are an unordered bag of inputs and outputs and need no recipe type in particular.
+ * When the recipe does turn out to be a vanilla crafting one, [patternFillOf] notices and switches
+ * the terminal to [net.kernelpanicsoft.boilerplate.crafting.PatternKind.CRAFTING] instead.
+ */
+private object PatternFillHandler : EmiRecipeHandler<PatternTerminalHookMenu> {
+	/**
+	 * Empty, not the player's real inventory. It is only ever consulted to decide whether a recipe
+	 * is craftable *from stock*, which a pattern does not care about - [canCraft] answers for itself.
+	 */
+	override fun getInventory(screen: AbstractContainerScreen<PatternTerminalHookMenu>): EmiPlayerInventory =
+		EmiPlayerInventory(emptyList())
+
+	override fun supportsRecipe(recipe: EmiRecipe): Boolean = true
+
+	/** Always: authoring a pattern needs nothing in hand, so the fill button is never greyed out here. */
+	override fun canCraft(recipe: EmiRecipe, context: EmiCraftContext<PatternTerminalHookMenu>): Boolean = true
+
+	override fun craft(recipe: EmiRecipe, context: EmiCraftContext<PatternTerminalHookMenu>): Boolean {
+		context.screenHandler.fillFromRecipe(fillOf(recipe))
+		return true
+	}
+
+	/**
+	 * [recipe] as a pattern - its backing vanilla recipe when it has one, so a crafting recipe keeps
+	 * its shape, and its displayed ingredients otherwise.
+	 */
+	private fun fillOf(recipe: EmiRecipe): PatternFill = patternFillOf(
+		craftingGridOf(recipe.backingRecipe),
+		recipe.inputs.mapNotNull { stackOf(it) },
+		recipe.outputs.mapNotNull { stackOf(it) },
+	)
+
+	/**
+	 * [ingredient]'s first non-empty alternative as a resource, or `null` for one no registered kind
+	 * recognises.
+	 *
+	 * The first alternative for the same reason every other transfer in this mod picks it: a
+	 * tag-backed ingredient has several and a pattern cell can only name one.
+	 */
+	private fun stackOf(ingredient: EmiIngredient): ResourceStack<ResourceComponent>? =
+		ingredient.emiStacks.firstNotNullOfOrNull { stack ->
+			if (stack.isEmpty) null else EmiResourceParsers.of(stack)
+		}
+}
+
+/**
+ * How each resource kind is read back *out* of EMI - the mirror of [EmiResourceStacks], and what
+ * lets a pattern be authored from a recipe naming a fluid rather than only from an item one.
+ */
+val EmiResourceParsers = ViewerResourceParsers<EmiStack>().apply {
+	register("item") { stack ->
+		stack.itemStack.takeUnless { it.isEmpty }?.let { ResourceStack(ItemResource.of(it), stack.amount.coerceAtLeast(1L)) }
+	}
+	register("fluid") { stack ->
+		stack.getKeyOfType(Fluid::class.java)
+			?.let { FluidResource.of(it, stack.componentChanges) }
+			?.takeIf { !it.isBlank }
+			?.let { ResourceStack(it, stack.amount.coerceAtLeast(1L)) }
 	}
 }
 

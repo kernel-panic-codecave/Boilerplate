@@ -35,7 +35,7 @@
   "item.boilerplate.pattern.blank": "Blank Pattern",
   "item.boilerplate.pattern.kind.crafting": "Crafting Pattern",
   "item.boilerplate.pattern.kind.processing": "Processing Pattern",
-  "item.boilerplate.warehouse_wand": "Warehouse Wand",
+  "item.boilerplate.warehouse_planner": "Warehouse Planner",
   "subtitles.boilerplate.gantry.move": "Gantry moves",
   "subtitles.boilerplate.pipe.thunk": "Pipe clunks"
 }

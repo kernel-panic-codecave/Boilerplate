@@ -12,7 +12,7 @@ import dev.engine_room.flywheel.lib.math.MoreMath
 import dev.engine_room.flywheel.lib.model.SingleMeshModel
 import earth.terrarium.common_storage_lib.resources.fluid.FluidResource
 import earth.terrarium.common_storage_lib.resources.item.ItemResource
-import net.kernelpanicsoft.archie.gui.render.AFluidRenderPlatform
+import dev.architectury.hooks.fluid.FluidStackHooks
 import net.kernelpanicsoft.boilerplate.resource.ResourceIdentity
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderType
@@ -87,8 +87,8 @@ object InstancedMeshes {
 	fun fluidMesh(fluid: FluidResource): Mesh? = dropletMesh(ResourceIdentity.of(fluid)) {
 		val type = fluid.type
 		DropletSkin(
-			AFluidRenderPlatform.getStillSprite(type) ?: return@dropletMesh null,
-			AFluidRenderPlatform.getTintColor(type),
+			FluidStackHooks.getStillTexture(type) ?: return@dropletMesh null,
+			FluidStackHooks.getColor(type),
 			// The fluid's *own* render layer, which is where a fluid's transparency actually lives.
 			// Water's tint is fully opaque `0xFF3F76E4`; what makes water see-through is its still
 			// texture's alpha, drawn on the translucent layer - so reading the tint said "opaque"

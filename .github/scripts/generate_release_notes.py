@@ -175,7 +175,7 @@ def render_body(buckets: dict[str, list]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def update_changelog(path: Path, version_heading: str, date: str, body: str) -> None:
+def update_changelog(path: Path, project_name: str, version_heading: str, date: str, body: str) -> None:
     # body already ends in exactly one newline (render_body), so this leaves one blank line
     # after the section before whatever follows.
     section = f"## {version_heading} - {date}\n\n{body}\n"
@@ -184,7 +184,7 @@ def update_changelog(path: Path, version_heading: str, date: str, body: str) -> 
     else:
         content = (
             "# Changelog\n\n"
-            "All notable changes to Archie are documented here, generated automatically from "
+            f"All notable changes to {project_name} are documented here, generated automatically from "
             "merged pull requests and direct commits following "
             "[Conventional Commits](https://www.conventionalcommits.org/).\n\n"
         )
@@ -217,7 +217,7 @@ def write_news_post(posts_dir: Path, repo: str, version_display: str, date: str,
         "---\n\n"
     )
     intro = (
-        f"# Archie {version_display}\n\n"
+        f"# {repo.split('/')[-1]} {version_display}\n\n"
         f"{entry_count} change{'s' if entry_count != 1 else ''}{since}.\n\n"
         "<!-- more -->\n\n"
     )
@@ -274,7 +274,7 @@ def main() -> None:
         return
 
     if args.changelog_path:
-        update_changelog(args.changelog_path, f"[{version_display}]", date, body)
+        update_changelog(args.changelog_path, args.repo.split("/")[-1], f"[{version_display}]", date, body)
         print(f"Updated {args.changelog_path}")
 
     if args.latest_path:

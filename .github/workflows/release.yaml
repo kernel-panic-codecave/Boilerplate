@@ -1,0 +1,53 @@
+name: release
+
+# Publishes a tagged version: the fused jar goes to CurseForge, Modrinth and a GitHub release via
+# `publishMod` (see the `publisher {}` block in build.gradle.kts), with the changelog it uploads
+# generated from the commits since the previous tag.
+#
+# Cut a release by tagging the branch tip: `git tag v0.1.0 && git push origin v0.1.0`. A
+# `-SNAPSHOT` version in gradle.properties publishes as an alpha; anything else as a release.
+#
+# Needs CURSEFORGE_API_KEY and MODRINTH_API_KEY as repository secrets. The GitHub release uses the
+# workflow's own token.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The changelog is generated from the commits since the previous tag, so the whole
+          # history has to be here - a shallow clone would produce an empty one.
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: 'zulu'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+
+      - name: Publish
+        env:
+          # Archie pulls catalogue transitively from MrCrayfish's GitHub Packages, which rejects an
+          # anonymous request with a 401 even though the package is public. Any valid token gets in.
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          MODRINTH_API_KEY: ${{ secrets.MODRINTH_API_KEY }}
+        run: ./gradlew publishMod --console=plain

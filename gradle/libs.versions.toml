@@ -16,7 +16,7 @@ modfusioner = "1.0.12"
 modpublisher = "2.1.4"
 
 archie-plugin = "1.0.4-SNAPSHOT"
-archie = "1.0.0-SNAPSHOT"
+archie = "0.1.0-SNAPSHOT"
 
 fabric-loader = "0.16.9"
 fabric-api = "0.116.6+1.21.1"
@@ -70,13 +70,13 @@ archie-common = { module = "net.kernelpanicsoft.archie:archie-core-common", vers
 archie-fabric = { module = "net.kernelpanicsoft.archie:archie-core-fabric", version.ref = "archie" }
 archie-neoforge = { module = "net.kernelpanicsoft.archie:archie-core-neoforge", version.ref = "archie" }
 
-archie-gametest-common = { module = "net.kernelpanicsoft.archie:archie-gametest-common", version.ref = "archie" }
-archie-gametest-fabric = { module = "net.kernelpanicsoft.archie:archie-gametest-fabric", version.ref = "archie" }
-archie-gametest-neoforge = { module = "net.kernelpanicsoft.archie:archie-gametest-neoforge", version.ref = "archie" }
+archie-gametest-common = { module = "net.kernelpanicsoft.archie:archie-core-gametest-common", version.ref = "archie" }
+archie-gametest-fabric = { module = "net.kernelpanicsoft.archie:archie-core-gametest-fabric", version.ref = "archie" }
+archie-gametest-neoforge = { module = "net.kernelpanicsoft.archie:archie-core-gametest-neoforge", version.ref = "archie" }
 
-archie-datagen-common = { module = "net.kernelpanicsoft.archie:archie-datagen-common", version.ref = "archie" }
-archie-datagen-fabric = { module = "net.kernelpanicsoft.archie:archie-datagen-fabric", version.ref = "archie" }
-archie-datagen-neoforge = { module = "net.kernelpanicsoft.archie:archie-datagen-neoforge", version.ref = "archie" }
+archie-datagen-common = { module = "net.kernelpanicsoft.archie:archie-core-datagen-common", version.ref = "archie" }
+archie-datagen-fabric = { module = "net.kernelpanicsoft.archie:archie-core-datagen-fabric", version.ref = "archie" }
+archie-datagen-neoforge = { module = "net.kernelpanicsoft.archie:archie-core-datagen-neoforge", version.ref = "archie" }
 
 flywheel-common = { module = "dev.engine-room.flywheel:flywheel-common-intermediary-api-1.21.1", version.ref = "flywheel"}
 flywheel-fabric = { module = "dev.engine-room.flywheel:flywheel-fabric-1.21.1", version.ref = "flywheel"}

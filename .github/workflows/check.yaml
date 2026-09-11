@@ -60,6 +60,11 @@ jobs:
           key: minecraft-assets-1.21.1
 
       - name: Run check
+        env:
+          # Archie pulls catalogue transitively from MrCrayfish's GitHub Packages, which rejects an
+          # anonymous request with a 401 even though the package is public. Any valid token gets in.
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" ./gradlew check --console=plain
 
       - name: Publish test report
